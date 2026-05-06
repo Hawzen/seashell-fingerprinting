@@ -138,6 +138,34 @@ function datasetAsset(path) {
   return `${repoBase}dataset/${encodeURIComponent(path).replaceAll("%2F", "/")}`;
 }
 
+function contourFallbackDataUrl(shell) {
+  const contour = contourForShell(shell);
+  if (!contour?.length) return "";
+  const width = shell.image_width || 400;
+  const height = shell.image_height || 300;
+  const path = contour
+    .map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`)
+    .join(" ");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#f7f7f2"/><path d="${path} Z" fill="rgba(198,93,75,0.18)" stroke="#287a74" stroke-width="3" stroke-linejoin="round"/></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function setShellImage(image, shell, alt = "") {
+  image.dataset.fallbackApplied = "false";
+  image.alt = alt;
+  image.onerror = () => {
+    if (image.dataset.fallbackApplied === "true") {
+      image.removeAttribute("src");
+      return;
+    }
+    image.dataset.fallbackApplied = "true";
+    const fallback = contourFallbackDataUrl(shell);
+    if (fallback) image.src = fallback;
+    else image.removeAttribute("src");
+  };
+  image.src = datasetAsset(shell.file);
+}
+
 function formatNumber(value, digits = 3) {
   return Number(value).toLocaleString(undefined, {
     maximumFractionDigits: digits,
@@ -390,8 +418,7 @@ function renderQualityList() {
     button.className = "quality-button";
     button.title = shell.file;
     const image = document.createElement("img");
-    image.src = datasetAsset(shell.file);
-    image.alt = "";
+    setShellImage(image, shell);
     image.loading = "lazy";
     const name = document.createElement("strong");
     name.textContent = shell.species;
@@ -1990,8 +2017,7 @@ function renderNeighbors(shell) {
     button.className = "neighbor-button";
     button.title = `${neighbor.species} (${formatNumber(item.distance, 4)})`;
     const image = document.createElement("img");
-    image.src = datasetAsset(neighbor.file);
-    image.alt = neighbor.species;
+    setShellImage(image, neighbor, neighbor.species);
     const label = document.createElement("span");
     label.textContent = formatNumber(item.distance, 3);
     button.append(image, label);
@@ -2058,8 +2084,7 @@ function selectShell(shell) {
     els.selectedDetails.append(dt, dd);
   }
 
-  els.sourceImage.src = datasetAsset(shell.file);
-  els.sourceImage.alt = shell.species;
+  setShellImage(els.sourceImage, shell, shell.species);
   renderNeighbors(shell);
   updateCompareStatus();
   drawOutline();
