@@ -76,6 +76,7 @@ selected contour PC readouts, generated-fingerprint CSV, selected-fingerprint CS
 and exact-contour SVG export. It also has
 URL-hash state restoration for shareable map, neighbor, variant, and overlay views. The generator also includes a
 PCA walk control for continuously morphing through learned shell-shape axes.
+Middle-button drag pans the PCA map without changing the generated contour target.
 Diagnostic controls, including the kernel readout and thumbnail-backed Contour QA queue,
 are hidden by default; append `?debug=1` to the app URL to show them.
 Direct links to contour previews and audit sheets are in the top bar.

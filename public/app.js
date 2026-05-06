@@ -54,6 +54,7 @@ const state = {
   colorRequest: 0,
   pcValues: [],
   draggingTarget: false,
+  panningViewport: null,
   walkingPca: false,
   walkStartedAt: 0,
   walkFrame: 0,
@@ -2037,6 +2038,44 @@ function setTargetFromEvent(event) {
   setPcValue(state.yAxis, point.y);
 }
 
+function startViewportPan(event) {
+  if (!state.viewport) return;
+  const rect = els.scatter.getBoundingClientRect();
+  state.panningViewport = {
+    pointerId: event.pointerId,
+    startX: event.clientX - rect.left,
+    startY: event.clientY - rect.top,
+    viewport: { ...state.viewport },
+  };
+  state.draggingTarget = false;
+  els.scatter.classList.add("is-panning");
+  els.pointTooltip.hidden = true;
+}
+
+function panViewportFromEvent(event) {
+  if (!state.panningViewport || state.panningViewport.pointerId !== event.pointerId) return;
+  const rect = els.scatter.getBoundingClientRect();
+  const size = resizeCanvas(els.scatter, scatterCtx);
+  const start = state.panningViewport;
+  const vx = start.viewport;
+  const dx = ((event.clientX - rect.left - start.startX) / size.width) * (vx.maxX - vx.minX);
+  const dy = ((event.clientY - rect.top - start.startY) / size.height) * (vx.maxY - vx.minY);
+  state.viewport = {
+    minX: vx.minX - dx,
+    maxX: vx.maxX - dx,
+    minY: vx.minY + dy,
+    maxY: vx.maxY + dy,
+  };
+  scheduleDraw();
+}
+
+function stopViewportPan() {
+  if (!state.panningViewport) return;
+  state.panningViewport = null;
+  els.scatter.classList.remove("is-panning");
+  scheduleHashUpdate();
+}
+
 function showPointTooltip(event, shell) {
   if (!shell) {
     els.pointTooltip.hidden = true;
@@ -2351,6 +2390,12 @@ function setupEvents() {
   });
 
   els.scatter.addEventListener("pointerdown", (event) => {
+    if (event.button === 1) {
+      event.preventDefault();
+      els.scatter.setPointerCapture(event.pointerId);
+      startViewportPan(event);
+      return;
+    }
     els.scatter.setPointerCapture(event.pointerId);
     const rect = els.scatter.getBoundingClientRect();
     const localX = event.clientX - rect.left;
@@ -2365,6 +2410,12 @@ function setupEvents() {
   });
 
   els.scatter.addEventListener("pointermove", (event) => {
+    if (state.panningViewport) {
+      event.preventDefault();
+      panViewportFromEvent(event);
+      els.pointTooltip.hidden = true;
+      return;
+    }
     if (state.draggingTarget) {
       setTargetFromEvent(event);
       els.pointTooltip.hidden = true;
@@ -2377,11 +2428,22 @@ function setupEvents() {
 
   els.scatter.addEventListener("pointerup", () => {
     state.draggingTarget = false;
+    stopViewportPan();
   });
 
   els.scatter.addEventListener("pointerleave", () => {
     state.draggingTarget = false;
+    stopViewportPan();
     els.pointTooltip.hidden = true;
+  });
+
+  els.scatter.addEventListener("pointercancel", () => {
+    state.draggingTarget = false;
+    stopViewportPan();
+  });
+
+  els.scatter.addEventListener("auxclick", (event) => {
+    if (event.button === 1) event.preventDefault();
   });
 
   window.addEventListener("resize", () => {

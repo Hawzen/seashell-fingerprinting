@@ -166,6 +166,12 @@ button:hover,
   width: 100%;
   height: 100%;
   display: block;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+#scatterCanvas.is-panning {
+  cursor: grabbing;
 }
 
 .point-tooltip {
@@ -244,6 +250,15 @@ button:hover,
 
 .search-section .field {
   margin: 0;
+}
+
+.pane-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.pane-actions button {
+  width: 100%;
 }
 
 .map-field {

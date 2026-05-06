@@ -544,6 +544,36 @@ def run_browser_check(url: str) -> None:
           ) {{
             throw new Error(`desktop layout overflow: ${{JSON.stringify(desktopLayout)}}`);
           }}
+          const beforeMiddlePan = await page.evaluate(() => ({{
+            selected: document.querySelector('#selectedName').textContent,
+            firstPc: document.querySelector('[data-pc-row="0"] input[type="number"]').value,
+          }}));
+          const scatterBox = await page.locator('#scatterCanvas').boundingBox();
+          if (!scatterBox) throw new Error('scatter canvas has no box');
+          await page.mouse.move(scatterBox.x + scatterBox.width / 2, scatterBox.y + scatterBox.height / 2);
+          await page.mouse.down({{ button: 'middle' }});
+          await page.mouse.move(
+            scatterBox.x + scatterBox.width / 2 + 80,
+            scatterBox.y + scatterBox.height / 2 + 40,
+          );
+          const panningActive = await page.evaluate(() =>
+            document.querySelector('#scatterCanvas').classList.contains('is-panning'),
+          );
+          await page.mouse.up({{ button: 'middle' }});
+          const middlePanState = await page.evaluate((before) => ({{
+            active: document.querySelector('#scatterCanvas').classList.contains('is-panning'),
+            selected: document.querySelector('#selectedName').textContent,
+            firstPc: document.querySelector('[data-pc-row="0"] input[type="number"]').value,
+            before,
+          }}), beforeMiddlePan);
+          if (
+            !panningActive ||
+            middlePanState.active ||
+            middlePanState.selected !== beforeMiddlePan.selected ||
+            middlePanState.firstPc !== beforeMiddlePan.firstPc
+          ) {{
+            throw new Error(`middle-button pan failed: ${{JSON.stringify(middlePanState)}}`);
+          }}
           await page.getByRole('button', {{ name: 'Walk' }}).click();
           await page.waitForTimeout(700);
           const walkState = await page.evaluate(() => ({{
