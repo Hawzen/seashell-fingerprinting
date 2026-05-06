@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Seashell Contour Explorer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Seashell Contours</h1>
+        <p id="statusLine">Loading contour PCA model</p>
+      </div>
+      <div class="top-actions">
+        <a class="button-link" href="./validation_preview.jpg" target="_blank">Preview</a>
+        <a class="button-link" href="./contour_audit/" target="_blank">Audit</a>
+        <button id="randomShell" title="Select a random visible shell">Random</button>
+        <button id="zoomOut" title="Zoom out">-</button>
+        <button id="zoomIn" title="Zoom in">+</button>
+        <button id="resetView" title="Reset view">Reset</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="panel controls-panel">
+        <label class="field">
+          <span>Search</span>
+          <input id="searchBox" type="search" placeholder="Species or filename" />
+        </label>
+        <section class="map-controls">
+          <h2>Map</h2>
+          <div class="axis-grid">
+            <label>
+              <span>X</span>
+              <select id="xAxisSelect"></select>
+            </label>
+            <label>
+              <span>Y</span>
+              <select id="yAxisSelect"></select>
+            </label>
+          </div>
+          <label class="field map-field">
+            <span>Color</span>
+            <select id="colorModeSelect">
+              <option value="species">Species</option>
+              <option value="mask">Mask coverage</option>
+              <option value="center">Center shift</option>
+              <option value="concavity">Contour concavity</option>
+            </select>
+          </label>
+          <div class="segmented-control" aria-label="Map mode">
+            <button id="pointMode" type="button" aria-pressed="true">Points</button>
+            <button id="densityMode" type="button" aria-pressed="false">Density</button>
+          </div>
+        </section>
+        <div class="metric-row">
+          <span>Visible</span>
+          <strong id="visibleCount">0</strong>
+        </div>
+        <div class="metric-row">
+          <span>Explained</span>
+          <strong id="explainedVariance">0%</strong>
+        </div>
+        <div class="metric-row">
+          <span>Kernel</span>
+          <strong id="kernelStatus">Loading</strong>
+        </div>
+        <section class="quality-panel">
+          <div class="section-title">
+            <h2>Contour QA</h2>
+            <select id="qualityModeSelect" aria-label="Contour QA metric">
+              <option value="center">Center shift</option>
+              <option value="rough">Roughness</option>
+              <option value="low-mask">Low mask</option>
+              <option value="high-mask">High mask</option>
+              <option value="slender">Slender</option>
+              <option value="concavity">Concavity</option>
+              <option value="components">Components</option>
+            </select>
+          </div>
+          <div id="qualityList"></div>
+        </section>
+        <section class="selection">
+          <div class="section-title">
+            <h2>Selection</h2>
+            <div class="title-actions">
+              <button id="exportContourSvg" title="Export selected segmented contour as SVG">Contour SVG</button>
+            </div>
+          </div>
+          <div id="selectedName" class="selected-name">None</div>
+          <dl id="selectedDetails"></dl>
+        </section>
+      </aside>
+
+      <section class="scatter-panel" aria-label="PCA scatter plot">
+        <canvas id="scatterCanvas"></canvas>
+        <div id="pointTooltip" class="point-tooltip" hidden></div>
+      </section>
+
+      <aside class="panel generator-panel">
+        <section>
+          <div class="section-title">
+            <h2>Generated Contour</h2>
+            <div class="title-actions">
+              <button id="pinReference" title="Pin selected shell as comparison reference">Pin</button>
+              <button id="clearReference" title="Clear comparison reference">Clear</button>
+              <button id="exportSvg" title="Export generated contour as SVG">SVG</button>
+            </div>
+          </div>
+          <canvas id="outlineCanvas" width="420" height="420"></canvas>
+          <div id="compareStatus" class="compare-status">No pinned reference</div>
+        </section>
+
+        <section class="variant-lab">
+          <h2>Variant Lab</h2>
+          <div id="variantButtons" class="mode-grid"></div>
+          <canvas id="variantCanvas" width="420" height="300"></canvas>
+          <div id="variantStatus" class="variant-status">Fourier</div>
+          <label class="upload-field">
+            <span>Upload Shape</span>
+            <input id="uploadShape" type="file" accept="image/*" />
+          </label>
+        </section>
+
+        <section class="slider-stack">
+          <div class="section-title">
+            <h2>PCA Coordinates</h2>
+            <div class="title-actions">
+              <button id="meanShape" title="Reset PCA coordinates to the mean shell">Mean</button>
+              <button id="walkPca" title="Animate through PCA space">Walk</button>
+            </div>
+          </div>
+          <div id="pcControls"></div>
+        </section>
+
+        <section class="image-preview">
+          <div class="section-title">
+            <h2>Source Image</h2>
+            <div class="mini-segmented" aria-label="Source overlay layers">
+              <button id="overlayContour" type="button" aria-pressed="true" title="Toggle segmented outer contour">Contour</button>
+              <button id="overlayCenter" type="button" aria-pressed="true" title="Toggle detected center">Center</button>
+            </div>
+          </div>
+          <div class="source-frame">
+            <img id="sourceImage" alt="" />
+            <canvas id="sourceOverlay" width="420" height="300"></canvas>
+          </div>
+        </section>
+
+        <section class="neighbors">
+          <div class="section-title">
+            <h2>Nearest Shapes</h2>
+            <div class="mini-segmented" aria-label="Nearest shape metric">
+              <button id="neighborContourMode" type="button" aria-pressed="true">Contour</button>
+              <button id="neighborPcaMode" type="button" aria-pressed="false">PCA</button>
+            </div>
+          </div>
+          <div id="neighborsList"></div>
+          <div id="neighborStatus" class="neighbor-status">Exact contour nearest</div>
+        </section>
+      </aside>
+    </main>
+
+    <div id="missingData" class="missing-data" hidden>
+      <div>
+        <h2>Processed Data Missing</h2>
+        <p>Build processed data, export static data, then refresh the app.</p>
+        <code>python3 tools/build_fingerprints.py --dataset dataset --output processed
+python3 tools/export_static_data.py --dataset dataset --processed processed --output public/data</code>
+      </div>
+    </div>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
