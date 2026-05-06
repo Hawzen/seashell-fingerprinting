@@ -5,6 +5,15 @@ const repoBase = publicBase.endsWith("/public/")
   ? publicBase.slice(0, -"public/".length)
   : "/";
 
+function urlFlag(name) {
+  const value = new URLSearchParams(window.location.search).get(name);
+  if (value == null) return false;
+  if (value === "") return true;
+  return !["0", "false", "no", "off"].includes(value.toLowerCase());
+}
+
+const debugDiagnostics = urlFlag("debug");
+
 const state = {
   shells: [],
   filtered: [],
@@ -31,9 +40,12 @@ const state = {
   activeVariant: "fourier",
   xAxis: 0,
   yAxis: 1,
-  mapMode: "points",
   colorMode: "species",
   qualityMode: "center",
+  diagnostics: {
+    qa: debugDiagnostics || urlFlag("qa"),
+    kernel: debugDiagnostics || urlFlag("kernel"),
+  },
   neighborMode: "contour",
   overlayLayers: {
     contour: true,
@@ -81,10 +93,10 @@ const els = {
   xAxisSelect: document.querySelector("#xAxisSelect"),
   yAxisSelect: document.querySelector("#yAxisSelect"),
   colorModeSelect: document.querySelector("#colorModeSelect"),
-  pointMode: document.querySelector("#pointMode"),
-  densityMode: document.querySelector("#densityMode"),
   qualityModeSelect: document.querySelector("#qualityModeSelect"),
+  qualityPanel: document.querySelector("#qualityPanel"),
   qualityList: document.querySelector("#qualityList"),
+  kernelRow: document.querySelector("#kernelRow"),
   pcControls: document.querySelector("#pcControls"),
   selectedName: document.querySelector("#selectedName"),
   selectedDetails: document.querySelector("#selectedDetails"),
@@ -135,6 +147,11 @@ function formatNumber(value, digits = 3) {
   });
 }
 
+function applyDiagnosticVisibility() {
+  if (els.qualityPanel) els.qualityPanel.hidden = !state.diagnostics.qa;
+  if (els.kernelRow) els.kernelRow.hidden = !state.diagnostics.kernel;
+}
+
 async function fetchJson(url) {
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) throw new Error(`${url} returned ${response.status}`);
@@ -161,7 +178,6 @@ function updateHashState() {
   if (state.referenceShell) params.set("ref", String(state.referenceShell.id));
   params.set("x", String(state.xAxis));
   params.set("y", String(state.yAxis));
-  params.set("map", state.mapMode);
   params.set("color", state.colorMode);
   params.set("quality", state.qualityMode);
   params.set("near", state.neighborMode);
@@ -290,29 +306,6 @@ function pointColor(shell) {
   return speciesColor(shell.species);
 }
 
-function colorMetricValue(shell) {
-  if (state.colorMode === "mask") return clamp01((shell.mask_ratio - 0.025) / 0.42);
-  if (state.colorMode === "center") return clamp01((shell.center_adjustment || 0) / 24);
-  if (state.colorMode === "concavity") return clamp01((shell.contour_concavity || 0) / 0.32);
-  return 0;
-}
-
-function metricColor(value, alpha) {
-  if (state.colorMode === "mask") {
-    const hue = 210 - value * 170;
-    return `hsla(${hue}, 55%, ${34 + value * 10}%, ${alpha})`;
-  }
-  if (state.colorMode === "center") {
-    const hue = 164 - value * 154;
-    return `hsla(${hue}, 62%, ${32 + value * 8}%, ${alpha})`;
-  }
-  if (state.colorMode === "concavity") {
-    const hue = 322 - value * 180;
-    return `hsla(${hue}, 58%, ${36 + value * 8}%, ${alpha})`;
-  }
-  return `rgba(40, 122, 116, ${alpha})`;
-}
-
 function qualityMetric(shell, mode) {
   if (mode === "rough") return shell.roughness || 0;
   if (mode === "low-mask" || mode === "high-mask") return shell.mask_ratio || 0;
@@ -345,6 +338,10 @@ function centerViewportOnShell(shell) {
 }
 
 function renderQualityList() {
+  if (!state.diagnostics.qa) {
+    els.qualityList.innerHTML = "";
+    return;
+  }
   const mode = state.qualityMode;
   const ascending = mode === "low-mask";
   const ranked = [...state.filtered]
@@ -390,43 +387,6 @@ function selectRandomShell() {
   scheduleDraw();
 }
 
-function drawDensity(size) {
-  const columns = 104;
-  const rows = Math.max(48, Math.round((columns * size.height) / Math.max(1, size.width)));
-  const buckets = new Uint16Array(columns * rows);
-  const metricSums = state.colorMode === "species" ? null : new Float32Array(columns * rows);
-  let maxBucket = 0;
-  for (const shell of state.filtered) {
-    const point = worldToScreen(axisValue(shell, state.xAxis), axisValue(shell, state.yAxis), size);
-    if (point.x < 0 || point.x >= size.width || point.y < 0 || point.y >= size.height) continue;
-    const column = Math.min(columns - 1, Math.max(0, Math.floor((point.x / size.width) * columns)));
-    const row = Math.min(rows - 1, Math.max(0, Math.floor((point.y / size.height) * rows)));
-    const index = row * columns + column;
-    buckets[index] += 1;
-    if (metricSums) metricSums[index] += colorMetricValue(shell);
-    maxBucket = Math.max(maxBucket, buckets[index]);
-  }
-  if (!maxBucket) return;
-  const cellWidth = size.width / columns;
-  const cellHeight = size.height / rows;
-  for (let row = 0; row < rows; row += 1) {
-    for (let column = 0; column < columns; column += 1) {
-      const value = buckets[row * columns + column];
-      if (!value) continue;
-      const intensity = Math.log1p(value) / Math.log1p(maxBucket);
-      const alpha = 0.12 + intensity * 0.72;
-      const metric = metricSums ? metricSums[row * columns + column] / value : 0;
-      scatterCtx.fillStyle = metricColor(metric, alpha);
-      scatterCtx.fillRect(
-        column * cellWidth,
-        row * cellHeight,
-        Math.ceil(cellWidth) + 0.5,
-        Math.ceil(cellHeight) + 0.5,
-      );
-    }
-  }
-}
-
 function drawScatter() {
   const size = resizeCanvas(els.scatter, scatterCtx);
   if (!state.viewport || !state.needsDraw) return;
@@ -451,24 +411,20 @@ function drawScatter() {
     scatterCtx.stroke();
   }
 
-  if (state.mapMode === "density") {
-    drawDensity(size);
-  } else {
-    const stride = state.filtered.length > 25000 ? 2 : 1;
-    for (let i = 0; i < state.filtered.length; i += stride) {
-      const shell = state.filtered[i];
-      const point = worldToScreen(axisValue(shell, state.xAxis), axisValue(shell, state.yAxis), size);
-      if (
-        point.x < -3 ||
-        point.x > size.width + 3 ||
-        point.y < -3 ||
-        point.y > size.height + 3
-      ) {
-        continue;
-      }
-      scatterCtx.fillStyle = pointColor(shell);
-      scatterCtx.fillRect(point.x - 1, point.y - 1, 2, 2);
+  const stride = state.filtered.length > 25000 ? 2 : 1;
+  for (let i = 0; i < state.filtered.length; i += stride) {
+    const shell = state.filtered[i];
+    const point = worldToScreen(axisValue(shell, state.xAxis), axisValue(shell, state.yAxis), size);
+    if (
+      point.x < -3 ||
+      point.x > size.width + 3 ||
+      point.y < -3 ||
+      point.y > size.height + 3
+    ) {
+      continue;
     }
+    scatterCtx.fillStyle = pointColor(shell);
+    scatterCtx.fillRect(point.x - 1, point.y - 1, 2, 2);
   }
 
   if (state.pcValues.length >= 2) {
@@ -583,7 +539,6 @@ function buildAxisControls() {
   }
   els.xAxisSelect.value = String(state.xAxis);
   els.yAxisSelect.value = String(state.yAxis);
-  updateMapModeButtons();
 }
 
 function updateAxisSummary() {
@@ -599,18 +554,6 @@ function setAxes(xAxis, yAxis) {
   els.yAxisSelect.value = String(yAxis);
   state.viewport = initialViewport(xAxis, yAxis);
   updateAxisSummary();
-  scheduleDraw();
-  scheduleHashUpdate();
-}
-
-function updateMapModeButtons() {
-  els.pointMode.setAttribute("aria-pressed", state.mapMode === "points" ? "true" : "false");
-  els.densityMode.setAttribute("aria-pressed", state.mapMode === "density" ? "true" : "false");
-}
-
-function setMapMode(mode) {
-  state.mapMode = mode;
-  updateMapModeButtons();
   scheduleDraw();
   scheduleHashUpdate();
 }
@@ -2360,6 +2303,7 @@ async function handleUpload(event) {
 
 function setupEvents() {
   buildVariantButtons();
+  applyDiagnosticVisibility();
   els.search.addEventListener("input", updateFilter);
   els.uploadShape.addEventListener("change", handleUpload);
   els.pinReference.addEventListener("click", pinReferenceShell);
@@ -2384,8 +2328,6 @@ function setupEvents() {
     renderQualityList();
     scheduleHashUpdate();
   });
-  els.pointMode.addEventListener("click", () => setMapMode("points"));
-  els.densityMode.addEventListener("click", () => setMapMode("density"));
   els.neighborPcaMode.addEventListener("click", () => setNeighborMode("pca"));
   els.neighborContourMode.addEventListener("click", () => setNeighborMode("contour"));
   els.overlayContour.addEventListener("click", () => toggleOverlayLayer("contour"));
@@ -2510,9 +2452,6 @@ async function init() {
   }
   if (requestedYAxis != null) {
     state.yAxis = requestedYAxis;
-  }
-  if (["points", "density"].includes(initialHash.get("map"))) {
-    state.mapMode = initialHash.get("map");
   }
   if (["species", "mask", "center", "concavity"].includes(initialHash.get("color"))) {
     state.colorMode = initialHash.get("color");

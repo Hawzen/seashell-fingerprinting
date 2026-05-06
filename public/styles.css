@@ -16,6 +16,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   min-height: 100%;
@@ -279,25 +283,6 @@ input:focus {
   gap: 6px;
   color: var(--muted);
   font-size: 13px;
-}
-
-.segmented-control {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 7px;
-}
-
-.segmented-control button {
-  min-width: 0;
-  min-height: 34px;
-  padding: 6px 8px;
-  font-size: 13px;
-}
-
-.segmented-control button[aria-pressed="true"] {
-  border-color: var(--teal);
-  background: rgba(40, 122, 116, 0.12);
-  color: #1f5e59;
 }
 
 .metric-row {

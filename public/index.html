@@ -54,10 +54,6 @@
               <option value="concavity">Contour concavity</option>
             </select>
           </label>
-          <div class="segmented-control" aria-label="Map mode">
-            <button id="pointMode" type="button" aria-pressed="true">Points</button>
-            <button id="densityMode" type="button" aria-pressed="false">Density</button>
-          </div>
         </section>
 
         <section class="panel-section map-summary">
@@ -70,13 +66,13 @@
             <span>Explained</span>
             <strong id="explainedVariance">0%</strong>
           </div>
-          <div class="metric-row">
+          <div id="kernelRow" class="metric-row" hidden>
             <span>Kernel</span>
             <strong id="kernelStatus">Loading</strong>
           </div>
         </section>
 
-        <section class="panel-section quality-panel">
+        <section id="qualityPanel" class="panel-section quality-panel" hidden>
           <div class="section-title">
             <h2>Contour QA</h2>
             <select id="qualityModeSelect" aria-label="Contour QA metric">

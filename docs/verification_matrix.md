@@ -37,12 +37,12 @@ Artifact and kernel gate:
 
 Runs the `make smoke` syntax gate, runs everything in `make verify`, then adds a headless Chromium pass:
 
-- Restores hash state for selected shell, reference shell, axes, map mode, color mode, variant, and PCA coordinates.
+- Restores hash state for selected shell, reference shell, axes, color mode, variant, and PCA coordinates.
 - Exercises PCA Walk, Stop, and Mean controls.
 - Checks all 10 Variant Lab modes are present.
 - Checks contour PCA axes can be selected.
-- Checks concavity color mode and concavity QA mode.
-- Checks search-filtered QA rows and empty-filter Random behavior.
+- Checks concavity color mode and, with `?debug=1`, concavity QA mode.
+- Checks debug search-filtered QA rows and empty-filter Random behavior.
 - Checks generated fingerprint CSV and generated SVG export.
 - Checks selected fingerprint CSV and selected exact-contour SVG export.
 - Checks pinned comparison reports radial and exact-contour RMS.
@@ -50,7 +50,7 @@ Runs the `make smoke` syntax gate, runs everything in `make verify`, then adds a
 - Checks source overlay drawing and layer toggles.
 - Checks Fourier and Context variants use exact contour data when available.
 - Uploads a synthetic shape and checks nearest-shell matching.
-- Reloads a mobile-width view from a hash with contour axes, concavity color, concavity QA, contour-neighbor mode, and contour-only overlay layers.
+- Reloads a mobile-width debug view from a hash with contour axes, concavity color, concavity QA, contour-neighbor mode, and contour-only overlay layers.
 - Checks the mobile view has no horizontal overflow.
 
 ## Targeted Visual Checks

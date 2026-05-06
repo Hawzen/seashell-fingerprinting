@@ -503,7 +503,7 @@ def run_browser_check(url: str) -> None:
           page.on('console', (msg) => messages.push({{ type: msg.type(), text: msg.text() }}));
           page.on('pageerror', (err) => messages.push({{ type: 'pageerror', text: err.message }}));
           await page.goto(
-            '{url}/#id=12&ref=0&x=2&y=3&map=density&color=mask&near=contour&variant=spiral&pc=0.250,0.000,0.000,0.000,0.000,0.000',
+            '{url}/?debug=1#id=12&ref=0&x=2&y=3&color=mask&near=contour&variant=spiral&pc=0.250,0.000,0.000,0.000,0.000,0.000',
             {{ waitUntil: 'networkidle', timeout: 120000 }}
           );
           await page.waitForFunction(
@@ -515,7 +515,6 @@ def run_browser_check(url: str) -> None:
             xAxis: document.querySelector('#xAxisSelect').value,
             yAxis: document.querySelector('#yAxisSelect').value,
             color: document.querySelector('#colorModeSelect').value,
-            density: document.querySelector('#densityMode').getAttribute('aria-pressed'),
             variant: document.querySelector('#variantButtons button[aria-pressed="true"]')?.textContent,
             selected: document.querySelector('#selectedName').textContent,
             status: document.querySelector('#statusLine').textContent,
@@ -526,7 +525,6 @@ def run_browser_check(url: str) -> None:
             restored.xAxis !== '2' ||
             restored.yAxis !== '3' ||
             restored.color !== 'mask' ||
-            restored.density !== 'true' ||
             restored.variant !== 'Spiral' ||
             restored.selected === 'None' ||
             !restored.status.includes('species') ||
@@ -629,15 +627,13 @@ def run_browser_check(url: str) -> None:
           }}
           await page.selectOption('#xAxisSelect', '2');
           await page.selectOption('#colorModeSelect', 'concavity');
-          await page.getByRole('button', {{ name: 'Density' }}).click();
           await page.waitForTimeout(300);
           const mapState = await page.evaluate(() => ({{
             xAxis: document.querySelector('#xAxisSelect').value,
             color: document.querySelector('#colorModeSelect').value,
-            density: document.querySelector('#densityMode').getAttribute('aria-pressed'),
             explained: document.querySelector('#explainedVariance').textContent,
           }}));
-          if (mapState.xAxis !== '2' || mapState.color !== 'concavity' || mapState.density !== 'true') {{
+          if (mapState.xAxis !== '2' || mapState.color !== 'concavity') {{
             throw new Error(`map controls failed: ${{JSON.stringify(mapState)}}`);
           }}
           await page.selectOption('#qualityModeSelect', 'concavity');
@@ -747,7 +743,7 @@ def run_browser_check(url: str) -> None:
           }}
           await page.setViewportSize({{ width: 390, height: 844 }});
           await page.goto(
-            '{url}/?mobile=1#id=49008&x=0&y=1&color=concavity&quality=concavity&near=contour&layers=contour,center',
+            '{url}/?mobile=1&debug=1#id=49008&x=0&y=1&color=concavity&quality=concavity&near=contour&layers=contour,center',
             {{ waitUntil: 'networkidle', timeout: 120000 }}
           );
           await page.waitForFunction(

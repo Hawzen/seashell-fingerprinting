@@ -66,18 +66,18 @@ The static model also records dataset breadth metadata; the current build has
 If the static data has not been exported, the app shows a missing-data panel
 with the rebuild commands.
 
-The PCA map supports radial and exact-contour PC axis selection, point and density rendering modes,
-species/mask/center-shift/radial-mismatch/contour-concavity coloring, hover inspection, search, random visible-shell jumps, nearest-shape
+The PCA map supports exact-contour PC axis selection, point rendering,
+species/mask/center-shift/contour-concavity coloring, hover inspection, search, random visible-shell jumps, nearest-shape
 browsing by either PCA distance or true 360-radius contour distance,
 exact resampled outer-contour distance backed by the Haskell WASM kernel,
-source-image overlays that separate the segmented image contour from the radial
-fingerprint envelope with independent contour/radial/center layer toggles,
-a search-aware, thumbnail-backed Contour QA queue for radial mismatch/roughness/mask/center/concavity
-outliers, pinned reference comparison by radial and exact outer-contour RMS, SVG export, and
-selected radial/contour PC readouts, generated-fingerprint CSV, selected-fingerprint CSV,
+source-image overlays with independent contour/center layer toggles,
+pinned reference comparison by exact outer-contour RMS, SVG export, and
+selected contour PC readouts, generated-fingerprint CSV, selected-fingerprint CSV,
 and exact-contour SVG export. It also has
-URL-hash state restoration for shareable map, QA, neighbor, variant, and overlay views. The generator also includes a
+URL-hash state restoration for shareable map, neighbor, variant, and overlay views. The generator also includes a
 PCA walk control for continuously morphing through learned shell-shape axes.
+Diagnostic controls, including the kernel readout and thumbnail-backed Contour QA queue,
+are hidden by default; append `?debug=1` to the app URL to show them.
 Direct links to contour previews and audit sheets are in the top bar.
 
 ## Variant Lab
