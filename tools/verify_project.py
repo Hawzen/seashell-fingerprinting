@@ -72,7 +72,7 @@ def verify_entrypoints() -> None:
         "index.html": Path("index.html").read_text(encoding="utf-8"),
         "public/index.html": Path("public/index.html").read_text(encoding="utf-8"),
     }
-    for select_id in ["colorModeSelect", "qualityModeSelect"]:
+    for select_id in ["colorModeSelect"]:
         if root.options.get(select_id) != public.options.get(select_id):
             raise AssertionError(
                 f"{select_id} options differ between entrypoints: "
@@ -100,11 +100,11 @@ def verify_entrypoints() -> None:
             or "tools/export_static_data.py" not in entry_text[path]
         ):
             raise AssertionError(f"{path} missing-data panel does not include rebuild commands")
+        if "Contour QA" in entry_text[path] or "qualityPanel" in entry_text[path]:
+            raise AssertionError(f"{path} should not include Contour QA in default markup")
     expected_color_modes = ["species", "mask", "center", "concavity"]
     if root.options.get("colorModeSelect") != expected_color_modes:
         raise AssertionError(f"Unexpected color modes: {root.options.get('colorModeSelect')}")
-    if "concavity" not in root.options.get("qualityModeSelect", []):
-        raise AssertionError("qualityModeSelect is missing concavity")
 
 
 def count_images(dataset: Path) -> int:

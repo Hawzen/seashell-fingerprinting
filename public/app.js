@@ -82,6 +82,8 @@ const neighborModes = ["pca", "contour"];
 const overlayLayerNames = ["contour", "center"];
 
 const els = {
+  controlsPanel: document.querySelector(".controls-panel"),
+  mapSummary: document.querySelector(".map-summary"),
   statusLine: document.querySelector("#statusLine"),
   visibleCount: document.querySelector("#visibleCount"),
   explainedVariance: document.querySelector("#explainedVariance"),
@@ -149,8 +151,58 @@ function formatNumber(value, digits = 3) {
 }
 
 function applyDiagnosticVisibility() {
-  if (els.qualityPanel) els.qualityPanel.hidden = !state.diagnostics.qa;
-  if (els.kernelRow) els.kernelRow.hidden = !state.diagnostics.kernel;
+  if (state.diagnostics.kernel && !els.kernelRow) {
+    const row = document.createElement("div");
+    row.id = "kernelRow";
+    row.className = "metric-row";
+    const label = document.createElement("span");
+    label.textContent = "Kernel";
+    const value = document.createElement("strong");
+    value.id = "kernelStatus";
+    value.textContent = "Loading";
+    row.append(label, value);
+    els.mapSummary?.append(row);
+    els.kernelRow = row;
+    els.kernelStatus = value;
+  }
+
+  if (state.diagnostics.qa && !els.qualityPanel) {
+    const panel = document.createElement("section");
+    panel.id = "qualityPanel";
+    panel.className = "panel-section quality-panel";
+
+    const title = document.createElement("div");
+    title.className = "section-title";
+    const heading = document.createElement("h2");
+    heading.textContent = "Contour QA";
+    const select = document.createElement("select");
+    select.id = "qualityModeSelect";
+    select.setAttribute("aria-label", "Contour QA metric");
+    const labels = {
+      center: "Center shift",
+      rough: "Roughness",
+      "low-mask": "Low mask",
+      "high-mask": "High mask",
+      slender: "Slender",
+      concavity: "Concavity",
+      components: "Components",
+    };
+    for (const mode of qualityModes) {
+      const option = document.createElement("option");
+      option.value = mode;
+      option.textContent = labels[mode] || mode;
+      select.append(option);
+    }
+    title.append(heading, select);
+
+    const list = document.createElement("div");
+    list.id = "qualityList";
+    panel.append(title, list);
+    els.mapSummary?.after(panel);
+    els.qualityPanel = panel;
+    els.qualityModeSelect = select;
+    els.qualityList = list;
+  }
 }
 
 async function fetchJson(url) {
@@ -180,7 +232,7 @@ function updateHashState() {
   params.set("x", String(state.xAxis));
   params.set("y", String(state.yAxis));
   params.set("color", state.colorMode);
-  params.set("quality", state.qualityMode);
+  if (state.diagnostics.qa) params.set("quality", state.qualityMode);
   params.set("near", state.neighborMode);
   params.set(
     "layers",
@@ -339,8 +391,8 @@ function centerViewportOnShell(shell) {
 }
 
 function renderQualityList() {
-  if (!state.diagnostics.qa) {
-    els.qualityList.innerHTML = "";
+  if (!state.diagnostics.qa || !els.qualityList) {
+    if (els.qualityList) els.qualityList.innerHTML = "";
     return;
   }
   const mode = state.qualityMode;
@@ -2362,11 +2414,13 @@ function setupEvents() {
     scheduleDraw();
     scheduleHashUpdate();
   });
-  els.qualityModeSelect.addEventListener("change", () => {
-    state.qualityMode = els.qualityModeSelect.value;
-    renderQualityList();
-    scheduleHashUpdate();
-  });
+  if (els.qualityModeSelect) {
+    els.qualityModeSelect.addEventListener("change", () => {
+      state.qualityMode = els.qualityModeSelect.value;
+      renderQualityList();
+      scheduleHashUpdate();
+    });
+  }
   els.neighborPcaMode.addEventListener("click", () => setNeighborMode("pca"));
   els.neighborContourMode.addEventListener("click", () => setNeighborMode("contour"));
   els.overlayContour.addEventListener("click", () => toggleOverlayLayer("contour"));
@@ -2495,7 +2549,7 @@ async function init() {
     ? `${model.processed_count.toLocaleString()} shells, ${model.species_count.toLocaleString()} species in contour PCA space`
     : `${model.processed_count.toLocaleString()} shells in contour PCA space`;
   els.visibleCount.textContent = state.filtered.length.toLocaleString();
-  els.kernelStatus.textContent = state.kernel.kind;
+  if (els.kernelStatus) els.kernelStatus.textContent = state.kernel.kind;
 
   const initialHash = parseHashState();
   const axesAvailable = axisOptionCount();
@@ -2518,7 +2572,7 @@ async function init() {
   if (["species", "mask", "center", "concavity"].includes(initialHash.get("color"))) {
     state.colorMode = initialHash.get("color");
   }
-  if (qualityModes.includes(initialHash.get("quality"))) {
+  if (state.diagnostics.qa && qualityModes.includes(initialHash.get("quality"))) {
     state.qualityMode = initialHash.get("quality");
   }
   if (neighborModes.includes(initialHash.get("near"))) {
@@ -2543,7 +2597,7 @@ async function init() {
   state.viewport = initialViewport(state.xAxis, state.yAxis);
   buildAxisControls();
   els.colorModeSelect.value = state.colorMode;
-  els.qualityModeSelect.value = state.qualityMode;
+  if (els.qualityModeSelect) els.qualityModeSelect.value = state.qualityMode;
   updateOverlayButtons();
   updateNeighborModeButtons();
   updateVariantButtons();
@@ -2575,7 +2629,7 @@ async function init() {
 
 init().catch((error) => {
   els.statusLine.textContent = error.message;
-  els.kernelStatus.textContent = "Error";
+  if (els.kernelStatus) els.kernelStatus.textContent = "Error";
   if (els.missingData) els.missingData.hidden = false;
   console.error(error);
 });
