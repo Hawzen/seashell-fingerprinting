@@ -1,0 +1,18 @@
+{
+  "model.json": {
+    "bytes": 60484,
+    "sha256": "eaedfdf10f571d19753db7c6e50712babc7eccd4d158f1087ac80c5b8ecaacb1"
+  },
+  "shells.json": {
+    "bytes": 36769459,
+    "sha256": "2bf404504abc9beb4d38b5e7fc94bd9982b31e025a0c9fc7f1a775d62ab71acf"
+  },
+  "fingerprints.u16": {
+    "bytes": 42655680,
+    "sha256": "410ab0a6d544d03af6ba6c80cc4836d683c0d75df4099db350da9575f4ad126e"
+  },
+  "contours.u16": {
+    "bytes": 60665856,
+    "sha256": "78cbaf1ba7d0e773174e8f80110f65868db543386c8e88a86be4d48a51ae4163"
+  }
+}

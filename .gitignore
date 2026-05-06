@@ -11,6 +11,5 @@ processed_full/
 processed_chunks/
 processed_contour_probe/
 processed_segment_*/
-public/data/
 public/contour_audit/
 public/validation_preview.jpg
