@@ -5,7 +5,6 @@ Run commands from the repository root.
 ## Full Static App Rebuild
 
 ```bash
-make wasm
 make fingerprints-chunked
 make export-data
 make audit

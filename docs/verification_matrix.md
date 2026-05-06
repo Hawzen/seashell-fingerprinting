@@ -5,12 +5,11 @@
 Fast syntax gate:
 
 - `node --check public/app.js`
-- `node --check public/wasm-kernel.js`
 - `python3 -m py_compile tools/*.py`
 
 ## `make verify`
 
-Artifact and kernel gate:
+Artifact gate:
 
 - Runs the `make smoke` syntax gate first.
 - Confirms root `index.html` and `public/index.html` expose the same critical controls.
@@ -26,13 +25,6 @@ Artifact and kernel gate:
 - Requires contour PCA axes, shell records, contour metrics, and curved-shell regression fixtures.
 - Requires contour-audit summary groups and contact-sheet images.
 - Renders a targeted `Siliquaria` contact sheet through `tools/make_contact_sheet.py`.
-- Starts a temporary local server and checks the Haskell WASM kernel:
-  - kernel kind is `Haskell WASM`
-  - generated mean fingerprint sums to `360`
-  - fingerprint self-distance is `0`
-  - contour self-distance is `0`
-  - reversed-contour distance is `0`
-
 ## `make verify-browser`
 
 Runs the `make smoke` syntax gate, runs everything in `make verify`, then adds a headless Chromium pass:

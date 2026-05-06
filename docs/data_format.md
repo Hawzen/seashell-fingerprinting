@@ -62,7 +62,7 @@ x_or_y = stored_value / contour_scale
 
 Each row is a resampled outer contour in source-image pixel coordinates. It is
 used for exact source overlays, contour SVG export, contour PCA axes, and
-Haskell-WASM-backed contour-neighbor comparison.
+browser-side contour-neighbor comparison.
 
 ## `checksums.json`
 

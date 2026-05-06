@@ -426,55 +426,6 @@ def verify_contact_sheet_tool() -> None:
             raise AssertionError(f"Targeted contact sheet was not generated correctly: {output}")
 
 
-def run_node_wasm_check(url: str) -> None:
-    node = shutil.which("node")
-    if node is None:
-        raise AssertionError("node is required to verify the Haskell WASM kernel")
-
-    script = textwrap.dedent(
-        f"""
-        import {{ createShellKernel }} from './public/wasm-kernel.js';
-        const model = await fetch('{url}/public/data/model.json').then((r) => r.json());
-        const kernel = await createShellKernel(model, '{url}/public/shell-kernel.wasm');
-        const fp = kernel.reconstruct(Array.from({{ length: model.component_count }}, () => 0));
-        const distance = kernel.distance(fp, fp);
-        const contour = new Float64Array([0, 0, 1, 0, 1, 1, 0, 1]);
-        const contourDistance = kernel.contourDistance(contour, contour);
-        const reversedContour = new Float64Array([0, 0, 0, 1, 1, 1, 1, 0]);
-        const reversedContourDistance = kernel.contourDistance(contour, reversedContour);
-        const sum = Array.from(fp).reduce((a, b) => a + b, 0);
-        console.log(JSON.stringify({{ kind: kernel.kind, length: fp.length, sum, distance, contourDistance, reversedContourDistance }}));
-        """
-    )
-    result = subprocess.run(
-        [node, "--input-type=module"],
-        input=script,
-        text=True,
-        cwd=Path.cwd(),
-        capture_output=True,
-        check=True,
-    )
-    lines = [line for line in result.stdout.splitlines() if line.startswith("{")]
-    if not lines:
-        raise AssertionError(f"Node WASM check did not return JSON: {result.stdout}")
-    payload = json.loads(lines[-1])
-    assert_equal(payload["kind"], "Haskell WASM", "kernel kind")
-    assert_equal(payload["length"], 360, "kernel fingerprint length")
-    if abs(payload["sum"] - 360.0) > 1e-6:
-        raise AssertionError(f"kernel normalization sum: expected 360, got {payload['sum']}")
-    if abs(payload["distance"]) > 1e-9:
-        raise AssertionError(f"kernel self-distance: expected 0, got {payload['distance']}")
-    if abs(payload["contourDistance"]) > 1e-9:
-        raise AssertionError(
-            f"kernel contour self-distance: expected 0, got {payload['contourDistance']}"
-        )
-    if abs(payload["reversedContourDistance"]) > 1e-9:
-        raise AssertionError(
-            "kernel reversed contour distance: "
-            f"expected 0, got {payload['reversedContourDistance']}"
-        )
-
-
 def run_browser_check(url: str) -> None:
     npm = shutil.which("npm")
     node = shutil.which("node")
@@ -507,7 +458,7 @@ def run_browser_check(url: str) -> None:
             {{ waitUntil: 'networkidle', timeout: 120000 }}
           );
           await page.waitForFunction(
-            () => document.querySelector('#kernelStatus')?.textContent.includes('Haskell'),
+            () => document.querySelector('#statusLine')?.textContent.includes('species'),
             null,
             {{ timeout: 120000 }}
           );
@@ -777,7 +728,7 @@ def run_browser_check(url: str) -> None:
             {{ waitUntil: 'networkidle', timeout: 120000 }}
           );
           await page.waitForFunction(
-            () => document.querySelector('#kernelStatus')?.textContent.includes('Haskell'),
+            () => document.querySelector('#statusLine')?.textContent.includes('species'),
             null,
             {{ timeout: 120000 }}
           );
@@ -863,14 +814,8 @@ def main() -> None:
     verify_contact_sheet_tool()
     numeric.close()
 
-    wasm_path = Path("public/shell-kernel.wasm")
-    if not wasm_path.exists():
-        raise AssertionError(f"Missing {wasm_path}")
-
     server, url = serve_repo(root)
     try:
-        print("checking Haskell WASM kernel...", flush=True)
-        run_node_wasm_check(url)
         if args.browser:
             print("checking browser UI...", flush=True)
             run_browser_check(url)

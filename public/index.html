@@ -69,14 +69,21 @@
             <strong id="explainedVariance">0%</strong>
           </div>
         </section>
-      </aside>
 
-      <section class="scatter-panel" aria-label="PCA scatter plot">
-        <canvas id="scatterCanvas"></canvas>
-        <div id="pointTooltip" class="point-tooltip" hidden></div>
-      </section>
+        <section class="panel-section image-preview">
+          <div class="section-title">
+            <h2>Original Shell</h2>
+            <div class="mini-segmented" aria-label="Source overlay layers">
+              <button id="overlayContour" type="button" aria-pressed="true" title="Toggle segmented outer contour">Contour</button>
+              <button id="overlayCenter" type="button" aria-pressed="true" title="Toggle detected center">Center</button>
+            </div>
+          </div>
+          <div class="source-frame">
+            <img id="sourceImage" alt="" />
+            <canvas id="sourceOverlay" width="420" height="300"></canvas>
+          </div>
+        </section>
 
-      <aside class="panel generator-panel">
         <section class="panel-section selection">
           <div class="section-title">
             <h2>Selected Shell</h2>
@@ -90,20 +97,6 @@
           <dl id="selectedDetails"></dl>
         </section>
 
-        <section class="panel-section image-preview">
-          <div class="section-title">
-            <h2>Source Image</h2>
-            <div class="mini-segmented" aria-label="Source overlay layers">
-              <button id="overlayContour" type="button" aria-pressed="true" title="Toggle segmented outer contour">Contour</button>
-              <button id="overlayCenter" type="button" aria-pressed="true" title="Toggle detected center">Center</button>
-            </div>
-          </div>
-          <div class="source-frame">
-            <img id="sourceImage" alt="" />
-            <canvas id="sourceOverlay" width="420" height="300"></canvas>
-          </div>
-        </section>
-
         <section class="panel-section neighbors">
           <div class="section-title">
             <h2>Nearest Shapes</h2>
@@ -115,7 +108,14 @@
           <div id="neighborsList"></div>
           <div id="neighborStatus" class="neighbor-status">Exact contour nearest</div>
         </section>
+      </aside>
 
+      <section class="scatter-panel" aria-label="PCA scatter plot">
+        <canvas id="scatterCanvas"></canvas>
+        <div id="pointTooltip" class="point-tooltip" hidden></div>
+      </section>
+
+      <aside class="panel generator-panel">
         <section class="panel-section generated-shape">
           <div class="section-title">
             <h2>Generated Contour</h2>

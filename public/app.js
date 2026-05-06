@@ -1,5 +1,3 @@
-import { createShellKernel } from "./wasm-kernel.js";
-
 const publicBase = new URL(".", import.meta.url).pathname;
 const repoBase = publicBase.endsWith("/public/")
   ? publicBase.slice(0, -"public/".length)
@@ -24,7 +22,6 @@ const state = {
   contourPoints: 0,
   contourScale: 1,
   model: null,
-  kernel: null,
   viewport: null,
   selected: null,
   selectedContour: null,
@@ -44,7 +41,6 @@ const state = {
   qualityMode: "center",
   diagnostics: {
     qa: debugDiagnostics || urlFlag("qa"),
-    kernel: debugDiagnostics || urlFlag("kernel"),
   },
   neighborMode: "contour",
   overlayLayers: {
@@ -87,7 +83,6 @@ const els = {
   statusLine: document.querySelector("#statusLine"),
   visibleCount: document.querySelector("#visibleCount"),
   explainedVariance: document.querySelector("#explainedVariance"),
-  kernelStatus: document.querySelector("#kernelStatus"),
   scatter: document.querySelector("#scatterCanvas"),
   pointTooltip: document.querySelector("#pointTooltip"),
   outline: document.querySelector("#outlineCanvas"),
@@ -99,7 +94,6 @@ const els = {
   qualityModeSelect: document.querySelector("#qualityModeSelect"),
   qualityPanel: document.querySelector("#qualityPanel"),
   qualityList: document.querySelector("#qualityList"),
-  kernelRow: document.querySelector("#kernelRow"),
   pcControls: document.querySelector("#pcControls"),
   selectedName: document.querySelector("#selectedName"),
   selectedDetails: document.querySelector("#selectedDetails"),
@@ -151,21 +145,6 @@ function formatNumber(value, digits = 3) {
 }
 
 function applyDiagnosticVisibility() {
-  if (state.diagnostics.kernel && !els.kernelRow) {
-    const row = document.createElement("div");
-    row.id = "kernelRow";
-    row.className = "metric-row";
-    const label = document.createElement("span");
-    label.textContent = "Kernel";
-    const value = document.createElement("strong");
-    value.id = "kernelStatus";
-    value.textContent = "Loading";
-    row.append(label, value);
-    els.mapSummary?.append(row);
-    els.kernelRow = row;
-    els.kernelStatus = value;
-  }
-
   if (state.diagnostics.qa && !els.qualityPanel) {
     const panel = document.createElement("section");
     panel.id = "qualityPanel";
@@ -670,7 +649,6 @@ function exportSelectedContourSvg() {
 }
 
 function contourRms(a, b) {
-  if (state.kernel?.distance) return state.kernel.distance(a, b);
   const count = Math.min(a.length, b.length);
   if (!count) return 0;
   let total = 0;
@@ -705,9 +683,7 @@ function exactContourRms(leftShell, rightShell) {
   const left = normalizedContour(leftShell);
   const right = normalizedContour(rightShell);
   if (!left || !right) return null;
-  return state.kernel?.contourDistance
-    ? state.kernel.contourDistance(left, right)
-    : contourArrayRms(left, right);
+  return contourArrayRms(left, right);
 }
 
 function updateCompareStatus() {
@@ -826,6 +802,20 @@ function buildControls() {
   }
 }
 
+function reconstructFingerprint(coords) {
+  if (!state.model?.mean?.length || !state.model?.components?.length) return new Float32Array();
+  const angleCount = state.model.angle_count || state.model.mean.length;
+  const out = new Float32Array(angleCount);
+  for (let angle = 0; angle < angleCount; angle += 1) {
+    let value = state.model.mean[angle] || 0;
+    for (let pc = 0; pc < state.model.components.length; pc += 1) {
+      value += (coords?.[pc] || 0) * (state.model.components[pc]?.[angle] || 0);
+    }
+    out[angle] = Math.max(value, 0.02);
+  }
+  return normalizeMean(out);
+}
+
 function reconstruct() {
   if (state.model?.contour_mean?.length && state.model?.contour_components?.length) {
     const pointCount = state.model.contour_points || Math.floor(state.model.contour_mean.length / 2);
@@ -840,7 +830,7 @@ function reconstruct() {
     }
     state.generatedContour = out;
   }
-  if (state.kernel) state.generatedFingerprint = state.kernel.reconstruct([]);
+  state.generatedFingerprint = reconstructFingerprint([]);
   drawOutline();
   drawVariant();
 }
@@ -1950,9 +1940,6 @@ function normalizedContour(shell) {
 function contourDistance(sourceContour, candidate) {
   const candidateContour = normalizedContour(candidate);
   if (!candidateContour) return Infinity;
-  if (state.kernel?.contourDistance) {
-    return state.kernel.contourDistance(sourceContour, candidateContour);
-  }
   return contourArrayRms(sourceContour, candidateContour);
 }
 
@@ -2014,11 +2001,11 @@ function renderNeighbors(shell) {
 }
 
 function fingerprintForShell(shell) {
-  if (!state.fingerprints || !state.model) return state.kernel.reconstruct(shell.pc);
+  if (!state.fingerprints || !state.model) return reconstructFingerprint(shell.pc);
   const angleCount = state.model.angle_count;
   const start = shell.id * angleCount;
   const end = start + angleCount;
-  if (end > state.fingerprints.length) return state.kernel.reconstruct(shell.pc);
+  if (end > state.fingerprints.length) return reconstructFingerprint(shell.pc);
   if (state.fingerprintEncoding === "float32") return state.fingerprints.slice(start, end);
   const fingerprint = new Float32Array(angleCount);
   for (let angle = 0; angle < angleCount; angle += 1) {
@@ -2532,7 +2519,6 @@ async function init() {
   state.contourPoints = model.contour_points || 0;
   state.contourScale = model.contour_scale || 1;
   state.filtered = state.shells;
-  state.kernel = await createShellKernel(model, asset("shell-kernel.wasm"));
 
   const expectedFingerprintValues = model.processed_count * model.angle_count;
   if (state.fingerprints.length < expectedFingerprintValues) {
@@ -2549,7 +2535,6 @@ async function init() {
     ? `${model.processed_count.toLocaleString()} shells, ${model.species_count.toLocaleString()} species in contour PCA space`
     : `${model.processed_count.toLocaleString()} shells in contour PCA space`;
   els.visibleCount.textContent = state.filtered.length.toLocaleString();
-  if (els.kernelStatus) els.kernelStatus.textContent = state.kernel.kind;
 
   const initialHash = parseHashState();
   const axesAvailable = axisOptionCount();
@@ -2629,7 +2614,6 @@ async function init() {
 
 init().catch((error) => {
   els.statusLine.textContent = error.message;
-  if (els.kernelStatus) els.kernelStatus.textContent = "Error";
   if (els.missingData) els.missingData.hidden = false;
   console.error(error);
 });

@@ -52,10 +52,8 @@ make serve
 
 Open `http://127.0.0.1:8010/`.
 
-The explorer is a static app. It loads preprocessed assets from `public/data/`,
-source images from `dataset/`, and the Haskell WebAssembly kernel from
-`public/shell-kernel.wasm` when that file has been built. The Haskell kernel is
-used for PCA reconstruction, normalization, and contour-distance comparison.
+The explorer is a static app. It loads preprocessed assets from `public/data/`
+and source images from `dataset/`.
 Static fingerprints are exported as fixed-point `fingerprints.u16` to keep the
 browser payload compact while preserving the normalized 360-radius signals.
 Static source-image contours are exported as fixed-point `contours.u16`, with
@@ -69,7 +67,7 @@ with the rebuild commands.
 The PCA map supports exact-contour PC axis selection, point rendering,
 species/mask/center-shift/contour-concavity coloring, hover inspection, search, random visible-shell jumps, nearest-shape
 browsing by either PCA distance or true 360-radius contour distance,
-exact resampled outer-contour distance backed by the Haskell WASM kernel,
+exact resampled outer-contour distance computed in browser JavaScript,
 source-image overlays with independent contour/center layer toggles,
 pinned reference comparison by exact outer-contour RMS, SVG export, and
 selected contour PC readouts, generated-fingerprint CSV, selected-fingerprint CSV,
@@ -77,14 +75,16 @@ and exact-contour SVG export. It also has
 URL-hash state restoration for shareable map, neighbor, variant, and overlay views. The generator also includes a
 PCA walk control for continuously morphing through learned shell-shape axes.
 Middle-button drag pans the PCA map without changing the generated contour target.
-Diagnostic controls, including the kernel readout and thumbnail-backed Contour QA queue,
-are only created when you append `?debug=1` to the app URL.
+The left pane carries browsing controls plus the selected shell's original
+source image and nearest-shape context; the right pane is the lab.
+Diagnostic controls, including the thumbnail-backed Contour QA queue, are only
+created when you append `?debug=1` to the app URL.
 Direct links to contour previews and audit sheets are in the top bar.
 
-## Variant Lab
+## Lab Panel
 
-The right panel contains ten shape explorations built on the same fingerprint
-data:
+The right panel is the lab: generated contour, generation coordinates, and ten
+shape explorations built on the same fingerprint data:
 
 - Elliptic Fourier contour harmonic reconstructions
 - Curvature coloring
@@ -110,26 +110,6 @@ data:
 9. Normalize each fingerprint by its mean radius.
 10. Fit radial PCA and exact-contour PCA with `numpy`.
 11. Export fixed-point browser assets plus contour-derived metrics such as radial mismatch, solidity, and concavity.
-
-## Build The Haskell WebAssembly Kernel
-
-Install the GHC WASM toolchain once:
-
-```bash
-curl https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta/-/raw/master/bootstrap.sh | sh
-```
-
-Then build the kernel:
-
-```bash
-tools/build_wasm.sh
-```
-
-Or:
-
-```bash
-make wasm
-```
 
 Export static app data after preprocessing:
 
