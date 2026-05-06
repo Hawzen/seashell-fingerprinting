@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Seashell Contour Explorer</title>
-    <link rel="stylesheet" href="/public/styles.css" />
+    <link rel="stylesheet" href="public/styles.css" />
   </head>
   <body>
     <header class="topbar">
@@ -13,7 +13,7 @@
         <p id="statusLine">Loading contour PCA model</p>
       </div>
       <div class="top-actions">
-        <a class="button-link" href="/public/contour_audit/" target="_blank">Audit</a>
+        <a class="button-link" href="public/contour_audit/" target="_blank">Audit</a>
         <button id="zoomOut" title="Zoom out">-</button>
         <button id="zoomIn" title="Zoom in">+</button>
         <button id="resetView" title="Reset view">Reset</button>
@@ -159,6 +159,6 @@ python3 tools/export_static_data.py --dataset dataset --processed processed --ou
       </div>
     </div>
 
-    <script src="/public/app.js" type="module"></script>
+    <script src="public/app.js" type="module"></script>
   </body>
 </html>
