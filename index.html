@@ -24,12 +24,17 @@
 
     <main class="workspace">
       <aside class="panel controls-panel">
-        <label class="field">
-          <span>Search</span>
-          <input id="searchBox" type="search" placeholder="Species or filename" />
-        </label>
-        <section class="map-controls">
-          <h2>Map</h2>
+        <section class="panel-section search-section">
+          <label class="field">
+            <span>Search</span>
+            <input id="searchBox" type="search" placeholder="Species or filename" />
+          </label>
+        </section>
+
+        <section class="panel-section map-controls">
+          <div class="section-title">
+            <h2>Map Configuration</h2>
+          </div>
           <div class="axis-grid">
             <label>
               <span>X</span>
@@ -54,19 +59,24 @@
             <button id="densityMode" type="button" aria-pressed="false">Density</button>
           </div>
         </section>
-        <div class="metric-row">
-          <span>Visible</span>
-          <strong id="visibleCount">0</strong>
-        </div>
-        <div class="metric-row">
-          <span>Explained</span>
-          <strong id="explainedVariance">0%</strong>
-        </div>
-        <div class="metric-row">
-          <span>Kernel</span>
-          <strong id="kernelStatus">Loading</strong>
-        </div>
-        <section class="quality-panel">
+
+        <section class="panel-section map-summary">
+          <h2>Map Status</h2>
+          <div class="metric-row">
+            <span>Visible</span>
+            <strong id="visibleCount">0</strong>
+          </div>
+          <div class="metric-row">
+            <span>Explained</span>
+            <strong id="explainedVariance">0%</strong>
+          </div>
+          <div class="metric-row">
+            <span>Kernel</span>
+            <strong id="kernelStatus">Loading</strong>
+          </div>
+        </section>
+
+        <section class="panel-section quality-panel">
           <div class="section-title">
             <h2>Contour QA</h2>
             <select id="qualityModeSelect" aria-label="Contour QA metric">
@@ -81,16 +91,6 @@
           </div>
           <div id="qualityList"></div>
         </section>
-        <section class="selection">
-          <div class="section-title">
-            <h2>Selection</h2>
-            <div class="title-actions">
-              <button id="exportContourSvg" title="Export selected segmented contour as SVG">Contour SVG</button>
-            </div>
-          </div>
-          <div id="selectedName" class="selected-name">None</div>
-          <dl id="selectedDetails"></dl>
-        </section>
       </aside>
 
       <section class="scatter-panel" aria-label="PCA scatter plot">
@@ -99,42 +99,20 @@
       </section>
 
       <aside class="panel generator-panel">
-        <section>
+        <section class="panel-section selection">
           <div class="section-title">
-            <h2>Generated Contour</h2>
+            <h2>Selected Shell</h2>
             <div class="title-actions">
               <button id="pinReference" title="Pin selected shell as comparison reference">Pin</button>
               <button id="clearReference" title="Clear comparison reference">Clear</button>
-              <button id="exportSvg" title="Export generated contour as SVG">SVG</button>
+              <button id="exportContourSvg" title="Export selected segmented contour as SVG">Contour SVG</button>
             </div>
           </div>
-          <canvas id="outlineCanvas" width="420" height="420"></canvas>
-          <div id="compareStatus" class="compare-status">No pinned reference</div>
+          <div id="selectedName" class="selected-name">None</div>
+          <dl id="selectedDetails"></dl>
         </section>
 
-        <section class="variant-lab">
-          <h2>Variant Lab</h2>
-          <div id="variantButtons" class="mode-grid"></div>
-          <canvas id="variantCanvas" width="420" height="300"></canvas>
-          <div id="variantStatus" class="variant-status">Fourier</div>
-          <label class="upload-field">
-            <span>Upload Shape</span>
-            <input id="uploadShape" type="file" accept="image/*" />
-          </label>
-        </section>
-
-        <section class="slider-stack">
-          <div class="section-title">
-            <h2>PCA Coordinates</h2>
-            <div class="title-actions">
-              <button id="meanShape" title="Reset PCA coordinates to the mean shell">Mean</button>
-              <button id="walkPca" title="Animate through PCA space">Walk</button>
-            </div>
-          </div>
-          <div id="pcControls"></div>
-        </section>
-
-        <section class="image-preview">
+        <section class="panel-section image-preview">
           <div class="section-title">
             <h2>Source Image</h2>
             <div class="mini-segmented" aria-label="Source overlay layers">
@@ -148,7 +126,7 @@
           </div>
         </section>
 
-        <section class="neighbors">
+        <section class="panel-section neighbors">
           <div class="section-title">
             <h2>Nearest Shapes</h2>
             <div class="mini-segmented" aria-label="Nearest shape metric">
@@ -158,6 +136,39 @@
           </div>
           <div id="neighborsList"></div>
           <div id="neighborStatus" class="neighbor-status">Exact contour nearest</div>
+        </section>
+
+        <section class="panel-section generated-shape">
+          <div class="section-title">
+            <h2>Generated Contour</h2>
+            <div class="title-actions">
+              <button id="exportSvg" title="Export generated contour as SVG">SVG</button>
+            </div>
+          </div>
+          <canvas id="outlineCanvas" width="420" height="420"></canvas>
+          <div id="compareStatus" class="compare-status">No pinned reference</div>
+        </section>
+
+        <section class="panel-section slider-stack">
+          <div class="section-title">
+            <h2>Generation Coordinates</h2>
+            <div class="title-actions">
+              <button id="meanShape" title="Reset PCA coordinates to the mean shell">Mean</button>
+              <button id="walkPca" title="Animate through PCA space">Walk</button>
+            </div>
+          </div>
+          <div id="pcControls"></div>
+        </section>
+
+        <section class="panel-section variant-lab">
+          <h2>Variant Lab</h2>
+          <div id="variantButtons" class="mode-grid"></div>
+          <canvas id="variantCanvas" width="420" height="300"></canvas>
+          <div id="variantStatus" class="variant-status">Fourier</div>
+          <label class="upload-field">
+            <span>Upload Shape</span>
+            <input id="uploadShape" type="file" accept="image/*" />
+          </label>
         </section>
       </aside>
     </main>

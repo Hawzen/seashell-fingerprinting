@@ -120,12 +120,31 @@ button:hover,
   overflow: auto;
 }
 
+.controls-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
 .generator-panel {
   border-right: 0;
   border-left: 1px solid var(--line);
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.panel-section {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.controls-panel .panel-section:first-child,
+.generator-panel .panel-section:first-child {
+  padding-top: 0;
+  border-top: 0;
 }
 
 .scatter-panel {
@@ -215,9 +234,12 @@ button:hover,
 .field {
   display: grid;
   gap: 7px;
-  margin-bottom: 18px;
   color: var(--muted);
   font-size: 13px;
+}
+
+.search-section .field {
+  margin: 0;
 }
 
 .map-field {
@@ -244,7 +266,6 @@ input:focus {
 .map-controls {
   display: grid;
   gap: 12px;
-  margin-bottom: 18px;
 }
 
 .axis-grid {
@@ -289,18 +310,24 @@ input:focus {
   font-size: 14px;
 }
 
+.map-summary {
+  gap: 0;
+}
+
+.map-summary h2 {
+  margin-bottom: 8px;
+}
+
 .metric-row strong {
   color: var(--ink);
 }
 
 .selection {
-  margin-top: 24px;
   display: grid;
   gap: 12px;
 }
 
 .quality-panel {
-  margin-top: 22px;
   display: grid;
   gap: 10px;
 }
