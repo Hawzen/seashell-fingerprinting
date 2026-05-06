@@ -79,7 +79,7 @@ The left pane carries browsing controls plus the selected shell's original
 source image and nearest-shape context; the right pane is the lab.
 Diagnostic controls, including the thumbnail-backed Contour QA queue, are only
 created when you append `?debug=1` to the app URL.
-Direct links to contour previews and audit sheets are in the top bar.
+The contour audit link is in the top bar.
 
 ## Lab Panel
 
