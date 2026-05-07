@@ -31,6 +31,12 @@ const state = {
   referenceFingerprint: null,
   generatedContour: null,
   generatedFingerprint: null,
+  generatedTraits: null,
+  generatedNeighbors: [],
+  generatedMode: "pca",
+  generatorKernel: null,
+  generatorKernelReady: false,
+  generatorKernelError: "",
   uploadFingerprint: null,
   uploadMatches: [],
   uploadName: "",
@@ -90,6 +96,7 @@ const els = {
   scatter: document.querySelector("#scatterCanvas"),
   pointTooltip: document.querySelector("#pointTooltip"),
   outline: document.querySelector("#outlineCanvas"),
+  generatorStatus: document.querySelector("#generatorStatus"),
   compareStatus: document.querySelector("#compareStatus"),
   search: document.querySelector("#searchBox"),
   mapSpaceSelect: document.querySelector("#mapSpaceSelect"),
@@ -227,6 +234,31 @@ async function fetchArrayBuffer(url) {
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) throw new Error(`${url} returned ${response.status}`);
   return response.arrayBuffer();
+}
+
+async function initGeneratorKernel() {
+  if (!("WebAssembly" in window)) {
+    state.generatorKernelError = "WebAssembly unavailable";
+    return;
+  }
+  try {
+    const response = await fetch(asset("shell-generator.wasm"), { cache: "no-store" });
+    if (!response.ok) throw new Error(`shell-generator.wasm returned ${response.status}`);
+    let compiled;
+    try {
+      compiled = await WebAssembly.instantiateStreaming(response.clone(), {});
+    } catch (_mimeError) {
+      const buffer = await response.arrayBuffer();
+      compiled = await WebAssembly.instantiate(buffer, {});
+    }
+    state.generatorKernel = compiled.instance.exports;
+    state.generatorKernelReady = Boolean(
+      state.generatorKernel?.memory && state.generatorKernel?.blend_contours,
+    );
+  } catch (error) {
+    state.generatorKernelReady = false;
+    state.generatorKernelError = error.message;
+  }
 }
 
 function parseHashState() {
@@ -945,6 +977,49 @@ function reconstructFingerprint(coords) {
   return normalizeMean(out);
 }
 
+function setGeneratorStatus(text) {
+  if (els.generatorStatus) els.generatorStatus.textContent = text;
+}
+
+function shapeTraitsFromShell(shell) {
+  if (!shell) return null;
+  return {
+    color_r_mean: shell.color_r_mean,
+    color_g_mean: shell.color_g_mean,
+    color_b_mean: shell.color_b_mean,
+    color_l_mean: shell.color_l_mean,
+    color_chroma_mean: shell.color_chroma_mean,
+    color_saturation_mean: shell.color_saturation_mean,
+    roughness: shell.roughness,
+    texture_gradient_mean: shell.texture_gradient_mean,
+    contour_concavity: shell.contour_concavity,
+    contour_solidity: shell.contour_solidity,
+    mask_ratio: shell.mask_ratio,
+  };
+}
+
+function shellFillColor(traits, alpha = 0.9) {
+  const red = Math.round(clamp01(traits?.color_r_mean ?? 0.72) * 255);
+  const green = Math.round(clamp01(traits?.color_g_mean ?? 0.66) * 255);
+  const blue = Math.round(clamp01(traits?.color_b_mean ?? 0.54) * 255);
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function updateGeneratorStatus() {
+  if (!state.generatedNeighbors.length) {
+    const kernel = state.generatorKernelReady ? "WASM ready" : "JS fallback";
+    setGeneratorStatus(`PCA reconstruction, ${kernel}`);
+    return;
+  }
+  const species = [];
+  for (const item of state.generatedNeighbors) {
+    if (!species.includes(item.shell.species)) species.push(item.shell.species);
+    if (species.length >= 3) break;
+  }
+  const mode = state.generatedMode === "wasm" ? "WASM local blend" : "JS local blend";
+  setGeneratorStatus(`${mode}: ${species.join(", ")}`);
+}
+
 function reconstruct() {
   if (state.model?.contour_mean?.length && state.model?.contour_components?.length) {
     const pointCount = state.model.contour_points || Math.floor(state.model.contour_mean.length / 2);
@@ -959,7 +1034,11 @@ function reconstruct() {
     }
     state.generatedContour = out;
   }
+  state.generatedTraits = null;
+  state.generatedNeighbors = [];
+  state.generatedMode = "pca";
   state.generatedFingerprint = reconstructFingerprint([]);
+  updateGeneratorStatus();
   drawOutline();
   drawVariant();
 }
@@ -1012,6 +1091,54 @@ function maxContourRadius(contours) {
   return radius || 1;
 }
 
+function drawGeneratedTexture(ctx, contour, centerX, centerY, scale, traits) {
+  const pointCount = Math.floor(contour.length / 2);
+  if (pointCount < 4) return;
+  const roughness = clamp01((traits?.roughness || 0.012) / 0.04);
+  const chroma = clamp01((traits?.color_chroma_mean || 0.08) / 0.35);
+  const concavity = clamp01((traits?.contour_concavity || 0.04) / 0.35);
+
+  ctx.save();
+  contourPath(ctx, contour, centerX, centerY, scale);
+  ctx.clip();
+
+  const ringCount = 5 + Math.round(concavity * 4);
+  for (let ring = 1; ring <= ringCount; ring += 1) {
+    const factor = 0.16 + (ring / (ringCount + 1)) * 0.78;
+    contourPath(ctx, contour, centerX, centerY, scale * factor);
+    ctx.strokeStyle = `rgba(32, 36, 42, ${0.045 + chroma * 0.035})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  const step = Math.max(5, Math.round(15 - roughness * 6 - chroma * 3));
+  ctx.lineWidth = 1.1 + roughness * 0.8;
+  ctx.strokeStyle = `rgba(32, 36, 42, ${0.09 + roughness * 0.14})`;
+  for (let index = 0; index < pointCount; index += step) {
+    const x = contour[index * 2];
+    const y = contour[index * 2 + 1];
+    ctx.beginPath();
+    ctx.moveTo(centerX + x * scale * 0.22, centerY + y * scale * 0.22);
+    ctx.lineTo(centerX + x * scale * 0.95, centerY + y * scale * 0.95);
+    ctx.stroke();
+  }
+
+  const gloss = ctx.createRadialGradient(
+    centerX - scale * 0.22,
+    centerY - scale * 0.28,
+    scale * 0.08,
+    centerX,
+    centerY,
+    scale * 1.25,
+  );
+  gloss.addColorStop(0, "rgba(255, 255, 255, 0.34)");
+  gloss.addColorStop(0.45, "rgba(255, 255, 255, 0.08)");
+  gloss.addColorStop(1, "rgba(32, 36, 42, 0.08)");
+  ctx.fillStyle = gloss;
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.restore();
+}
+
 function drawOutline() {
   const canvas = els.outline;
   const width = canvas.width;
@@ -1029,11 +1156,14 @@ function drawOutline() {
   const scale = (Math.min(width, height) * 0.42) / maxRadius;
 
   outlineCtx.save();
+  const traits = state.generatedTraits || shapeTraitsFromShell(state.selected);
   contourPath(outlineCtx, contour, centerX, centerY, scale);
-  outlineCtx.fillStyle = "rgba(40, 122, 116, 0.16)";
+  outlineCtx.fillStyle = shellFillColor(traits, state.generatedTraits ? 0.88 : 0.24);
   outlineCtx.strokeStyle = "#287a74";
   outlineCtx.lineWidth = 3;
   outlineCtx.fill();
+  drawGeneratedTexture(outlineCtx, contour, centerX, centerY, scale, traits);
+  contourPath(outlineCtx, contour, centerX, centerY, scale);
   outlineCtx.stroke();
 
   if (state.selectedContour) {
@@ -2066,6 +2196,176 @@ function normalizedContour(shell) {
   return out;
 }
 
+function shellMapVector(shell) {
+  if (state.mapSpace === "trait" && shell.trait_pc?.length) return shell.trait_pc;
+  return shell.contour_pc || shell.pc || [];
+}
+
+function nearestMapNeighbors(values, count = 14) {
+  const axisCount = Math.min(axisOptionCount(), 6);
+  const source = state.filtered.length ? state.filtered : state.shells;
+  const best = [];
+  for (const shell of source) {
+    const vector = shellMapVector(shell);
+    if (!vector.length) continue;
+    let distanceSq = 0;
+    for (let axis = 0; axis < axisCount; axis += 1) {
+      const range = axisRange(axis);
+      const span = Math.max(1e-6, range ? range.p99 - range.p01 : 1);
+      const delta = ((vector[axis] || 0) - (values[axis] || 0)) / span;
+      distanceSq += delta * delta;
+    }
+    const item = { distanceSq, shell };
+    best.push(item);
+    best.sort((a, b) => a.distanceSq - b.distanceSq);
+    if (best.length > count) best.pop();
+  }
+  return best;
+}
+
+function neighborWeights(neighbors) {
+  const weights = new Float32Array(neighbors.length);
+  if (!neighbors.length) return weights;
+  const distances = neighbors.map((item) => Math.sqrt(item.distanceSq));
+  const sigma = Math.max(distances[Math.min(5, distances.length - 1)] || distances.at(-1) || 1, 0.001);
+  for (let index = 0; index < neighbors.length; index += 1) {
+    weights[index] = Math.exp(-neighbors[index].distanceSq / (2 * sigma * sigma)) + 0.0001;
+  }
+  return weights;
+}
+
+function align4(value) {
+  return (value + 3) & ~3;
+}
+
+function ensureKernelMemory(bytesNeeded) {
+  const memory = state.generatorKernel?.memory;
+  if (!memory) return null;
+  const pageSize = 65536;
+  if (memory.buffer.byteLength < bytesNeeded) {
+    memory.grow(Math.ceil((bytesNeeded - memory.buffer.byteLength) / pageSize));
+  }
+  return memory;
+}
+
+function blendContoursWithWasm(contours, weights, count, valueCount) {
+  if (!state.generatorKernelReady) return null;
+  const contourPtr = 0;
+  const weightsPtr = align4(contourPtr + contours.byteLength);
+  const outPtr = align4(weightsPtr + weights.byteLength);
+  const tempPtr = align4(outPtr + valueCount * 4);
+  const bytesNeeded = tempPtr + valueCount * 4;
+  const memory = ensureKernelMemory(bytesNeeded);
+  if (!memory) return null;
+  const f32View = new Float32Array(memory.buffer);
+  f32View.set(contours, contourPtr / 4);
+  f32View.set(weights, weightsPtr / 4);
+  state.generatorKernel.blend_contours(
+    contourPtr,
+    weightsPtr,
+    outPtr,
+    tempPtr,
+    count,
+    valueCount,
+    0,
+    0,
+  );
+  return Float32Array.from(f32View.subarray(outPtr / 4, outPtr / 4 + valueCount));
+}
+
+function blendContoursWithJs(contours, weights, count, valueCount) {
+  const out = new Float32Array(valueCount);
+  let weightTotal = 0;
+  for (const weight of weights) weightTotal += weight;
+  if (weightTotal <= 0) weightTotal = 1;
+  for (let index = 0; index < valueCount; index += 1) {
+    let total = 0;
+    for (let neighbor = 0; neighbor < count; neighbor += 1) {
+      total += contours[neighbor * valueCount + index] * weights[neighbor];
+    }
+    out[index] = total / weightTotal;
+  }
+  return out;
+}
+
+function smoothContour(contour, amount = 0.18, passes = 2) {
+  const pointCount = Math.floor(contour.length / 2);
+  if (pointCount < 4 || amount <= 0 || passes <= 0) return contour;
+  let current = Float32Array.from(contour);
+  let next = new Float32Array(contour.length);
+  for (let pass = 0; pass < passes; pass += 1) {
+    for (let index = 0; index < pointCount; index += 1) {
+      const prev = ((index - 1 + pointCount) % pointCount) * 2;
+      const here = index * 2;
+      const after = ((index + 1) % pointCount) * 2;
+      next[here] =
+        current[here] * (1 - amount) + ((current[prev] + current[after]) / 2) * amount;
+      next[here + 1] =
+        current[here + 1] * (1 - amount) +
+        ((current[prev + 1] + current[after + 1]) / 2) * amount;
+    }
+    const swap = current;
+    current = next;
+    next = swap;
+  }
+  return current;
+}
+
+function blendNeighborTraits(neighbors, weights) {
+  const keys = [
+    "color_r_mean",
+    "color_g_mean",
+    "color_b_mean",
+    "color_l_mean",
+    "color_chroma_mean",
+    "color_saturation_mean",
+    "roughness",
+    "texture_gradient_mean",
+    "contour_concavity",
+    "contour_solidity",
+    "mask_ratio",
+  ];
+  const traits = {};
+  let weightTotal = 0;
+  for (const weight of weights) weightTotal += weight;
+  if (weightTotal <= 0) weightTotal = 1;
+  for (const key of keys) {
+    let total = 0;
+    for (let index = 0; index < neighbors.length; index += 1) {
+      total += (neighbors[index].shell[key] || 0) * weights[index];
+    }
+    traits[key] = total / weightTotal;
+  }
+  return traits;
+}
+
+function generateLocalShellFromTarget() {
+  if (!state.contours || !state.contourPoints || !state.shells.length) return;
+  const values = [...activeAxisValues()];
+  const neighbors = nearestMapNeighbors(values);
+  const count = neighbors.length;
+  const valueCount = state.contourPoints * 2;
+  if (!count || !valueCount) return;
+
+  const contours = new Float32Array(count * valueCount);
+  for (let index = 0; index < count; index += 1) {
+    const contour = normalizedContour(neighbors[index].shell);
+    if (contour) contours.set(contour, index * valueCount);
+  }
+  const weights = neighborWeights(neighbors);
+  const wasmContour = blendContoursWithWasm(contours, weights, count, valueCount);
+  const blended = wasmContour || blendContoursWithJs(contours, weights, count, valueCount);
+
+  state.generatedContour = smoothContour(blended, 0.16, 2);
+  state.generatedTraits = blendNeighborTraits(neighbors, weights);
+  state.generatedNeighbors = neighbors;
+  state.generatedMode = wasmContour ? "wasm" : "js";
+  updateGeneratorStatus();
+  drawOutline();
+  drawVariant();
+  scheduleDraw();
+}
+
 function contourDistance(sourceContour, candidate) {
   const candidateContour = normalizedContour(candidate);
   if (!candidateContour) return Infinity;
@@ -2208,12 +2508,21 @@ function setTargetFromEvent(event) {
   const size = resizeCanvas(els.scatter, scatterCtx);
   const point = screenToWorld(event.clientX - rect.left, event.clientY - rect.top, size);
   if (state.mapSpace === "trait") {
-    setTraitPcValue(state.xAxis, point.x);
-    setTraitPcValue(state.yAxis, point.y);
+    state.traitPcValues[state.xAxis] = point.x;
+    state.traitPcValues[state.yAxis] = point.y;
+    const contourValues = contourPcValuesFromTrait(state.traitPcValues);
+    if (contourValues) setPcValues(contourValues, false);
+    else scheduleDraw();
   } else {
-    setPcValue(state.xAxis, point.x);
-    setPcValue(state.yAxis, point.y);
+    state.pcValues[state.xAxis] = point.x;
+    state.pcValues[state.yAxis] = point.y;
+    updatePcControl(state.xAxis, point.x);
+    updatePcControl(state.yAxis, point.y);
+    reconstruct();
+    scheduleDraw();
   }
+  generateLocalShellFromTarget();
+  scheduleHashUpdate();
 }
 
 function startViewportPan(event) {
@@ -2650,6 +2959,7 @@ async function init() {
   const contourBuffer = model.contour_file
     ? await fetchArrayBuffer(asset(`data/${model.contour_file}`))
     : null;
+  await initGeneratorKernel();
 
   state.model = model;
   state.shells = shellPayload.records;

@@ -12,7 +12,7 @@ CONTACT_SORT ?= concavity
 CONTACT_COUNT ?= 8
 CONTACT_OUTPUT ?= /tmp/seashell_contact.jpg
 
-.PHONY: fingerprints fingerprints-chunked export-data audit contact-sheet verify verify-browser serve smoke
+.PHONY: fingerprints fingerprints-chunked export-data audit contact-sheet wasm verify verify-browser serve smoke
 
 fingerprints:
 	$(PYTHON) tools/build_fingerprints.py --dataset dataset --output processed --max-size $(MAX_SIZE) --smooth-window $(SMOOTH_WINDOW) --center $(CENTER) --contour-points $(CONTOUR_POINTS)
@@ -30,13 +30,16 @@ audit:
 contact-sheet:
 	$(PYTHON) tools/make_contact_sheet.py --dataset dataset --processed processed --query "$(QUERY)" --sort $(CONTACT_SORT) --count $(CONTACT_COUNT) --output $(CONTACT_OUTPUT)
 
+wasm:
+	$(PYTHON) tools/build_wasm.py --output public/shell-generator.wasm
+
 verify: smoke
 	$(PYTHON) tools/verify_project.py
 
 verify-browser: smoke
 	$(PYTHON) tools/verify_project.py --browser
 
-smoke:
+smoke: wasm
 	node --check public/app.js
 	$(PYTHON) -m py_compile tools/*.py
 

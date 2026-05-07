@@ -85,6 +85,7 @@ def verify_entrypoints() -> None:
         "sourceOverlay",
         "overlayContour",
         "overlayCenter",
+        "generatorStatus",
         "exportContourSvg",
         "exportSvg",
         "randomShell",
@@ -103,6 +104,9 @@ def verify_entrypoints() -> None:
             raise AssertionError(f"{path} missing-data panel does not include rebuild commands")
         if "Contour QA" in entry_text[path] or "qualityPanel" in entry_text[path]:
             raise AssertionError(f"{path} should not include Contour QA in default markup")
+    wasm_path = Path("public/shell-generator.wasm")
+    if not wasm_path.exists() or wasm_path.stat().st_size < 128:
+        raise AssertionError(f"Missing or empty generated WASM kernel: {wasm_path}")
     expected_color_modes = [
         "species",
         "shell",
@@ -616,6 +620,15 @@ def run_browser_check(url: str) -> None:
             emptyFilterState.after !== emptyFilterState.before
           ) {{
             throw new Error(`empty-filter random failed: ${{JSON.stringify(emptyFilterState)}}`);
+          }}
+          await page.mouse.click(scatterBox.x + scatterBox.width * 0.33, scatterBox.y + scatterBox.height * 0.42);
+          await page.waitForTimeout(450);
+          const generatedState = await page.evaluate(() => ({{
+            status: document.querySelector('#generatorStatus').textContent,
+            selected: document.querySelector('#selectedName').textContent,
+          }}));
+          if (!generatedState.status.includes('local blend') || generatedState.selected === 'None') {{
+            throw new Error(`map-point generator failed: ${{JSON.stringify(generatedState)}}`);
           }}
           await page.fill('#searchBox', '');
           await page.waitForTimeout(300);

@@ -409,11 +409,21 @@ dd {
   background: #f7f7f2;
 }
 
+.generator-status,
 .compare-status {
   margin-top: 7px;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.generator-status {
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfaf6;
+  overflow-wrap: anywhere;
 }
 
 .slider-stack {
