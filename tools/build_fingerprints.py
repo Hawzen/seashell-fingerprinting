@@ -222,6 +222,101 @@ def isolate_shell(rgb: np.ndarray, fill_holes: bool = False) -> tuple[np.ndarray
     return mask.astype(bool), info
 
 
+def color_sample_mask(
+    rgb: np.ndarray,
+    mask: np.ndarray,
+    mask_info: dict[str, float],
+) -> np.ndarray:
+    bg = np.array(
+        [
+            mask_info.get("background_r", 0.0),
+            mask_info.get("background_g", 0.0),
+            mask_info.get("background_b", 0.0),
+        ],
+        dtype=np.float32,
+    )
+    diff = np.linalg.norm(rgb - bg, axis=2)
+    threshold = max(8.0, float(mask_info.get("threshold", 8.0)) * 0.6)
+    visible = mask & (diff > threshold)
+    minimum = max(32, int(mask.sum() * 0.2))
+    if int(visible.sum()) < minimum:
+        return mask
+    return visible
+
+
+def shell_appearance_features(
+    rgb: np.ndarray,
+    mask: np.ndarray,
+    mask_info: dict[str, float],
+) -> dict[str, float]:
+    sample_mask = color_sample_mask(rgb, mask, mask_info)
+    if int(sample_mask.sum()) < 16:
+        sample_mask = mask
+    if int(sample_mask.sum()) < 16:
+        return {
+            "visible_shell_ratio": 0.0,
+            "color_r_mean": 0.0,
+            "color_g_mean": 0.0,
+            "color_b_mean": 0.0,
+            "color_l_mean": 0.0,
+            "color_l_std": 0.0,
+            "color_a_mean": 0.0,
+            "color_b_lab_mean": 0.0,
+            "color_chroma_mean": 0.0,
+            "color_chroma_std": 0.0,
+            "color_saturation_mean": 0.0,
+            "color_saturation_std": 0.0,
+            "color_hue_sin": 0.0,
+            "color_hue_cos": 0.0,
+            "texture_gradient_mean": 0.0,
+            "texture_residual_std": 0.0,
+            "texture_luma_iqr": 0.0,
+        }
+
+    rgb_u8 = np.clip(rgb, 0, 255).astype(np.uint8)
+    lab = cv2.cvtColor(rgb_u8, cv2.COLOR_RGB2LAB).astype(np.float32)
+    hsv = cv2.cvtColor(rgb_u8, cv2.COLOR_RGB2HSV).astype(np.float32)
+    luma = np.dot(rgb.astype(np.float32), np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)) / 255.0
+
+    rgb_values = rgb[sample_mask] / 255.0
+    lab_values = lab[sample_mask]
+    hsv_values = hsv[sample_mask]
+    luma_values = luma[sample_mask]
+    color_a = (lab_values[:, 1] - 128.0) / 127.0
+    color_b = (lab_values[:, 2] - 128.0) / 127.0
+    chroma = np.sqrt(color_a**2 + color_b**2)
+    saturation = hsv_values[:, 1] / 255.0
+    hue = (hsv_values[:, 0] / 180.0) * (2.0 * np.pi)
+    hue_weight = np.maximum(saturation, 0.05)
+    hue_weight_sum = float(hue_weight.sum()) or 1.0
+
+    gradient_x = cv2.Sobel(luma, cv2.CV_32F, 1, 0, ksize=3)
+    gradient_y = cv2.Sobel(luma, cv2.CV_32F, 0, 1, ksize=3)
+    gradient = np.sqrt(gradient_x**2 + gradient_y**2)
+    blurred = cv2.GaussianBlur(luma, (0, 0), 2.0)
+    residual = luma - blurred
+
+    return {
+        "visible_shell_ratio": float(sample_mask.sum() / max(1, mask.sum())),
+        "color_r_mean": float(rgb_values[:, 0].mean()),
+        "color_g_mean": float(rgb_values[:, 1].mean()),
+        "color_b_mean": float(rgb_values[:, 2].mean()),
+        "color_l_mean": float((lab_values[:, 0] / 255.0).mean()),
+        "color_l_std": float((lab_values[:, 0] / 255.0).std()),
+        "color_a_mean": float(color_a.mean()),
+        "color_b_lab_mean": float(color_b.mean()),
+        "color_chroma_mean": float(chroma.mean()),
+        "color_chroma_std": float(chroma.std()),
+        "color_saturation_mean": float(saturation.mean()),
+        "color_saturation_std": float(saturation.std()),
+        "color_hue_sin": float(np.dot(np.sin(hue), hue_weight) / hue_weight_sum),
+        "color_hue_cos": float(np.dot(np.cos(hue), hue_weight) / hue_weight_sum),
+        "texture_gradient_mean": float(gradient[sample_mask].mean()),
+        "texture_residual_std": float(residual[sample_mask].std()),
+        "texture_luma_iqr": float(np.percentile(luma_values, 75) - np.percentile(luma_values, 25)),
+    }
+
+
 def circular_median(values: np.ndarray, window: int) -> np.ndarray:
     if window <= 1:
         return values
@@ -445,6 +540,7 @@ def process_image_job(job: tuple[str, str, int, int, bool, str, int]) -> dict:
         mask, mask_info = isolate_shell(rgb, fill_holes=fill_holes)
         fingerprint, shape_info = fingerprint_from_mask(mask, smooth_window, center)
         contour = contour_from_mask(mask, contour_points) if contour_points else None
+        appearance_info = shell_appearance_features(rgb, mask, mask_info)
         label = parse_label(relative)
         record = {
             "file": relative,
@@ -453,6 +549,7 @@ def process_image_job(job: tuple[str, str, int, int, bool, str, int]) -> dict:
             "image_height": int(rgb.shape[0]),
             **shape_info,
             **mask_info,
+            **appearance_info,
         }
         result = {"ok": True, "record": record, "fingerprint": fingerprint}
         if contour is not None:

@@ -80,6 +80,7 @@ def verify_entrypoints() -> None:
             )
     required_ids = {
         "scatterCanvas",
+        "mapSpaceSelect",
         "sourceImage",
         "sourceOverlay",
         "overlayContour",
@@ -102,7 +103,16 @@ def verify_entrypoints() -> None:
             raise AssertionError(f"{path} missing-data panel does not include rebuild commands")
         if "Contour QA" in entry_text[path] or "qualityPanel" in entry_text[path]:
             raise AssertionError(f"{path} should not include Contour QA in default markup")
-    expected_color_modes = ["species", "mask", "center", "concavity"]
+    expected_color_modes = [
+        "species",
+        "shell",
+        "lightness",
+        "chroma",
+        "roughness",
+        "mask",
+        "concavity",
+        "trait",
+    ]
     if root.options.get("colorModeSelect") != expected_color_modes:
         raise AssertionError(f"Unexpected color modes: {root.options.get('colorModeSelect')}")
 
@@ -272,6 +282,24 @@ def verify_static(public_data: Path, image_count: int, numeric: np.lib.npyio.Npz
         raise AssertionError("Static model contour PCA components are incomplete")
     if contour_components and len(contour_components[0]) != model.get("contour_points", 0) * 2:
         raise AssertionError("Static model contour PCA component geometry has the wrong size")
+    if model.get("trait_visible_component_count", 0) < 2:
+        raise AssertionError("Static model is missing trait PCA axes")
+    if len(model.get("trait_pca_ranges", [])) < model["trait_visible_component_count"]:
+        raise AssertionError("Static model trait PCA ranges are incomplete")
+    trait_schema = model.get("trait_feature_schema", [])
+    if len(trait_schema) < 12:
+        raise AssertionError("Static model trait schema is too small")
+    schema_names = {entry.get("name") for entry in trait_schema}
+    for name in ["contour_pc1", "roughness", "color_l_mean", "color_chroma_mean"]:
+        if name not in schema_names:
+            raise AssertionError(f"Static model trait schema is missing {name}")
+    if len(model.get("trait_mean", [])) != len(trait_schema):
+        raise AssertionError("Static model trait PCA mean has the wrong size")
+    trait_components = model.get("trait_components", [])
+    if len(trait_components) < model["trait_visible_component_count"]:
+        raise AssertionError("Static model trait PCA components are incomplete")
+    if trait_components and len(trait_components[0]) != len(trait_schema):
+        raise AssertionError("Static model trait PCA components have the wrong size")
     if model.get("fingerprint_encoding") == "uint16_fixed":
         assert_equal(model.get("fingerprint_scale"), 8192, "fingerprint scale")
         assert_equal(fingerprint_path.stat().st_size, image_count * 360 * 2, "fingerprint binary size")
@@ -314,6 +342,7 @@ def verify_static(public_data: Path, image_count: int, numeric: np.lib.npyio.Npz
         "species",
         "pc",
         "contour_pc",
+        "trait_pc",
         "center",
         "center_adjustment",
         "bbox",
@@ -321,6 +350,10 @@ def verify_static(public_data: Path, image_count: int, numeric: np.lib.npyio.Npz
         "image_height",
         "component_count",
         "roughness",
+        "color_l_mean",
+        "color_chroma_mean",
+        "color_saturation_mean",
+        "texture_gradient_mean",
         "aspect_ratio",
         "radial_area_ratio",
         "radial_mismatch",
@@ -331,6 +364,8 @@ def verify_static(public_data: Path, image_count: int, numeric: np.lib.npyio.Npz
             raise AssertionError(f"Static shell records are missing {key!r}")
     if len(sample["contour_pc"]) < 2:
         raise AssertionError("Static shell records have incomplete contour_pc values")
+    if len(sample["trait_pc"]) < 2:
+        raise AssertionError("Static shell records have incomplete trait_pc values")
     for name in ["model.json", "shells.json", "fingerprints.u16", contour_file]:
         payload = checksums.get(name)
         path = public_data / name

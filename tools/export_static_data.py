@@ -7,13 +7,48 @@ import argparse
 from concurrent.futures import ProcessPoolExecutor
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-from build_fingerprints import compute_pca, contour_from_mask, isolate_shell, load_image, score_ranges
+from build_fingerprints import (
+    compute_pca,
+    contour_from_mask,
+    isolate_shell,
+    load_image,
+    score_ranges,
+    shell_appearance_features,
+)
+
+
+APPEARANCE_FEATURES = [
+    ("color_l_mean", "Lightness", "appearance"),
+    ("color_l_std", "Lightness contrast", "appearance"),
+    ("color_a_mean", "Lab a", "appearance"),
+    ("color_b_lab_mean", "Lab b", "appearance"),
+    ("color_chroma_mean", "Chroma", "appearance"),
+    ("color_chroma_std", "Chroma contrast", "appearance"),
+    ("color_saturation_mean", "Saturation", "appearance"),
+    ("color_saturation_std", "Saturation contrast", "appearance"),
+    ("color_hue_sin", "Hue sine", "appearance"),
+    ("color_hue_cos", "Hue cosine", "appearance"),
+    ("texture_gradient_mean", "Texture gradient", "appearance"),
+    ("texture_residual_std", "Texture residual", "appearance"),
+    ("texture_luma_iqr", "Luma IQR", "appearance"),
+]
+
+MORPH_FEATURES = [
+    ("mask_ratio", "Mask coverage", "morphology"),
+    ("aspect_ratio", "Aspect ratio", "morphology"),
+    ("roughness", "Outline roughness", "morphology"),
+    ("radial_mismatch", "Radial mismatch", "morphology"),
+    ("contour_concavity", "Contour concavity", "morphology"),
+]
+
+APPEARANCE_FIELD_NAMES = [name for name, _label, _group in APPEARANCE_FEATURES]
 
 
 def quantize(value: float, digits: int = 6) -> float:
@@ -135,6 +170,219 @@ def export_contours(
     contours.tofile(output_dir / "contours.u16")
 
 
+def mask_from_contour(image_shape: tuple[int, int, int], contour: np.ndarray | None) -> np.ndarray | None:
+    if contour is None or contour.shape[0] < 3:
+        return None
+    mask = np.zeros(image_shape[:2], dtype=np.uint8)
+    points = np.rint(contour).astype(np.int32).reshape(-1, 1, 2)
+    cv2.fillPoly(mask, [points], 1)
+    return mask.astype(bool)
+
+
+def appearance_job(
+    job: tuple[int, str, str, int, bool, dict[str, float], np.ndarray | None],
+) -> tuple[int, dict[str, float]]:
+    record_id, file_name, dataset_dir, max_size, fill_holes, mask_info, contour = job
+    rgb = load_image(Path(dataset_dir) / file_name, max_size=max_size)
+    mask = mask_from_contour(rgb.shape, contour)
+    if mask is None or int(mask.sum()) < 16:
+        mask, mask_info = isolate_shell(rgb, fill_holes=fill_holes)
+    return record_id, shell_appearance_features(rgb, mask, mask_info)
+
+
+def ensure_appearance_features(
+    records: list[dict],
+    dataset_dir: Path,
+    fill_holes: bool,
+    workers: int,
+    contours: np.ndarray | None = None,
+) -> None:
+    if all(all(name in record for name in APPEARANCE_FIELD_NAMES) for record in records):
+        return
+    if not dataset_dir.exists():
+        missing = ", ".join(APPEARANCE_FIELD_NAMES[:3])
+        raise FileNotFoundError(
+            f"Processed records are missing appearance features ({missing}, ...), "
+            f"and {dataset_dir} is not available to compute them."
+        )
+
+    if workers < 1:
+        workers = max(1, min(8, os.cpu_count() or 1))
+    jobs = []
+    for record in records:
+        record_id = int(record["id"])
+        contour = contours[record_id] if contours is not None else None
+        mask_info = {
+            "background_r": float(record.get("background_r", 0.0)),
+            "background_g": float(record.get("background_g", 0.0)),
+            "background_b": float(record.get("background_b", 0.0)),
+            "threshold": float(record.get("threshold", 8.0)),
+        }
+        jobs.append(
+            (
+                record_id,
+                record["file"],
+                str(dataset_dir),
+                max(int(record["image_width"]), int(record["image_height"])),
+                fill_holes,
+                mask_info,
+                contour,
+            )
+        )
+
+    print(f"appearance features {len(jobs)} records with {workers} worker(s)", flush=True)
+    if workers == 1:
+        iterable = map(appearance_job, jobs)
+        executor = None
+    else:
+        executor = ProcessPoolExecutor(max_workers=workers)
+        iterable = executor.map(appearance_job, jobs, chunksize=64)
+
+    try:
+        for index, (record_id, features) in enumerate(iterable, start=1):
+            records[record_id].update(features)
+            if index % 5000 == 0 or index == len(records):
+                print(f"appearance {index}/{len(records)}", flush=True)
+    finally:
+        if executor is not None:
+            executor.shutdown()
+
+
+def trait_feature_specs(shape_count: int) -> list[dict[str, object]]:
+    specs: list[dict[str, object]] = []
+    shape_weight = 1.35 / math.sqrt(max(1, shape_count))
+    morph_weight = 1.0 / math.sqrt(len(MORPH_FEATURES))
+    appearance_weight = 1.0 / math.sqrt(len(APPEARANCE_FEATURES))
+
+    for index in range(shape_count):
+        specs.append(
+            {
+                "name": f"contour_pc{index + 1}",
+                "label": f"Contour PC{index + 1}",
+                "group": "shape",
+                "source": "contour_pc",
+                "index": index,
+                "weight": shape_weight,
+            }
+        )
+    for name, label, group in MORPH_FEATURES:
+        specs.append(
+            {
+                "name": name,
+                "label": label,
+                "group": group,
+                "source": "field",
+                "field": name,
+                "weight": morph_weight,
+            }
+        )
+    for name, label, group in APPEARANCE_FEATURES:
+        specs.append(
+            {
+                "name": name,
+                "label": label,
+                "group": group,
+                "source": "field",
+                "field": name,
+                "weight": appearance_weight,
+            }
+        )
+    return specs
+
+
+def transformed_trait_value(record: dict, field: str) -> float:
+    value = float(record.get(field, 0.0) or 0.0)
+    if field in {"aspect_ratio", "radial_mismatch"}:
+        return math.log1p(max(0.0, value))
+    if field in {"roughness", "contour_concavity", "texture_gradient_mean", "texture_residual_std"}:
+        return math.log1p(max(0.0, value) * 64.0)
+    return value
+
+
+def raw_trait_matrix(records: list[dict], specs: list[dict[str, object]]) -> np.ndarray:
+    matrix = np.zeros((len(records), len(specs)), dtype=np.float32)
+    for row, record in enumerate(records):
+        for column, spec in enumerate(specs):
+            if spec["source"] == "contour_pc":
+                values = record.get("contour_pc", [])
+                index = int(spec["index"])
+                matrix[row, column] = float(values[index]) if index < len(values) else 0.0
+            else:
+                matrix[row, column] = transformed_trait_value(record, str(spec["field"]))
+    return matrix
+
+
+def standardize_trait_matrix(
+    raw: np.ndarray,
+    specs: list[dict[str, object]],
+) -> tuple[np.ndarray, list[dict[str, object]]]:
+    standardized = np.zeros_like(raw, dtype=np.float32)
+    schema: list[dict[str, object]] = []
+    for column, spec in enumerate(specs):
+        values = raw[:, column].astype(np.float64)
+        low = float(np.percentile(values, 1))
+        high = float(np.percentile(values, 99))
+        if high <= low:
+            low = float(values.min())
+            high = float(values.max())
+        clipped = np.clip(values, low, high)
+        center = float(clipped.mean())
+        scale = float(clipped.std())
+        if scale <= 1e-9:
+            scale = 1.0
+        weight = float(spec["weight"])
+        standardized[:, column] = (((values - center) / scale) * weight).astype(np.float32)
+        schema.append(
+            {
+                "name": spec["name"],
+                "label": spec["label"],
+                "group": spec["group"],
+                "source": spec["source"],
+                "weight": quantize(weight),
+                "mean": quantize(center),
+                "scale": quantize(scale),
+                "p01": quantize(low),
+                "p99": quantize(high),
+            }
+        )
+    return standardized, schema
+
+
+def top_trait_loadings(
+    components: np.ndarray,
+    schema: list[dict[str, object]],
+    count: int = 5,
+) -> list[list[dict[str, object]]]:
+    loadings: list[list[dict[str, object]]] = []
+    for component in components:
+        order = np.argsort(np.abs(component))[::-1][:count]
+        loadings.append(
+            [
+                {
+                    "name": str(schema[index]["name"]),
+                    "label": str(schema[index]["label"]),
+                    "group": str(schema[index]["group"]),
+                    "loading": quantize(float(component[index])),
+                }
+                for index in order
+            ]
+        )
+    return loadings
+
+
+def compute_trait_pca(
+    records: list[dict],
+    component_count: int,
+    shape_count: int,
+) -> tuple[dict[str, np.ndarray], list[dict[str, object]], list[list[dict[str, object]]]]:
+    specs = trait_feature_specs(shape_count)
+    raw = raw_trait_matrix(records, specs)
+    standardized, schema = standardize_trait_matrix(raw, specs)
+    pca = compute_pca(standardized, component_count)
+    loadings = top_trait_loadings(pca["components"], schema)
+    return pca, schema, loadings
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, default=Path("dataset"))
@@ -174,6 +422,13 @@ def main() -> None:
             args.record_components,
         )
         contour_scores = contour_pca["scores"]
+    ensure_appearance_features(
+        manifest["records"],
+        args.dataset.resolve(),
+        bool(manifest.get("fill_holes", False)),
+        args.contour_workers,
+        contour_source,
+    )
 
     model = {
         "version": manifest["version"],
@@ -230,31 +485,64 @@ def main() -> None:
             if contour_scores is not None
             else []
         )
-        records.append(
+        exported = {
+            "id": int(record["id"]),
+            "file": record["file"],
+            "name": record["name"],
+            "species": record["species"],
+            "specimen": record["specimen"],
+            "view": record["view"],
+            "pc": [quantize(value) for value in score[:component_count]],
+            "contour_pc": contour_pc,
+            "area": int(record["area"]),
+            "center": record["center"],
+            "center_adjustment": quantize(record.get("center_adjustment", 0), 3),
+            "bbox": record["bbox"],
+            "image_width": int(record["image_width"]),
+            "image_height": int(record["image_height"]),
+            "component_count": int(record.get("component_count", 0)),
+            "mask_ratio": quantize(record["mask_ratio"]),
+            "roughness": quantize(roughness(fingerprint)),
+            "aspect_ratio": quantize(aspect_ratio(record)),
+            "radial_area_ratio": quantize(radial_area_ratio(record, fingerprint)),
+            "radial_mismatch": quantize(radial_mismatch(record, fingerprint)),
+            "contour_solidity": quantize(solidity),
+            "contour_concavity": quantize(1.0 - solidity),
+            "mean_radius": quantize(record["mean_radius"]),
+        }
+        for field in APPEARANCE_FIELD_NAMES:
+            exported[field] = quantize(record.get(field, 0.0))
+        records.append(exported)
+
+    trait_pca = None
+    if records and contour_scores is not None:
+        shape_trait_count = min(args.record_components, contour_scores.shape[1])
+        trait_pca, trait_schema, trait_loadings = compute_trait_pca(
+            records,
+            args.record_components,
+            shape_trait_count,
+        )
+        for record, trait_score in zip(records, trait_pca["scores"], strict=True):
+            record["trait_pc"] = [quantize(value) for value in trait_score[: args.record_components]]
+        model.update(
             {
-                "id": int(record["id"]),
-                "file": record["file"],
-                "name": record["name"],
-                "species": record["species"],
-                "specimen": record["specimen"],
-                "view": record["view"],
-                "pc": [quantize(value) for value in score[:component_count]],
-                "contour_pc": contour_pc,
-                "area": int(record["area"]),
-                "center": record["center"],
-                "center_adjustment": quantize(record.get("center_adjustment", 0), 3),
-                "bbox": record["bbox"],
-                "image_width": int(record["image_width"]),
-                "image_height": int(record["image_height"]),
-                "component_count": int(record.get("component_count", 0)),
-                "mask_ratio": quantize(record["mask_ratio"]),
-                "roughness": quantize(roughness(fingerprint)),
-                "aspect_ratio": quantize(aspect_ratio(record)),
-                "radial_area_ratio": quantize(radial_area_ratio(record, fingerprint)),
-                "radial_mismatch": quantize(radial_mismatch(record, fingerprint)),
-                "contour_solidity": quantize(solidity),
-                "contour_concavity": quantize(1.0 - solidity),
-                "mean_radius": quantize(record["mean_radius"]),
+                "trait_component_count": int(trait_pca["components"].shape[0]),
+                "trait_visible_component_count": int(
+                    min(args.record_components, trait_pca["components"].shape[0])
+                ),
+                "trait_explained_variance_ratio": [
+                    quantize(value, 8) for value in trait_pca["explained_variance_ratio"]
+                ],
+                "trait_pca_ranges": score_ranges(trait_pca["scores"]),
+                "trait_mean": [quantize(value) for value in trait_pca["mean"]],
+                "trait_components": [
+                    [quantize(value) for value in row]
+                    for row in trait_pca["components"][
+                        : min(args.record_components, trait_pca["components"].shape[0])
+                    ]
+                ],
+                "trait_feature_schema": trait_schema,
+                "trait_top_loadings": trait_loadings,
             }
         )
 

@@ -36,6 +36,13 @@
           <div class="section-title">
             <h2>Map Configuration</h2>
           </div>
+          <label class="field map-field">
+            <span>Space</span>
+            <select id="mapSpaceSelect">
+              <option value="contour">Contour shape</option>
+              <option value="trait">Shape + traits</option>
+            </select>
+          </label>
           <div class="axis-grid">
             <label>
               <span>X</span>
@@ -50,9 +57,13 @@
             <span>Color</span>
             <select id="colorModeSelect">
               <option value="species">Species</option>
+              <option value="shell">Shell color</option>
+              <option value="lightness">Lightness</option>
+              <option value="chroma">Chroma</option>
+              <option value="roughness">Roughness</option>
               <option value="mask">Mask coverage</option>
-              <option value="center">Center shift</option>
               <option value="concavity">Contour concavity</option>
+              <option value="trait">Trait PC1</option>
             </select>
           </label>
         </section>

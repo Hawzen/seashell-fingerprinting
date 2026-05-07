@@ -1,11 +1,11 @@
 {
   "model.json": {
-    "bytes": 60484,
-    "sha256": "eaedfdf10f571d19753db7c6e50712babc7eccd4d158f1087ac80c5b8ecaacb1"
+    "bytes": 69722,
+    "sha256": "e3b87f185e9046ce88842131d603ad3b68c14490ad54c4b25bdecff538e1ffd6"
   },
   "shells.json": {
-    "bytes": 36769459,
-    "sha256": "2bf404504abc9beb4d38b5e7fc94bd9982b31e025a0c9fc7f1a775d62ab71acf"
+    "bytes": 62389606,
+    "sha256": "92a2e311283ee77baceacdf310f0bfeed48ce0b4a6272b1053968abc94779085"
   },
   "fingerprints.u16": {
     "bytes": 42655680,
