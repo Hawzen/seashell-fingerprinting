@@ -1,7 +1,5 @@
-# Seashell Fingerprinting Explorer
+# Seashell PCA Explorer
 
-Static PCA explorer for browsing seashell contours and generating shell outlines from contour-shape coordinates.
+Static contour, trait, and color PCA explorer for seashell images.
 
-Run `python3 -m http.server 8010`, then open `http://127.0.0.1:8010/`.
-
-![Seashell Fingerprinting Explorer screenshot](docs/screenshot.jpg)
+Run `make export-data && python3 -m http.server 8010`, then open `http://127.0.0.1:8010/`.

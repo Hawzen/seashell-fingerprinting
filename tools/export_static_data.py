@@ -44,11 +44,29 @@ MORPH_FEATURES = [
     ("mask_ratio", "Mask coverage", "morphology"),
     ("aspect_ratio", "Aspect ratio", "morphology"),
     ("roughness", "Outline roughness", "morphology"),
-    ("radial_mismatch", "Radial mismatch", "morphology"),
     ("contour_concavity", "Contour concavity", "morphology"),
 ]
 
-APPEARANCE_FIELD_NAMES = [name for name, _label, _group in APPEARANCE_FEATURES]
+APPEARANCE_FIELD_NAMES = [
+    "visible_shell_ratio",
+    "color_r_mean",
+    "color_g_mean",
+    "color_b_mean",
+    *[name for name, _label, _group in APPEARANCE_FEATURES],
+]
+
+INTERPRETATION_FEATURES = [
+    ("mask_ratio", "mask coverage"),
+    ("aspect_ratio", "aspect ratio"),
+    ("roughness", "outline roughness"),
+    ("contour_concavity", "concavity"),
+    ("contour_solidity", "solidity"),
+    ("color_l_mean", "lightness"),
+    ("color_chroma_mean", "chroma"),
+    ("color_saturation_mean", "saturation"),
+    ("texture_gradient_mean", "texture gradient"),
+    ("texture_luma_iqr", "luma variation"),
+]
 
 
 def quantize(value: float, digits: int = 6) -> float:
@@ -72,18 +90,6 @@ def aspect_ratio(record: dict) -> float:
     width = max(1, x1 - x0 + 1)
     height = max(1, y1 - y0 + 1)
     return max(width / height, height / width)
-
-
-def radial_area_ratio(record: dict, fingerprint: np.ndarray) -> float:
-    radii = fingerprint.astype(np.float64) * float(record["mean_radius"])
-    polygon_area = 0.5 * np.sin(np.deg2rad(1.0)) * float(np.dot(radii, np.roll(radii, -1)))
-    return polygon_area / max(1.0, float(record["area"]))
-
-
-def radial_mismatch(record: dict, fingerprint: np.ndarray) -> float:
-    area_ratio = radial_area_ratio(record, fingerprint)
-    area_term = abs(np.log(max(1e-6, area_ratio)))
-    return float(roughness(fingerprint) * 4.0 + area_term)
 
 
 def polygon_area(points: np.ndarray) -> float:
@@ -248,6 +254,26 @@ def ensure_appearance_features(
             executor.shutdown()
 
 
+def reuse_exported_appearance_features(records: list[dict], previous_shells: Path) -> None:
+    if not previous_shells.exists():
+        return
+    try:
+        previous = json.loads(previous_shells.read_text(encoding="utf-8")).get("records", [])
+    except (OSError, json.JSONDecodeError):
+        return
+    by_file = {record.get("file"): record for record in previous}
+    reused = 0
+    for record in records:
+        old = by_file.get(record.get("file"))
+        if not old or not all(name in old for name in APPEARANCE_FIELD_NAMES):
+            continue
+        for name in APPEARANCE_FIELD_NAMES:
+            record[name] = old[name]
+        reused += 1
+    if reused:
+        print(f"appearance cache {reused}/{len(records)} records", flush=True)
+
+
 def trait_feature_specs(shape_count: int) -> list[dict[str, object]]:
     specs: list[dict[str, object]] = []
     shape_weight = 1.35 / math.sqrt(max(1, shape_count))
@@ -292,7 +318,7 @@ def trait_feature_specs(shape_count: int) -> list[dict[str, object]]:
 
 def transformed_trait_value(record: dict, field: str) -> float:
     value = float(record.get(field, 0.0) or 0.0)
-    if field in {"aspect_ratio", "radial_mismatch"}:
+    if field == "aspect_ratio":
         return math.log1p(max(0.0, value))
     if field in {"roughness", "contour_concavity", "texture_gradient_mean", "texture_residual_std"}:
         return math.log1p(max(0.0, value) * 64.0)
@@ -383,6 +409,138 @@ def compute_trait_pca(
     return pca, schema, loadings
 
 
+def feature_correlations(
+    scores: np.ndarray,
+    records: list[dict],
+    features: list[tuple[str, str]] = INTERPRETATION_FEATURES,
+) -> list[dict[str, object]]:
+    output: list[dict[str, object]] = []
+    axis_values = scores.astype(np.float64)
+    axis_std = float(axis_values.std())
+    if axis_std <= 1e-9:
+        return output
+    for name, label in features:
+        values = np.array([float(record.get(name, 0.0) or 0.0) for record in records], dtype=np.float64)
+        value_std = float(values.std())
+        if value_std <= 1e-9:
+            continue
+        corr = float(np.corrcoef(axis_values, values)[0, 1])
+        if not np.isfinite(corr):
+            continue
+        output.append(
+            {
+                "name": name,
+                "label": label,
+                "correlation": quantize(corr),
+                "strength": quantize(abs(corr)),
+                "sign": 1 if corr >= 0 else -1,
+            }
+        )
+    output.sort(key=lambda item: float(item["strength"]), reverse=True)
+    return output
+
+
+def axis_examples(
+    scores: np.ndarray,
+    records: list[dict],
+    count: int = 3,
+) -> dict[str, list[dict[str, object]]]:
+    order = np.argsort(scores)
+
+    def pack(indices: np.ndarray) -> list[dict[str, object]]:
+        return [
+            {
+                "id": int(records[index]["id"]),
+                "species": records[index]["species"],
+                "file": records[index]["file"],
+                "score": quantize(float(scores[index])),
+            }
+            for index in indices
+        ]
+
+    return {
+        "negative": pack(order[:count]),
+        "positive": pack(order[-count:][::-1]),
+    }
+
+
+def summary_from_drivers(drivers: list[dict[str, object]]) -> str:
+    if not drivers:
+        return "No strong scalar driver; read this axis mostly through the generated outline."
+    positive = [driver["label"] for driver in drivers if int(driver["sign"]) > 0][:2]
+    negative = [driver["label"] for driver in drivers if int(driver["sign"]) < 0][:2]
+    parts = []
+    if positive:
+        parts.append("positive values increase " + " and ".join(positive))
+    if negative:
+        parts.append("positive values decrease " + " and ".join(negative))
+    return "; ".join(parts) + "."
+
+
+def pca_interpretations(
+    scores: np.ndarray,
+    records: list[dict],
+    explained: np.ndarray,
+    loadings: list[list[dict[str, object]]] | None = None,
+) -> list[dict[str, object]]:
+    axes: list[dict[str, object]] = []
+    visible_count = min(scores.shape[1], len(explained), 6)
+    for axis in range(visible_count):
+        correlations = feature_correlations(scores[:, axis], records)
+        drivers = correlations[:5]
+        if loadings and axis < len(loadings):
+            loading_drivers = [
+                {
+                    "name": item["name"],
+                    "label": item["label"],
+                    "group": item["group"],
+                    "correlation": item["loading"],
+                    "strength": quantize(abs(float(item["loading"]))),
+                    "sign": 1 if float(item["loading"]) >= 0 else -1,
+                }
+                for item in loadings[axis][:5]
+            ]
+            drivers = loading_drivers
+        axes.append(
+            {
+                "axis": axis + 1,
+                "explained": quantize(float(explained[axis]), 8),
+                "summary": summary_from_drivers(drivers),
+                "drivers": drivers,
+                "correlations": correlations[:8],
+                "examples": axis_examples(scores[:, axis], records),
+            }
+        )
+    return axes
+
+
+def color_mix_model(records: list[dict]) -> dict[str, object]:
+    def rng(field: str) -> dict[str, float]:
+        values = np.array([float(record.get(field, 0.0) or 0.0) for record in records], dtype=np.float64)
+        return {
+            "p01": quantize(float(np.percentile(values, 1))),
+            "p50": quantize(float(np.percentile(values, 50))),
+            "p99": quantize(float(np.percentile(values, 99))),
+        }
+
+    return {
+        "x": {"field": "color_a_mean", "label": "Lab a", **rng("color_a_mean")},
+        "y": {"field": "color_b_lab_mean", "label": "Lab b", **rng("color_b_lab_mean")},
+        "blend_fields": [
+            "color_r_mean",
+            "color_g_mean",
+            "color_b_mean",
+            "color_l_mean",
+            "color_a_mean",
+            "color_b_lab_mean",
+            "color_chroma_mean",
+            "color_saturation_mean",
+            "texture_gradient_mean",
+            "roughness",
+        ],
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, default=Path("dataset"))
@@ -399,13 +557,9 @@ def main() -> None:
     numeric = np.load(args.processed / "fingerprints.npz")
     args.output.mkdir(parents=True, exist_ok=True)
 
-    components = numeric["pca_components"].astype(np.float32)
-    scores = numeric["pca_scores"].astype(np.float32)
     fingerprints = numeric["fingerprints"].astype(np.float32)
     species_count = len({record["species"] for record in manifest["records"]})
     view_count = len({record["view"] for record in manifest["records"] if record.get("view")})
-    component_count = min(args.record_components, components.shape[0])
-    fingerprint_scale = 8192
     contour_scores = None
     contour_pca = None
     contour_source = None
@@ -422,6 +576,7 @@ def main() -> None:
             args.record_components,
         )
         contour_scores = contour_pca["scores"]
+    reuse_exported_appearance_features(manifest["records"], args.output / "shells.json")
     ensure_appearance_features(
         manifest["records"],
         args.dataset.resolve(),
@@ -438,21 +593,6 @@ def main() -> None:
         "error_count": manifest["error_count"],
         "species_count": species_count,
         "view_count": view_count,
-        "angle_count": int(numeric["pca_mean"].shape[0]),
-        "component_count": int(components.shape[0]),
-        "visible_component_count": int(component_count),
-        "explained_variance_ratio": [
-            quantize(value, 8) for value in numeric["explained_variance_ratio"]
-        ],
-        "pca_ranges": manifest["pca_ranges"],
-        "mean": [quantize(value) for value in numeric["pca_mean"]],
-        "components": [
-            [quantize(value) for value in row]
-            for row in components[:component_count]
-        ],
-        "fingerprint_file": "fingerprints.u16",
-        "fingerprint_encoding": "uint16_fixed",
-        "fingerprint_scale": fingerprint_scale,
     }
     if contour_pca is not None:
         model.update(
@@ -476,9 +616,7 @@ def main() -> None:
         )
 
     records = []
-    for index, (record, score, fingerprint) in enumerate(
-        zip(manifest["records"], scores, fingerprints, strict=True)
-    ):
+    for index, (record, fingerprint) in enumerate(zip(manifest["records"], fingerprints, strict=True)):
         solidity = contour_solidity(contour_source[index]) if contour_source is not None else 0.0
         contour_pc = (
             [quantize(value) for value in contour_scores[index][: args.record_components]]
@@ -492,7 +630,6 @@ def main() -> None:
             "species": record["species"],
             "specimen": record["specimen"],
             "view": record["view"],
-            "pc": [quantize(value) for value in score[:component_count]],
             "contour_pc": contour_pc,
             "area": int(record["area"]),
             "center": record["center"],
@@ -504,8 +641,6 @@ def main() -> None:
             "mask_ratio": quantize(record["mask_ratio"]),
             "roughness": quantize(roughness(fingerprint)),
             "aspect_ratio": quantize(aspect_ratio(record)),
-            "radial_area_ratio": quantize(radial_area_ratio(record, fingerprint)),
-            "radial_mismatch": quantize(radial_mismatch(record, fingerprint)),
             "contour_solidity": quantize(solidity),
             "contour_concavity": quantize(1.0 - solidity),
             "mean_radius": quantize(record["mean_radius"]),
@@ -546,6 +681,24 @@ def main() -> None:
             }
         )
 
+    if contour_scores is not None and contour_pca is not None:
+        interpretation = {
+            "contour": pca_interpretations(
+                contour_scores,
+                records,
+                contour_pca["explained_variance_ratio"],
+            )
+        }
+        if trait_pca is not None:
+            interpretation["trait"] = pca_interpretations(
+                trait_pca["scores"],
+                records,
+                trait_pca["explained_variance_ratio"],
+                trait_loadings,
+            )
+        model["pca_interpretation"] = interpretation
+    model["color_mix"] = color_mix_model(records)
+
     (args.output / "model.json").write_text(
         json.dumps(model, separators=(",", ":")),
         encoding="utf-8",
@@ -554,8 +707,9 @@ def main() -> None:
         json.dumps({"records": records}, separators=(",", ":")),
         encoding="utf-8",
     )
-    encoded = np.rint(np.clip(fingerprints * fingerprint_scale, 0, 65535)).astype("<u2")
-    encoded.tofile(args.output / "fingerprints.u16")
+    fingerprint_file = args.output / "fingerprints.u16"
+    if fingerprint_file.exists():
+        fingerprint_file.unlink()
     contour_file = args.output / "contours.u16"
     if args.no_contours:
         if contour_file.exists():
@@ -605,11 +759,10 @@ def main() -> None:
 
     print(args.output / "model.json")
     print(args.output / "shells.json")
-    print(args.output / "fingerprints.u16")
     if contour_file.exists():
         print(contour_file)
 
-    checksum_names = ["model.json", "shells.json", "fingerprints.u16"]
+    checksum_names = ["model.json", "shells.json"]
     if contour_file.exists():
         checksum_names.append("contours.u16")
     checksums = {
