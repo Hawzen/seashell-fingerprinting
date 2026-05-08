@@ -799,13 +799,14 @@ function centerViewportOnShell(shell) {
 }
 
 function selectRandomShell() {
-  if (!state.filtered.length) return;
-  const shell = takeSurpriseShell();
+  const source = state.filtered.length ? state.filtered : state.shells;
+  if (!source.length) return;
+  const shell = randomShellFromSource(source);
   if (!shell) return;
   centerViewportOnShell(shell);
   selectShell(shell);
   scheduleDraw(420);
-  primeSurpriseQueue();
+  primeSurpriseQueue(source);
 }
 
 function zoom(factor, center = null) {
@@ -1399,21 +1400,6 @@ function primeSurpriseQueue(source = state.filtered, targetSize = 3) {
   }, 80);
 }
 
-function takeSurpriseShell() {
-  if (state.surpriseQueueSource !== state.filtered) resetSurpriseQueue();
-  const avoidId = state.selected?.id;
-  const ready = state.surpriseQueue
-    .map((entry, index) => ({ entry, index }))
-    .filter(({ entry }) => entry.shell?.id !== avoidId && (entry.ready || entry.page == null || state.loadedThumbnailPages.has(entry.page)));
-  if (ready.length) {
-    const choice = ready[Math.floor(Math.random() * ready.length)];
-    const entry = choice.entry;
-    if (ready.length > 3) state.surpriseQueue.splice(choice.index, 1);
-    return entry.shell;
-  }
-  return randomShellFromSource(state.filtered, avoidId);
-}
-
 function thumbnailWarmOrder() {
   const files = state.model?.thumbnail_atlas?.files || [];
   const selectedPage = thumbnailPageForShell(state.selected);
@@ -1542,6 +1528,20 @@ function setSourceImageUrl(url, shell, alt = "") {
   els.sourceImage.src = url;
 }
 
+function drawSourceFallback(shell, size) {
+  sourceThumbCtx.clearRect(0, 0, size.width, size.height);
+  const frame = fitImageFrame(shell.image_width || size.width, shell.image_height || size.height, size.width, size.height);
+  if (!drawContourFallbackThumb(sourceThumbCtx, shell, frame, size.width, size.height)) {
+    sourceThumbCtx.fillStyle = shellRgb(shell, 0.84);
+    sourceThumbCtx.beginPath();
+    sourceThumbCtx.ellipse(size.width / 2, size.height / 2, size.width * 0.28, size.height * 0.36, 0, 0, Math.PI * 2);
+    sourceThumbCtx.fill();
+  }
+  state.sourceFrame = null;
+  if (els.sourceSpinner) els.sourceSpinner.hidden = true;
+  renderPalette(false);
+}
+
 async function renderSourceShell(shell) {
   if (!shell) return;
   const token = ++state.sourceToken;
@@ -1551,13 +1551,14 @@ async function renderSourceShell(shell) {
     return;
   }
   const size = resizeCanvas(els.sourceThumb, sourceThumbCtx);
-  sourceThumbCtx.fillStyle = "#050505";
-  sourceThumbCtx.fillRect(0, 0, size.width, size.height);
   els.sourceImage.hidden = true;
   els.sourceThumb.hidden = false;
+  drawSourceFallback(shell, size);
   const source = thumbnailSourceRect(shell);
-  const image = source ? await loadThumbnailPage(source.page) : null;
+  if (!source) return;
+  const image = await loadThumbnailPage(source.page);
   if (token !== state.sourceToken || state.selected !== shell) return;
+  sourceThumbCtx.clearRect(0, 0, size.width, size.height);
   const frame = drawLoadedThumbnailImage(sourceThumbCtx, shell, source, image, size.width, size.height);
   if (frame) {
     state.sourceFrame = frame;
@@ -1565,7 +1566,7 @@ async function renderSourceShell(shell) {
     renderPalette(true);
     return;
   }
-  setSourceImageUrl(datasetAsset(shell.file), shell, shell.species);
+  drawSourceFallback(shell, size);
 }
 
 function shellMapVector(shell) {
@@ -2812,6 +2813,7 @@ function setupEvents() {
 window.shellspacePerf = {
   loadedThumbnailPageCount: () => state.loadedThumbnailPages.size,
   warmThumbnails: () => warmThumbnailPages({ eager: true }),
+  selectedId: () => state.selected?.id ?? null,
   neighborCacheSize: () => state.neighborCache.size,
   surpriseQueueSize: () => state.surpriseQueue.length,
   surpriseReadyCount: () => state.surpriseQueue.filter((entry) => entry.ready || entry.page == null || state.loadedThumbnailPages.has(entry.page)).length,

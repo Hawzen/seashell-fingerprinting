@@ -456,19 +456,15 @@ def run_browser_check(
 
 	              const perfClickCount = {perf_clicks};
 	              if (perfClickCount > 0) {{
-	                await page.waitForFunction(
-	                  () => (window.shellspacePerf?.surpriseReadyCount?.() || 0) >= 2,
-	                  null,
-	                  {{ timeout: 120000 }}
-	                );
 	                const samples = [];
+	                const selectedIds = [];
 	                for (let index = 0; index < perfClickCount; index += 1) {{
 	                  const before = await page.evaluate(() => ({{
 	                    hash: document.querySelector('#physicalHash')?.textContent || '',
 	                    selected: document.querySelector('#selectedName')?.textContent || '',
 	                  }}));
 	                  const started = await page.evaluate(() => performance.now());
-	                  await page.click('#randomShell', {{ timeout: 10000, noWaitAfter: true }});
+	                  await page.evaluate(() => document.querySelector('#randomShell').click());
 	                  await page.waitForFunction(
 	                    (previous) => {{
 	                      const hash = document.querySelector('#physicalHash')?.textContent || '';
@@ -480,22 +476,29 @@ def run_browser_check(
 	                    {{ timeout: 120000 }}
 	                  );
 	                  samples.push(await page.evaluate((start) => performance.now() - start, started));
+	                  selectedIds.push(await page.evaluate(() => window.shellspacePerf?.selectedId?.() ?? -1));
 	                }}
 	                const sorted = [...samples].sort((a, b) => a - b);
+	                const uniqueSelected = new Set(selectedIds).size;
 	                const perf = {{
 	                  samples: samples.map((value) => Math.round(value)),
 	                  median: sorted[Math.floor(sorted.length / 2)],
 	                  p90: sorted[Math.floor(sorted.length * 0.9)],
 	                  loadedPages: await page.evaluate(() => window.shellspacePerf?.loadedThumbnailPageCount?.() ?? -1),
+	                  uniqueSelected,
 	                }};
 	                console.log(`surprise perf ${{JSON.stringify({{
 	                  samples: perf.samples,
 	                  median: Math.round(perf.median),
 	                  p90: Math.round(perf.p90),
 	                  loadedPages: perf.loadedPages,
+	                  uniqueSelected: perf.uniqueSelected,
 	                }})}}`);
 	                if (perf.median > {perf_max_median_ms} || perf.p90 > {perf_max_p90_ms}) {{
 	                  throw new Error(`surprise perf failed: ${{JSON.stringify(perf)}}`);
+	                }}
+	                if (uniqueSelected < Math.min(7, perfClickCount)) {{
+	                  throw new Error(`surprise randomness failed: ${{JSON.stringify(perf)}}`);
 	                }}
 	              }}
 
