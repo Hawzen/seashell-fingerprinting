@@ -135,7 +135,6 @@ def verify_entrypoint() -> None:
     parser.feed(text)
     required_ids = {
         "scatterCanvas",
-        "mapSpaceSelect",
         "xAxisSelect",
         "yAxisSelect",
         "colorModeSelect",
@@ -158,7 +157,7 @@ def verify_entrypoint() -> None:
     missing = sorted(required_ids - parser.ids)
     if missing:
         raise AssertionError(f"index.html is missing required element ids: {missing}")
-    expected_color_modes = ["species", "shell", "pattern", "lightness", "chroma", "roughness", "concavity", "trait"]
+    expected_color_modes = ["species", "shell", "pattern", "lightness", "chroma", "roughness", "concavity"]
     if parser.options.get("colorModeSelect") != expected_color_modes:
         raise AssertionError(f"Unexpected color modes: {parser.options.get('colorModeSelect')}")
     retired = [
@@ -170,6 +169,9 @@ def verify_entrypoint() -> None:
         "validation_preview",
         "Stats",
         "Haskell",
+        "Seashell PCA Explorer",
+        "Shape + traits",
+        "Trait PC1",
     ]
     for marker in retired:
         if marker in text:
@@ -388,10 +390,13 @@ def run_browser_check(url: str) -> None:
                 throw new Error(`color mix failed: ${{JSON.stringify(color)}}`);
               }}
 
-              await page.selectOption('#mapSpaceSelect', 'trait');
-              await page.waitForTimeout(200);
-              const traitText = await page.textContent('#pcaInterpretation');
-              if (traitText.includes('positive values') || traitText.length < 8) throw new Error(`trait interpretation failed: ${{traitText}}`);
+              const axisText = await page.textContent('#pcaInterpretation');
+              if (
+                axisText.includes('positive values') ||
+                !axisText.includes('PC1') ||
+                axisText.includes('Elongation') ||
+                axisText.includes('Pattern')
+              ) throw new Error(`axis labels failed: ${{axisText}}`);
 
               await page.setInputFiles('#uploadInput', uploadPath);
               await page.waitForTimeout(650);

@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Seashell PCA Explorer</title>
+    <title>Shellspace</title>
     <link rel="stylesheet" href="public/styles.css" />
   </head>
   <body>
     <header class="topbar">
       <div>
-        <h1>Seashell PCA Explorer</h1>
+        <h1>Shellspace</h1>
         <p id="statusLine">Loading shell model</p>
       </div>
       <div class="top-actions">
@@ -26,20 +26,15 @@
             <span>Search</span>
             <input id="searchBox" type="search" placeholder="Species or filename" />
           </label>
-          <button id="randomShell" title="Select a random visible shell">Random</button>
+          <button id="randomShell" title="Select a random visible shell">Surprise me</button>
+          <button id="uploadShell" class="upload-shell" title="Bring your own shell">+ Bring your own shell</button>
+          <input id="uploadInput" type="file" accept="image/*" hidden />
         </section>
 
         <section class="panel-section map-controls">
           <div class="section-title">
             <h2>Map</h2>
           </div>
-          <label class="field">
-            <span>Space</span>
-            <select id="mapSpaceSelect">
-              <option value="contour">Contour shape</option>
-              <option value="trait">Shape + traits</option>
-            </select>
-          </label>
           <div class="axis-grid">
             <label>
               <span>X</span>
@@ -60,13 +55,12 @@
               <option value="chroma">Chroma</option>
               <option value="roughness">Roughness</option>
               <option value="concavity">Concavity</option>
-              <option value="trait">Trait PC1</option>
             </select>
           </label>
         </section>
 
         <section class="panel-section pca-panel">
-          <h2>PCA Meaning</h2>
+          <h2>PCA Axes</h2>
           <div id="pcaInterpretation"></div>
         </section>
 
@@ -107,11 +101,9 @@
           <div class="section-title">
             <h2>Generated Shell</h2>
             <div class="title-actions">
-              <button id="uploadShell" class="upload-shell" title="Bring your own shell">+ Bring your own shell</button>
               <button id="exportSvg" title="Export generated shell as SVG">SVG</button>
             </div>
           </div>
-          <input id="uploadInput" type="file" accept="image/*" hidden />
           <canvas id="outlineCanvas" width="420" height="420"></canvas>
           <div id="generatorStatus" class="status-box">PCA reconstruction</div>
         </section>

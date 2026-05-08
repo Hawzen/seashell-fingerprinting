@@ -3,8 +3,7 @@ const repoBase = publicBase.endsWith("/public/")
   ? publicBase.slice(0, -"public/".length)
   : publicBase;
 
-const mapSpaces = ["contour", "trait"];
-const colorModes = ["species", "shell", "pattern", "lightness", "chroma", "roughness", "concavity", "trait"];
+const colorModes = ["species", "shell", "pattern", "lightness", "chroma", "roughness", "concavity"];
 const overlayLayerNames = ["contour", "center"];
 
 const state = {
@@ -28,12 +27,10 @@ const state = {
   colorRange: null,
   generatorKernel: null,
   generatorKernelReady: false,
-  mapSpace: "contour",
   xAxis: 0,
   yAxis: 1,
   colorMode: "species",
   pcValues: [],
-  traitPcValues: [],
   overlayLayers: {
     contour: true,
     center: true,
@@ -55,7 +52,6 @@ const els = {
   statusLine: document.querySelector("#statusLine"),
   search: document.querySelector("#searchBox"),
   randomShell: document.querySelector("#randomShell"),
-  mapSpaceSelect: document.querySelector("#mapSpaceSelect"),
   xAxisSelect: document.querySelector("#xAxisSelect"),
   yAxisSelect: document.querySelector("#yAxisSelect"),
   colorModeSelect: document.querySelector("#colorModeSelect"),
@@ -223,17 +219,10 @@ function updateHashState() {
   if (!state.hashReady || state.suppressHash) return;
   const params = new URLSearchParams();
   if (state.selected) params.set("id", String(state.selected.id));
-  params.set("space", state.mapSpace);
   params.set("x", String(state.xAxis));
   params.set("y", String(state.yAxis));
   params.set("color", state.colorMode);
   params.set("pc", state.pcValues.slice(0, 6).map((value) => Number(value).toFixed(3)).join(","));
-  if (state.traitPcValues.length) {
-    params.set(
-      "trait",
-      state.traitPcValues.slice(0, 6).map((value) => Number(value).toFixed(3)).join(","),
-    );
-  }
   const next = `${window.location.pathname}${window.location.search}#${params.toString()}`;
   window.history.replaceState(null, "", next);
 }
@@ -262,44 +251,31 @@ function contourAxisCount() {
   return Math.min(6, state.model?.contour_visible_component_count || 0);
 }
 
-function traitAxisCount() {
-  return Math.min(6, state.model?.trait_visible_component_count || 0);
-}
-
 function axisOptionCount() {
-  return state.mapSpace === "trait" && traitAxisCount() ? traitAxisCount() : contourAxisCount();
+  return contourAxisCount();
 }
 
 function activeAxisValues() {
-  return state.mapSpace === "trait" ? state.traitPcValues : state.pcValues;
+  return state.pcValues;
 }
 
 function axisRange(axisIndex) {
-  if (state.mapSpace === "trait" && state.model.trait_pca_ranges?.[axisIndex]) {
-    return state.model.trait_pca_ranges[axisIndex];
-  }
   return state.model.contour_pca_ranges?.[axisIndex];
 }
 
 function axisVariance(axisIndex) {
-  if (state.mapSpace === "trait") {
-    return state.model.trait_explained_variance_ratio?.[axisIndex] || 0;
-  }
   return state.model.contour_explained_variance_ratio?.[axisIndex] || 0;
 }
 
-function axisMeaning(axisIndex, space = state.mapSpace) {
-  const item = state.model?.pca_interpretation?.[space]?.[axisIndex];
-  const label = item?.label || item?.summary || "";
-  return label && !/^PC\d+$/i.test(label) ? label : `PC${axisIndex + 1}`;
+function axisMeaning(axisIndex) {
+  return `PC${axisIndex + 1}`;
 }
 
 function axisLabel(axisIndex) {
-  return `${state.mapSpace === "trait" ? "Trait" : "Contour"} ${axisMeaning(axisIndex)}`;
+  return axisMeaning(axisIndex);
 }
 
 function axisValue(shell, axisIndex) {
-  if (state.mapSpace === "trait" && shell.trait_pc?.length) return shell.trait_pc[axisIndex] || 0;
   return shell.contour_pc?.[axisIndex] || 0;
 }
 
@@ -369,11 +345,6 @@ function pointColor(shell) {
   if (state.colorMode === "concavity") {
     const t = clamp01((shell.contour_concavity || 0) / 0.32);
     return `hsl(${320 - t * 185}, 56%, ${35 + t * 11}%)`;
-  }
-  if (state.colorMode === "trait") {
-    const range = state.model.trait_pca_ranges?.[0];
-    const t = range ? clamp01(((shell.trait_pc?.[0] || 0) - range.p01) / (range.p99 - range.p01)) : 0.5;
-    return `hsl(${254 - t * 220}, 56%, ${34 + Math.abs(t - 0.5) * 18}%)`;
   }
   return speciesColor(shell.species);
 }
@@ -530,20 +501,6 @@ function setAxes(xAxis, yAxis) {
   scheduleHashUpdate();
 }
 
-function setMapSpace(space) {
-  state.mapSpace = mapSpaces.includes(space) && (space !== "trait" || traitAxisCount()) ? space : "contour";
-  const count = axisOptionCount();
-  state.xAxis = Math.min(state.xAxis, Math.max(0, count - 1));
-  state.yAxis = Math.min(state.yAxis, Math.max(0, count - 1));
-  if (state.xAxis === state.yAxis && count > 1) state.yAxis = state.xAxis === 0 ? 1 : 0;
-  els.mapSpaceSelect.value = state.mapSpace;
-  buildAxisControls();
-  state.viewport = initialViewport(state.xAxis, state.yAxis);
-  renderPcaInterpretation();
-  scheduleDraw();
-  scheduleHashUpdate();
-}
-
 function buildPcControls() {
   els.pcControls.innerHTML = "";
   const count = contourAxisCount();
@@ -558,7 +515,7 @@ function buildPcControls() {
     row.dataset.pcRow = String(index);
 
     const label = document.createElement("label");
-    label.textContent = axisMeaning(index, "contour");
+    label.textContent = axisMeaning(index);
     const slider = document.createElement("input");
     slider.type = "range";
     slider.min = String(low);
@@ -602,28 +559,8 @@ function setPcValues(values, updateHash = true) {
   if (updateHash) scheduleHashUpdate();
 }
 
-function contourPcValuesFromTrait(coords) {
-  const schema = state.model.trait_feature_schema || [];
-  const mean = state.model.trait_mean || [];
-  const components = state.model.trait_components || [];
-  if (!schema.length || !mean.length || !components.length) return null;
-  const contourValues = [...state.pcValues];
-  for (let featureIndex = 0; featureIndex < schema.length; featureIndex += 1) {
-    const spec = schema[featureIndex];
-    if (!String(spec.name || "").startsWith("contour_pc")) continue;
-    let weighted = mean[featureIndex] || 0;
-    for (let pc = 0; pc < components.length; pc += 1) {
-      weighted += (coords[pc] || 0) * (components[pc]?.[featureIndex] || 0);
-    }
-    const raw = (weighted / (spec.weight || 1)) * (spec.scale || 1) + (spec.mean || 0);
-    const index = Number(String(spec.name).replace("contour_pc", "")) - 1;
-    if (Number.isInteger(index) && index >= 0) contourValues[index] = raw;
-  }
-  return contourValues;
-}
-
 function renderPcaInterpretation() {
-  const items = state.model.pca_interpretation?.[state.mapSpace] || [];
+  const items = state.model.pca_interpretation?.contour || [];
   els.pcaInterpretation.innerHTML = "";
   for (const item of items.slice(0, axisOptionCount())) {
     const axis = document.createElement("article");
@@ -632,7 +569,7 @@ function renderPcaInterpretation() {
     const heading = document.createElement("h3");
     heading.textContent = axisMeaning(item.axis - 1);
     const meta = document.createElement("p");
-    meta.textContent = `PC${item.axis} · ${formatNumber((item.explained || 0) * 100, 1)}%`;
+    meta.textContent = `${formatNumber((item.explained || 0) * 100, 1)}%`;
     axis.append(heading, meta);
     els.pcaInterpretation.append(axis);
   }
@@ -1078,7 +1015,6 @@ function drawSourceOverlay() {
 }
 
 function shellMapVector(shell) {
-  if (state.mapSpace === "trait" && shell.trait_pc?.length) return shell.trait_pc;
   return shell.contour_pc || [];
 }
 
@@ -1293,10 +1229,6 @@ function selectShell(shell) {
     state.pcValues[index] = value;
     updatePcControl(index, value);
   });
-  (shell.trait_pc || []).forEach((value, index) => {
-    state.traitPcValues[index] = value;
-  });
-
   els.selectedName.textContent = shell.species;
   els.selectedDetails.innerHTML = "";
   const details = [
@@ -1304,7 +1236,6 @@ function selectShell(shell) {
     ["Specimen", shell.specimen_label || shell.specimen || "-"],
     ["View", shell.view_label || shell.view || "-"],
     ["Contour PC", shell.contour_pc?.slice(0, 2).map((value) => formatNumber(value, 3)).join(", ") || "-"],
-    ["Trait PC", shell.trait_pc?.slice(0, 2).map((value) => formatNumber(value, 3)).join(", ") || "-"],
     ["Area", shell.area?.toLocaleString() || "-"],
     ["Lightness", formatNumber(shell.color_l_mean, 3)],
     ["Chroma", formatNumber(shell.color_chroma_mean, 3)],
@@ -1349,18 +1280,11 @@ function setTargetFromEvent(event) {
   const rect = els.scatter.getBoundingClientRect();
   const size = resizeCanvas(els.scatter, scatterCtx);
   const point = screenToWorld(event.clientX - rect.left, event.clientY - rect.top, size);
-  if (state.mapSpace === "trait") {
-    state.traitPcValues[state.xAxis] = point.x;
-    state.traitPcValues[state.yAxis] = point.y;
-    const contourValues = contourPcValuesFromTrait(state.traitPcValues);
-    if (contourValues) setPcValues(contourValues, false);
-  } else {
-    state.pcValues[state.xAxis] = point.x;
-    state.pcValues[state.yAxis] = point.y;
-    updatePcControl(state.xAxis, point.x);
-    updatePcControl(state.yAxis, point.y);
-    reconstructFromPc();
-  }
+  state.pcValues[state.xAxis] = point.x;
+  state.pcValues[state.yAxis] = point.y;
+  updatePcControl(state.xAxis, point.x);
+  updatePcControl(state.yAxis, point.y);
+  reconstructFromPc();
   generateLocalShellFromTarget();
   scheduleDraw();
   scheduleHashUpdate();
@@ -2090,7 +2014,6 @@ function resetToMeanShape() {
 function setupEvents() {
   els.search.addEventListener("input", updateFilter);
   els.randomShell.addEventListener("click", selectRandomShell);
-  els.mapSpaceSelect.addEventListener("change", () => setMapSpace(els.mapSpaceSelect.value));
   els.xAxisSelect.addEventListener("change", () => setAxes(Number(els.xAxisSelect.value), state.yAxis));
   els.yAxisSelect.addEventListener("change", () => setAxes(state.xAxis, Number(els.yAxisSelect.value)));
   els.colorModeSelect.addEventListener("change", () => {
@@ -2213,7 +2136,6 @@ async function init() {
     : `${model.processed_count.toLocaleString()} shells`;
 
   const initialHash = parseHashState();
-  if (mapSpaces.includes(initialHash.get("space"))) state.mapSpace = initialHash.get("space");
   if (colorModes.includes(initialHash.get("color"))) state.colorMode = initialHash.get("color");
   const axisCount = axisOptionCount();
   const x = Number(initialHash.get("x"));
@@ -2224,7 +2146,6 @@ async function init() {
   state.viewport = initialViewport(state.xAxis, state.yAxis);
   buildAxisControls();
   buildPcControls();
-  els.mapSpaceSelect.value = state.mapSpace;
   els.colorModeSelect.value = state.colorMode;
   updateOverlayButtons();
   renderPcaInterpretation();
@@ -2238,18 +2159,6 @@ async function init() {
     .map((value) => Number(value))
     .filter((value) => Number.isFinite(value));
   if (pcValues.length) setPcValues(pcValues.slice(0, 6), false);
-  const traitValues = (initialHash.get("trait") || "")
-    .split(",")
-    .filter((value) => value.trim() !== "")
-    .map((value) => Number(value))
-    .filter((value) => Number.isFinite(value));
-  traitValues.slice(0, 6).forEach((value, index) => {
-    state.traitPcValues[index] = value;
-  });
-  if (state.mapSpace === "trait" && traitValues.length) {
-    const contourValues = contourPcValuesFromTrait(state.traitPcValues);
-    if (contourValues) setPcValues(contourValues, false);
-  }
   state.suppressHash = false;
   state.hashReady = true;
   resetColorMix();

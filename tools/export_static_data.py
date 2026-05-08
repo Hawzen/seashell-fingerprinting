@@ -98,13 +98,16 @@ def file_checksum(path: Path) -> dict[str, object]:
 
 
 def write_gzip_json(path: Path, payload: dict[str, object]) -> None:
-    with gzip.open(path, "wt", encoding="utf-8", compresslevel=9) as handle:
-        json.dump(payload, handle, separators=(",", ":"))
+    raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    with path.open("wb") as fileobj:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=fileobj, compresslevel=9, mtime=0) as handle:
+            handle.write(raw)
 
 
 def gzip_bytes_to_file(path: Path, payload: bytes) -> None:
-    with gzip.open(path, "wb", compresslevel=9) as handle:
-        handle.write(payload)
+    with path.open("wb") as fileobj:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=fileobj, compresslevel=9, mtime=0) as handle:
+            handle.write(payload)
 
 
 def load_json_maybe_gzip(path: Path) -> dict[str, object] | None:
@@ -578,38 +581,6 @@ def axis_examples(
     }
 
 
-AXIS_TASTE_LABELS = [
-    ("color_pattern", "Pattern"),
-    ("texture", "Texture"),
-    ("roughness", "Roughness"),
-    ("contour_concavity", "Concavity"),
-    ("solidity", "Fullness"),
-    ("aspect_ratio", "Elongation"),
-    ("mask_ratio", "Mass"),
-    ("color_l_std", "Contrast"),
-    ("contrast", "Contrast"),
-    ("color_l_mean", "Lightness"),
-    ("lightness", "Lightness"),
-    ("chroma", "Color"),
-    ("saturation", "Color"),
-    ("hue", "Hue"),
-    ("color_a", "Hue"),
-    ("color_b", "Hue"),
-    ("contour_pc", "Shape"),
-]
-
-
-def axis_taste_label(drivers: list[dict[str, object]], axis: int) -> str:
-    for driver in drivers:
-        if float(driver.get("strength", 0.0) or 0.0) < 0.12:
-            continue
-        haystack = f"{driver.get('name', '')} {driver.get('label', '')}".lower()
-        for needle, label in AXIS_TASTE_LABELS:
-            if needle in haystack:
-                return label
-    return f"PC{axis + 1}"
-
-
 def pca_interpretations(
     scores: np.ndarray,
     records: list[dict],
@@ -637,9 +608,9 @@ def pca_interpretations(
         axes.append(
             {
                 "axis": axis + 1,
-                "label": axis_taste_label(drivers, axis),
+                "label": f"PC{axis + 1}",
                 "explained": quantize(float(explained[axis]), 8),
-                "summary": axis_taste_label(drivers, axis),
+                "summary": f"PC{axis + 1}",
                 "drivers": drivers,
                 "correlations": correlations[:8],
                 "examples": axis_examples(scores[:, axis], records),
@@ -842,8 +813,8 @@ def main() -> None:
     parser.add_argument("--contour-scale", type=int, default=16)
     parser.add_argument("--contour-workers", type=int, default=0)
     parser.add_argument("--no-contours", action="store_true")
-    parser.add_argument("--thumbnail-size", type=int, default=56)
-    parser.add_argument("--thumbnail-quality", type=int, default=42)
+    parser.add_argument("--thumbnail-size", type=int, default=160)
+    parser.add_argument("--thumbnail-quality", type=int, default=64)
     parser.add_argument("--thumbnail-per-atlas", type=int, default=2048)
     parser.add_argument("--thumbnail-columns", type=int, default=64)
     parser.add_argument("--thumbnail-budget-mib", type=float, default=50.0)

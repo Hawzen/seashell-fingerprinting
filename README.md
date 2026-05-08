@@ -1,4 +1,4 @@
-# Seashell PCA Explorer
+# Shellspace
 
 Static contour, trait, and color PCA explorer for seashell images.
 
