@@ -185,6 +185,18 @@ def verify_entrypoint() -> None:
     for marker in retired:
         if marker in text:
             raise AssertionError(f"Retired UI/path marker is still present in index.html: {marker}")
+    for marker in ["rpg-loader", "loader-shell-top", "loader-shell-bottom", "loader-pearl", "pearl-spark"]:
+        if marker not in text:
+            raise AssertionError(f"Loading animation is missing {marker!r}")
+    styles = Path("public/styles.css").read_text(encoding="utf-8")
+    for marker in [
+        "@keyframes loader-shell-top",
+        "@keyframes loader-shell-bottom",
+        "@keyframes loader-pearl",
+        "@keyframes loader-spark",
+    ]:
+        if marker not in styles:
+            raise AssertionError(f"Loading animation styles are missing {marker!r}")
     if not Path("public/shell-generator.wasm").exists():
         raise AssertionError("Missing public/shell-generator.wasm")
 
