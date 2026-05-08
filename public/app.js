@@ -5,15 +5,6 @@ const repoBase = publicBase.endsWith("/public/")
 
 const colorModes = ["locality", "species", "conservation", "shell", "pattern", "lightness", "concavity"];
 const starStorageKey = "shellspace-starred";
-const morphTraitDefs = [
-  { key: "spire_height", label: "Spire height" },
-  { key: "aperture_ratio", label: "Aperture ratio" },
-  { key: "shoulder_angle", label: "Shoulder angle" },
-  { key: "rib_density", label: "Rib density" },
-  { key: "asymmetry", label: "Asymmetry" },
-  { key: "whorl_expansion_rate", label: "Whorl expansion" },
-  { key: "damage_score", label: "Damage score" },
-];
 const rangeFilterDefs = [
   { key: "lightness", label: "Lightness", format: "percent" },
   { key: "area", label: "Area", format: "percent" },
@@ -30,16 +21,6 @@ const colorFilterOptions = [
   ["cool", "Blue / gray"],
   ["pattern", "High pattern"],
 ];
-
-const regionGeo = {
-  AFRICA: { lat: 2, lon: 20 },
-  ASIA: { lat: 32, lon: 92 },
-  EUROPE: { lat: 50, lon: 14 },
-  NORTH_AMERICA: { lat: 43, lon: -100 },
-  OCEANIA: { lat: -22, lon: 140 },
-  SOUTH_AMERICA: { lat: -18, lon: -60 },
-  ANTARCTICA: { lat: -78, lon: 20 },
-};
 
 const state = {
   shells: [],
@@ -64,17 +45,7 @@ const state = {
   pcValues: [],
   morphFilters: new Map(),
   categoryFilters: { origin: "", rarity: "", color: "" },
-  compareShell: null,
-  geoRecords: [],
-  geoPoints: [],
-  geoCache: new Map(),
   conservationCache: new Map(),
-  conservationFetchToken: 0,
-  conservationTimer: 0,
-  conservationAbort: null,
-  geoFetchToken: 0,
-  geoTimer: 0,
-  geoYear: 0,
   starredIds: [],
   showAllStars: false,
   speciesCounts: new Map(),
@@ -88,7 +59,6 @@ const state = {
   tooltipEvent: null,
   tooltipLastAt: 0,
   draggingTarget: false,
-  scatterBrush: null,
   panningViewport: null,
   walkingPca: false,
   walkFrame: 0,
@@ -113,7 +83,6 @@ const state = {
   neighborToken: 0,
   pointColorCache: new Map(),
   paletteCache: new Map(),
-  audioContext: null,
 };
 
 const els = {
@@ -146,20 +115,6 @@ const els = {
   pcControls: document.querySelector("#pcControls"),
   meanShape: document.querySelector("#meanShape"),
   walkPca: document.querySelector("#walkPca"),
-  compareSearch: document.querySelector("#compareSearch"),
-  speciesList: document.querySelector("#speciesList"),
-  compareNearest: document.querySelector("#compareNearest"),
-  compareRandom: document.querySelector("#compareRandom"),
-  hybridShell: document.querySelector("#hybridShell"),
-  emptyShell: document.querySelector("#emptyShell"),
-  playShell: document.querySelector("#playShell"),
-  traitCompare: document.querySelector("#traitCompare"),
-  walkStatus: document.querySelector("#walkStatus"),
-  geoCanvas: document.querySelector("#geoCanvas"),
-  geoYear: document.querySelector("#geoYear"),
-  geoYearLabel: document.querySelector("#geoYearLabel"),
-  geoStatus: document.querySelector("#geoStatus"),
-  liveLinks: document.querySelector("#liveLinks"),
   uploadShell: document.querySelector("#uploadShell"),
   uploadInput: document.querySelector("#uploadInput"),
   exportSvg: document.querySelector("#exportSvg"),
@@ -175,7 +130,6 @@ const els = {
 const scatterCtx = els.scatter.getContext("2d");
 const outlineCtx = els.outline.getContext("2d");
 const sourceThumbCtx = els.sourceThumb.getContext("2d");
-const geoCtx = els.geoCanvas?.getContext("2d");
 const normalizedContourCache = new Map();
 const thumbnailPageCache = new Map();
 
@@ -372,31 +326,13 @@ function buildSpeciesTraitsLookup(speciesTraitsPayload) {
   return lookup;
 }
 
-function deriveMorphTraits(shell) {
-  const aspect = clamp01(((shell.aspect_ratio || 1) - 1) / 3);
-  const roughness = clamp01((shell.roughness || 0) / 0.045);
-  const concavity = clamp01((shell.contour_concavity || 0) / 0.32);
-  const texture = clamp01((shell.texture_gradient_mean || 0) / 0.9);
-  const pattern = clamp01((shell.color_pattern_strength || 0) / 0.24);
-  const contrast = clamp01((shell.color_pattern_contrast || 0) / 0.18);
+function deriveMorphMetrics(shell) {
   const solidityLoss = clamp01((1 - (shell.contour_solidity || 1)) / 0.32);
-  const componentNoise = clamp01(((shell.component_count || 1) - 1) / 3);
-  const mask = clamp01(shell.mask_ratio || 0.5);
-  const visible = clamp01(shell.visible_shell_ratio || 0.75);
   const pc = shell.contour_pc || [];
-  const pc1 = clamp01(((pc[0] || 0) + 12) / 24);
   const pc2 = clamp01(((pc[1] || 0) + 7) / 14);
-  const pc3 = clamp01(((pc[2] || 0) + 4) / 8);
   const pc4 = clamp01(((pc[3] || 0) + 3) / 6);
-  const aperture = clamp01(0.46 * mask + 0.3 * visible + 0.24 * (1 - aspect));
   return {
-    spire_height: clamp01(0.62 * aspect + 0.2 * pc1 + 0.18 * (1 - mask)),
-    aperture_ratio: aperture,
-    shoulder_angle: clamp01(0.45 * concavity + 0.28 * pc3 + 0.27 * (1 - aperture)),
-    rib_density: clamp01(0.46 * texture + 0.28 * roughness + 0.26 * pattern),
     asymmetry: clamp01(0.4 * Math.abs(pc2 - 0.5) * 2 + 0.34 * Math.abs(pc4 - 0.5) * 2 + 0.26 * solidityLoss),
-    whorl_expansion_rate: clamp01(0.42 * (1 - aspect) + 0.28 * mask + 0.3 * pc1),
-    damage_score: clamp01(0.38 * solidityLoss + 0.26 * componentNoise + 0.22 * concavity + 0.14 * contrast),
   };
 }
 
@@ -415,8 +351,7 @@ function buildDerivedShellData(shells, localityPayload = null, speciesTraitsPayl
     shell.fingerprint_hash = fingerprintHash(shell);
     shell.species_sample_count = state.speciesCounts.get(shell.species) || 1;
     shell.species_traits = traits || null;
-    shell.morph_traits = deriveMorphTraits(shell);
-    for (const def of morphTraitDefs) shell[`morph_${def.key}`] = shell.morph_traits[def.key] || 0;
+    shell.morph_traits = deriveMorphMetrics(shell);
     shell.rarity_label = traits?.rarity_label || "Data deficient";
     shell.rarity_reason = traits?.rarity_reason || "";
     shell.global_occurrences = traits?.observation_count || locality?.total_occurrences || 0;
@@ -689,17 +624,9 @@ function pointRgbaForMode(shell, mode) {
     const t = clamp01(shell.color_l_mean ?? 0.5);
     return hslToRgba(48, 0.24, (24 + t * 54) / 100);
   }
-  if (mode === "chroma") {
-    const t = clamp01((shell.color_chroma_mean || 0) / 0.42);
-    return hslToRgba(40 + t * 220, (32 + t * 38) / 100, (34 + t * 14) / 100);
-  }
   if (mode === "pattern") {
     const t = clamp01((shell.color_pattern_strength || 0) / 0.22);
     return hslToRgba(204 - t * 162, (34 + t * 36) / 100, (30 + t * 18) / 100);
-  }
-  if (mode === "roughness") {
-    const t = clamp01((shell.roughness || 0) / 0.035);
-    return hslToRgba(178 - t * 165, 0.6, (32 + t * 13) / 100);
   }
   if (mode === "concavity") {
     const t = clamp01((shell.contour_concavity || 0) / 0.32);
@@ -831,17 +758,6 @@ function drawScatter() {
     scatterCtx.arc(selected.x, selected.y, 6, 0, Math.PI * 2);
     scatterCtx.fill();
     scatterCtx.stroke();
-  }
-  if (state.scatterBrush) {
-    const left = Math.min(state.scatterBrush.startX, state.scatterBrush.currentX);
-    const top = Math.min(state.scatterBrush.startY, state.scatterBrush.currentY);
-    const width = Math.abs(state.scatterBrush.currentX - state.scatterBrush.startX);
-    const height = Math.abs(state.scatterBrush.currentY - state.scatterBrush.startY);
-    scatterCtx.fillStyle = "rgba(40, 122, 116, 0.12)";
-    scatterCtx.strokeStyle = "rgba(40, 122, 116, 0.82)";
-    scatterCtx.lineWidth = 1.5;
-    scatterCtx.fillRect(left, top, width, height);
-    scatterCtx.strokeRect(left, top, width, height);
   }
   scatterCtx.restore();
 }
@@ -1115,104 +1031,9 @@ function selectRandomShell() {
   primeSurpriseQueue(source);
 }
 
-function shellBySpeciesName(name) {
-  const query = String(name || "").trim().toLowerCase();
-  if (!query) return null;
-  return state.shells.find((shell) => shell.species.toLowerCase() === query)
-    || state.shells.find((shell) => shell.species.toLowerCase().includes(query))
-    || null;
-}
-
-function firstNearestShell(shell) {
-  const nearest = nearestContourNeighbors(shell)[0]?.shell;
-  return nearest || randomShellFromSource(state.shells, shell?.id);
-}
-
-function setCompareShell(shell) {
-  if (!shell) return;
-  state.compareShell = shell;
-  if (els.compareSearch) els.compareSearch.value = shell.species;
-  renderTraitCompare();
-  updateLiveLinks();
-  drawGlobe();
-}
-
-function ensureCompareShell() {
-  if (state.compareShell && state.compareShell !== state.selected) return state.compareShell;
-  const shell = firstNearestShell(state.selected);
-  if (shell) setCompareShell(shell);
-  return shell;
-}
-
-function buildSpeciesDatalist(shells) {
-  if (!els.speciesList) return;
-  const names = [...new Set(shells.map((shell) => shell.species))].sort((a, b) => a.localeCompare(b));
-  const fragment = document.createDocumentFragment();
-  for (const name of names) {
-    const option = document.createElement("option");
-    option.value = name;
-    fragment.append(option);
-  }
-  els.speciesList.replaceChildren(fragment);
-}
-
-function renderTraitCompare() {
-  if (!els.traitCompare) return;
-  els.traitCompare.innerHTML = "";
-  const left = state.selected;
-  const right = state.compareShell;
-  if (!left || !right) {
-    els.traitCompare.textContent = "Pick another shell to compare morphology.";
-    return;
-  }
-  for (const def of morphTraitDefs) {
-    const leftValue = left.morph_traits?.[def.key] ?? 0;
-    const rightValue = right.morph_traits?.[def.key] ?? 0;
-    const row = document.createElement("div");
-    row.className = "trait-bar-row";
-    const header = document.createElement("header");
-    const label = document.createElement("span");
-    label.textContent = def.label;
-    const value = document.createElement("span");
-    value.className = "trait-value";
-    value.textContent = `${percentValue(leftValue)} / ${percentValue(rightValue)}`;
-    header.append(label, value);
-    const bars = document.createElement("div");
-    bars.className = "trait-bars";
-    const selectedBar = document.createElement("div");
-    selectedBar.className = "trait-bar";
-    selectedBar.innerHTML = `<span style="--value:${clamp01(leftValue).toFixed(3)}"></span>`;
-    const compareBar = document.createElement("div");
-    compareBar.className = "trait-bar compare";
-    compareBar.innerHTML = `<span style="--value:${clamp01(rightValue).toFixed(3)}"></span>`;
-    bars.append(selectedBar, compareBar);
-    row.append(header, bars);
-    els.traitCompare.append(row);
-  }
-  if (els.walkStatus) {
-    els.walkStatus.textContent = `${left.species} -> ${right.species}. Walk interpolates their contour PCs and updates nearest specimens.`;
-  }
-}
-
-function liveUrl(kind, species) {
+function iucnSearchUrl(species) {
   const encoded = encodeURIComponent(species || "");
-  if (kind === "gbif") return `https://www.gbif.org/occurrence/search?scientific_name=${encoded}`;
-  if (kind === "inaturalist") return `https://www.inaturalist.org/observations?taxon_name=${encoded}`;
   return `https://www.iucnredlist.org/search?query=${encoded}&searchType=species`;
-}
-
-function updateLiveLinks() {
-  if (!els.liveLinks || !state.selected) return;
-  const species = state.selected.species;
-  els.liveLinks.innerHTML = "";
-  for (const [label, kind] of [["GBIF", "gbif"], ["iNaturalist", "inaturalist"], ["IUCN", "iucn"]]) {
-    const link = document.createElement("a");
-    link.href = liveUrl(kind, species);
-    link.target = "_blank";
-    link.rel = "noreferrer";
-    link.textContent = label;
-    els.liveLinks.append(link);
-  }
 }
 
 function speciesCacheKey(species) {
@@ -1279,7 +1100,7 @@ async function lookupConservationStatus(species, { signal = null } = {}) {
   if (!key) return { status: "Not assessed", authority: "", url: "", taxonId: null };
   if (state.conservationCache.has(key)) return state.conservationCache.get(key);
   const params = new URLSearchParams({ q: species, per_page: "8" });
-  const fallback = { status: "Not assessed", authority: "iNaturalist", url: liveUrl("iucn", species), taxonId: null };
+  const fallback = { status: "Not assessed", authority: "iNaturalist", url: iucnSearchUrl(species), taxonId: null };
   try {
     const searchResponse = await fetch(`https://api.inaturalist.org/v1/taxa/autocomplete?${params.toString()}`, { signal });
     if (!searchResponse.ok) return fallback;
@@ -1299,7 +1120,7 @@ async function lookupConservationStatus(species, { signal = null } = {}) {
     const result = {
       status: conservationStatusLabel(record),
       authority: record?.authority || "iNaturalist",
-      url: record?.url || liveUrl("iucn", species),
+      url: record?.url || iucnSearchUrl(species),
       taxonId: taxon.id,
     };
     state.conservationCache.set(key, result);
@@ -1307,274 +1128,6 @@ async function lookupConservationStatus(species, { signal = null } = {}) {
   } catch (error) {
     if (error?.name === "AbortError") throw error;
     return fallback;
-  }
-}
-
-function updateSelectedDetail(label, value) {
-  const terms = Array.from(els.selectedDetails?.querySelectorAll("dt") || []);
-  const term = terms.find((node) => node.textContent === label);
-  const detail = term?.nextElementSibling;
-  if (detail) detail.textContent = value;
-}
-
-function applyConservationLookup(species, lookup) {
-  for (const shell of state.shells) {
-    if (shell.species !== species) continue;
-    shell.live_conservation_status = lookup.status;
-    shell.live_conservation_authority = lookup.authority || "";
-    shell.live_conservation_url = lookup.url || "";
-  }
-  state.pointColorCache.delete("conservation");
-  scheduleDraw();
-}
-
-function updateConservationForShell(shell) {
-  if (!shell?.species || shell.id < 0) return;
-  const key = speciesCacheKey(shell.species);
-  const cached = state.conservationCache.get(key);
-  if (cached) {
-    applyConservationLookup(shell.species, cached);
-    if (state.selected?.species === shell.species) updateSelectedDetail("IUCN", cached.status);
-    return;
-  }
-  window.clearTimeout(state.conservationTimer);
-  if (state.conservationAbort) state.conservationAbort.abort();
-  const token = ++state.conservationFetchToken;
-  if (conservationStatus(shell) === "Not assessed") updateSelectedDetail("IUCN", "Checking live status...");
-  state.conservationTimer = window.setTimeout(async () => {
-    const controller = new AbortController();
-    state.conservationAbort = controller;
-    try {
-      const lookup = await lookupConservationStatus(shell.species, { signal: controller.signal });
-      if (token !== state.conservationFetchToken) return;
-      applyConservationLookup(shell.species, lookup);
-      if (state.selected?.species === shell.species) updateSelectedDetail("IUCN", lookup.status);
-    } catch (error) {
-      if (error?.name !== "AbortError" && token === state.conservationFetchToken && state.selected?.species === shell.species) {
-        updateSelectedDetail("IUCN", conservationStatus(shell));
-      }
-    } finally {
-      if (state.conservationAbort === controller) state.conservationAbort = null;
-    }
-  }, 420);
-}
-
-function countryGeoPoint(code, regionKey = "", index = 0) {
-  const country = state.speciesTraits.get(state.selected?.species || "")?.known_range_countries?.find((item) => item.code === code);
-  const region = regionKey || country?.region || state.speciesTraits.get(state.selected?.species || "")?.region_key || "OCEANIA";
-  const center = regionGeo[region] || regionGeo[String(region).toUpperCase()] || { lat: 0, lon: 0 };
-  const seed = hashString(`${code}|${region}|geo`);
-  const lonJitter = ((seed % 1000) / 1000 - 0.5) * 42;
-  const latJitter = (((seed >>> 10) % 1000) / 1000 - 0.5) * 24;
-  return {
-    lat: Math.max(-72, Math.min(72, center.lat + latJitter + index * 0.35)),
-    lon: ((center.lon + lonJitter + 540) % 360) - 180,
-  };
-}
-
-function projectGlobe(lat, lon, centerLon, size) {
-  const radius = Math.min(size.width, size.height) * 0.42;
-  const latRad = (lat * Math.PI) / 180;
-  const lonRad = ((lon - centerLon) * Math.PI) / 180;
-  const cosLat = Math.cos(latRad);
-  const x = cosLat * Math.sin(lonRad);
-  const y = Math.sin(latRad);
-  const z = cosLat * Math.cos(lonRad);
-  return {
-    x: size.width / 2 + x * radius,
-    y: size.height / 2 - y * radius,
-    visible: z > -0.08,
-    z,
-  };
-}
-
-function geoCanvasSize() {
-  const dpr = window.devicePixelRatio || 1;
-  const rect = els.geoCanvas.getBoundingClientRect();
-  const width = Math.max(260, Math.floor(rect.width * dpr));
-  const height = Math.max(190, Math.floor(rect.height * dpr));
-  if (els.geoCanvas.width !== width || els.geoCanvas.height !== height) {
-    els.geoCanvas.width = width;
-    els.geoCanvas.height = height;
-  }
-  return { width, height, dpr };
-}
-
-function localGeoPointsForShell(shell) {
-  const countries = shell?.species_traits?.known_range_countries || [];
-  return countries.slice(0, 5).map((country, index) => {
-    const point = countryGeoPoint(country.code, shell.species_traits?.region_key || "", index);
-    return {
-      ...point,
-      shell,
-      label: country.label,
-      count: country.count || 1,
-      source: "locality",
-    };
-  });
-}
-
-function drawGlobe() {
-  if (!geoCtx || !els.geoCanvas) return;
-  const size = geoCanvasSize();
-  geoCtx.clearRect(0, 0, size.width, size.height);
-  const centerLon = state.geoPoints.length
-    ? state.geoPoints.reduce((total, point) => total + point.lon, 0) / state.geoPoints.length
-    : 20;
-  const radius = Math.min(size.width, size.height) * 0.42;
-  const cx = size.width / 2;
-  const cy = size.height / 2;
-  geoCtx.save();
-  geoCtx.beginPath();
-  geoCtx.arc(cx, cy, radius, 0, Math.PI * 2);
-  geoCtx.fillStyle = "#e6f0ef";
-  geoCtx.fill();
-  geoCtx.strokeStyle = "rgba(32, 36, 42, 0.2)";
-  geoCtx.lineWidth = 1.4 * size.dpr;
-  geoCtx.stroke();
-  geoCtx.clip();
-  for (let lon = -180; lon <= 180; lon += 30) {
-    geoCtx.beginPath();
-    for (let lat = -75; lat <= 75; lat += 5) {
-      const point = projectGlobe(lat, lon, centerLon, size);
-      if (!point.visible) continue;
-      if (lat === -75) geoCtx.moveTo(point.x, point.y);
-      else geoCtx.lineTo(point.x, point.y);
-    }
-    geoCtx.strokeStyle = "rgba(40, 122, 116, 0.08)";
-    geoCtx.stroke();
-  }
-  for (const point of state.geoPoints) {
-    const projected = projectGlobe(point.lat, point.lon, centerLon, size);
-    if (!projected.visible) continue;
-    point.screenX = projected.x;
-    point.screenY = projected.y;
-    const shell = point.shell || state.selected;
-    const pc = shell?.contour_pc || [];
-    const hue = ((pc[0] || 0) * 14 + (pc[1] || 0) * 9 + 210 + 360) % 360;
-    const dot = Math.max(3.5 * size.dpr, Math.min(13 * size.dpr, Math.sqrt(point.count || 1) * 0.9 * size.dpr));
-    geoCtx.beginPath();
-    geoCtx.arc(projected.x, projected.y, dot, 0, Math.PI * 2);
-    geoCtx.fillStyle = `hsla(${hue}, 62%, 45%, 0.74)`;
-    geoCtx.fill();
-    geoCtx.strokeStyle = "rgba(255,255,255,0.85)";
-    geoCtx.lineWidth = 1 * size.dpr;
-    geoCtx.stroke();
-  }
-  geoCtx.restore();
-}
-
-function updateGeoYearLabel() {
-  if (!els.geoYearLabel) return;
-  state.geoYear = Number(els.geoYear?.value || 0);
-  els.geoYearLabel.textContent = state.geoYear ? String(state.geoYear) : "All years";
-}
-
-function updateGeographyForShell(shell) {
-  if (!shell || !els.geoCanvas) return;
-  updateGeoYearLabel();
-  const token = ++state.geoFetchToken;
-  window.clearTimeout(state.geoTimer);
-  const fallback = [...localGeoPointsForShell(shell)];
-  if (state.compareShell) fallback.push(...localGeoPointsForShell(state.compareShell));
-  state.geoPoints = fallback;
-  drawGlobe();
-  updateLiveLinks();
-  if (els.geoStatus) els.geoStatus.textContent = fallback.length ? "Local country facets shown while live records load." : "No locality facets for this species.";
-  state.geoTimer = window.setTimeout(async () => {
-    const cacheKey = `${shell.species}|${state.geoYear || "all"}`;
-    if (state.geoCache.has(cacheKey)) {
-      state.geoRecords = state.geoCache.get(cacheKey);
-    } else {
-      const params = new URLSearchParams({
-        scientificName: shell.species,
-        hasCoordinate: "true",
-        limit: "80",
-      });
-      if (state.geoYear) params.set("year", String(state.geoYear));
-      try {
-        const response = await fetch(`https://api.gbif.org/v1/occurrence/search?${params.toString()}`);
-        const payload = response.ok ? await response.json() : { results: [] };
-        state.geoRecords = (payload.results || [])
-          .filter((record) => Number.isFinite(record.decimalLatitude) && Number.isFinite(record.decimalLongitude))
-          .map((record) => ({
-            lat: record.decimalLatitude,
-            lon: record.decimalLongitude,
-            year: record.year || null,
-            label: record.country || shell.species,
-            count: 1,
-            shell,
-            source: "gbif",
-          }));
-        state.geoCache.set(cacheKey, state.geoRecords);
-      } catch (_error) {
-        state.geoRecords = [];
-      }
-    }
-    if (token !== state.geoFetchToken) return;
-    if (state.geoRecords.length) {
-      state.geoPoints = state.geoRecords;
-      if (els.geoStatus) els.geoStatus.textContent = `${state.geoRecords.length} live GBIF coordinate records${state.geoYear ? ` from ${state.geoYear}` : ""}.`;
-    } else {
-      state.geoPoints = fallback;
-      if (els.geoStatus) els.geoStatus.textContent = fallback.length ? "Using local country facets; live coordinates unavailable." : "No geography available.";
-    }
-    drawGlobe();
-  }, 650);
-}
-
-function selectFromGlobeEvent(event) {
-  if (!state.geoPoints.length) return;
-  const rect = els.geoCanvas.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  const x = (event.clientX - rect.left) * dpr;
-  const y = (event.clientY - rect.top) * dpr;
-  let best = null;
-  let bestDistance = Infinity;
-  for (const point of state.geoPoints) {
-    if (!Number.isFinite(point.screenX) || !Number.isFinite(point.screenY)) continue;
-    const distance = Math.hypot(point.screenX - x, point.screenY - y);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = point;
-    }
-  }
-  if (best && bestDistance < 22 * dpr && best.shell) {
-    centerViewportOnShell(best.shell);
-    selectShell(best.shell);
-  }
-}
-
-function playShellMotif(shell = state.selected) {
-  if (!shell) return;
-  const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext) return;
-  if (!state.audioContext) state.audioContext = new AudioContext();
-  const ctx = state.audioContext;
-  const now = ctx.currentTime + 0.02;
-  const pc = shell.contour_pc || [];
-  const traits = shell.morph_traits || {};
-  const scale = [0, 2, 3, 7, 9, 12, 14, 15];
-  const base = 180 + (traits.spire_height || 0) * 180 + (shell.color_chroma_mean || 0) * 240;
-  const master = ctx.createGain();
-  master.gain.setValueAtTime(0.0001, now);
-  master.gain.exponentialRampToValueAtTime(0.12, now + 0.03);
-  master.gain.exponentialRampToValueAtTime(0.0001, now + 1.75);
-  master.connect(ctx.destination);
-  for (let index = 0; index < 8; index += 1) {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const bend = Math.round(((pc[index % pc.length] || 0) + 8) % scale.length);
-    const frequency = base * 2 ** ((scale[(index + bend) % scale.length]) / 12);
-    osc.type = (traits.rib_density || 0) > 0.55 ? "square" : "triangle";
-    osc.frequency.setValueAtTime(frequency, now + index * 0.16);
-    gain.gain.setValueAtTime(0.0001, now + index * 0.16);
-    gain.gain.exponentialRampToValueAtTime(0.11 + (traits.aperture_ratio || 0) * 0.08, now + index * 0.16 + 0.025);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.16 + 0.15);
-    osc.connect(gain);
-    gain.connect(master);
-    osc.start(now + index * 0.16);
-    osc.stop(now + index * 0.16 + 0.18);
   }
 }
 
@@ -2674,58 +2227,6 @@ function blendTraits(neighbors, weights, keys = null) {
   return traits;
 }
 
-function blendShellTraits(left, right, amount = 0.5) {
-  const traits = {};
-  const keys = [
-    "roughness",
-    "aspect_ratio",
-    "contour_concavity",
-    "contour_solidity",
-    "color_r_mean",
-    "color_g_mean",
-    "color_b_mean",
-    "color_l_mean",
-    "color_l_std",
-    "color_chroma_mean",
-    "color_chroma_std",
-    "color_saturation_mean",
-    "color_pattern_strength",
-    "color_pattern_contrast",
-    "texture_gradient_mean",
-    "texture_residual_std",
-    "texture_luma_iqr",
-  ];
-  for (const key of keys) {
-    traits[key] = (left?.[key] || 0) * (1 - amount) + (right?.[key] || 0) * amount;
-  }
-  traits.morph_traits = {};
-  for (const def of morphTraitDefs) {
-    traits.morph_traits[def.key] = (left?.morph_traits?.[def.key] || 0) * (1 - amount) + (right?.morph_traits?.[def.key] || 0) * amount;
-  }
-  return traits;
-}
-
-function generateHybridShell(amount = 0.5) {
-  const right = ensureCompareShell();
-  const left = state.selected;
-  if (!left || !right) return;
-  const leftContour = normalizedContour(left);
-  const rightContour = normalizedContour(right);
-  if (!leftContour || !rightContour || leftContour.length !== rightContour.length) return;
-  const out = new Float32Array(leftContour.length);
-  for (let index = 0; index < out.length; index += 1) {
-    out[index] = leftContour[index] * (1 - amount) + rightContour[index] * amount;
-  }
-  state.generatedContour = smoothContour(out, 0.1, 2);
-  state.generatedTraits = blendShellTraits(left, right, amount);
-  state.generatedNeighbors = [{ shell: left, distanceSq: 0 }, { shell: right, distanceSq: 0 }];
-  state.generatedMode = "hybrid";
-  drawOutline();
-  renderPalette();
-  updateHashChips();
-  if (els.walkStatus) els.walkStatus.textContent = `Hybrid: ${left.species} x ${right.species}`;
-}
-
 function generateLocalShellFromTarget() {
   if (!state.contours || !state.contourPoints) return;
   const values = [...activeAxisValues()];
@@ -2774,32 +2275,6 @@ function generateFromPcVector(values, mode = "latent") {
   renderPathNeighbors(neighbors);
   scheduleDraw();
   scheduleHashUpdate();
-}
-
-function sampleEmptyMorphospace() {
-  const axisCount = contourAxisCount();
-  if (!axisCount) return;
-  let bestValues = null;
-  let bestDistance = -1;
-  for (let attempt = 0; attempt < 80; attempt += 1) {
-    const values = [];
-    for (let axis = 0; axis < axisCount; axis += 1) {
-      const range = state.model.contour_pca_ranges[axis];
-      const min = range?.p01 ?? -1;
-      const max = range?.p99 ?? 1;
-      values.push(min + Math.random() * (max - min));
-    }
-    const nearest = nearestMapNeighbors(values, 1)[0];
-    const distance = nearest ? nearest.distanceSq : 0;
-    if (distance > bestDistance) {
-      bestDistance = distance;
-      bestValues = values;
-    }
-  }
-  if (bestValues) {
-    generateFromPcVector(bestValues, "empty");
-    if (els.walkStatus) els.walkStatus.textContent = "Sparse-zone shell: projected from a low-density pocket of contour PCA space.";
-  }
 }
 
 function contourPcDistanceSq(shell, candidate) {
@@ -2858,7 +2333,7 @@ function renderNeighbors(shell, token = state.neighborToken) {
     button.title = `${item.shell.species} (${formatNumber(item.distance, 3)})`;
     const image = document.createElement("canvas");
     image.setAttribute("aria-label", item.shell.species);
-    drawShellThumbToCanvas(image, item.shell);
+    drawShellThumbToCanvas(image, item.shell, { loadImage: false });
     const label = document.createElement("span");
     label.textContent = formatNumber(item.distance, 2);
     button.append(image, label);
@@ -2931,20 +2406,24 @@ function updateStarButton() {
 
 function toggleStarredShell() {
   if (!state.selected) return;
+  const selectedForNeighbors = state.selected;
+  window.clearTimeout(state.neighborTimer);
   const id = state.selected.id;
   const active = isStarred(state.selected);
   state.starredIds = state.starredIds.filter((value) => value !== id);
   if (!active) {
     state.starredIds.unshift(id);
-    els.starShell.classList.remove("star-pop");
-    void els.starShell.offsetWidth;
-    els.starShell.classList.add("star-pop");
-    triggerStarBurst();
-    window.setTimeout(() => els.starShell.classList.remove("star-pop"), 850);
+    window.requestAnimationFrame(() => {
+      els.starShell.classList.remove("star-pop");
+      els.starShell.classList.add("star-pop");
+      triggerStarBurst();
+      window.setTimeout(() => els.starShell.classList.remove("star-pop"), 850);
+    });
   }
-  saveStarred();
   updateStarButton();
   renderStarred();
+  window.setTimeout(saveStarred, 0);
+  scheduleRenderNeighbors(selectedForNeighbors, 900);
 }
 
 function triggerStarBurst() {
@@ -2986,8 +2465,10 @@ function renderStarred() {
     const geometry = starredThumbGeometry(shell);
     button.style.setProperty("--starred-thumb-width", `${geometry.size.cssWidth}px`);
     const canvas = document.createElement("canvas");
+    canvas.width = geometry.size.pixelWidth;
+    canvas.height = geometry.size.pixelHeight;
     button.append(canvas);
-    drawStarredThumbToCanvas(canvas, shell, geometry);
+    window.requestAnimationFrame(() => drawStarredThumbToCanvas(canvas, shell, geometry));
     button.addEventListener("click", () => {
       centerViewportOnShell(shell);
       selectShell(shell);
@@ -3015,7 +2496,6 @@ function selectShell(shell, { renderNearest = true } = {}) {
     state.uploadImageUrl = "";
   }
   state.selected = shell;
-  state.scatterBrush = null;
   state.selectedContour = normalizedContour(shell);
   state.generatedContour = state.selectedContour;
   state.generatedTraits = shapeTraitsFromShell(shell);
@@ -3037,6 +2517,7 @@ function selectShell(shell, { renderNearest = true } = {}) {
     ["Origin", physicalLocationLabel(shell)],
     ["Area", `${precisePercentValue(relativeArea(shell))} of image frame`],
     ["Mean radius", `${precisePercentValue(relativeMeanRadius(shell))} of short image side`],
+    ["Scale", "Relative; no cm calibration in the source metadata"],
     ["Color", shellColorName(shell)],
     ["View", shell.view_label || shell.view || "-"],
     ["Specimen", shell.specimen_label || shell.specimen || "-"],
@@ -3051,9 +2532,6 @@ function selectShell(shell, { renderNearest = true } = {}) {
   }
   state.sourceFrame = null;
   renderSourceShell(shell);
-  renderTraitCompare();
-  updateGeographyForShell(shell);
-  updateConservationForShell(shell);
   if (renderNearest) scheduleRenderNeighbors(shell);
   else els.neighborsList.innerHTML = "";
   updateGeneratorStatus();
@@ -3106,74 +2584,6 @@ function setTargetFromEvent(event, blend = false) {
   if (blend) generateLocalShellFromTarget();
   scheduleDraw();
   scheduleHashUpdate();
-}
-
-function updateGeographyForBrush(shells) {
-  if (!els.geoCanvas) return;
-  window.clearTimeout(state.geoTimer);
-  state.geoFetchToken += 1;
-  const unique = [];
-  const seen = new Set();
-  for (const shell of shells) {
-    if (!shell || seen.has(shell.species)) continue;
-    seen.add(shell.species);
-    unique.push(shell);
-    if (unique.length >= 90) break;
-  }
-  state.geoPoints = unique.flatMap((shell) => localGeoPointsForShell(shell));
-  drawGlobe();
-  if (els.geoStatus) {
-    els.geoStatus.textContent = unique.length
-      ? `${unique.length} brushed morphospace species shown on the globe.`
-      : "No locality facets inside this morphospace brush.";
-  }
-}
-
-function startScatterBrush(event) {
-  const rect = els.scatter.getBoundingClientRect();
-  state.scatterBrush = {
-    pointerId: event.pointerId,
-    startX: event.clientX - rect.left,
-    startY: event.clientY - rect.top,
-    currentX: event.clientX - rect.left,
-    currentY: event.clientY - rect.top,
-  };
-  state.draggingTarget = false;
-  els.pointTooltip.hidden = true;
-  scheduleDraw();
-}
-
-function updateScatterBrush(event) {
-  if (!state.scatterBrush || state.scatterBrush.pointerId !== event.pointerId) return;
-  const rect = els.scatter.getBoundingClientRect();
-  state.scatterBrush.currentX = event.clientX - rect.left;
-  state.scatterBrush.currentY = event.clientY - rect.top;
-  scheduleDraw();
-}
-
-function finishScatterBrush(event) {
-  if (!state.scatterBrush || state.scatterBrush.pointerId !== event.pointerId) return;
-  updateScatterBrush(event);
-  const brush = state.scatterBrush;
-  state.scatterBrush = null;
-  const left = Math.min(brush.startX, brush.currentX);
-  const right = Math.max(brush.startX, brush.currentX);
-  const top = Math.min(brush.startY, brush.currentY);
-  const bottom = Math.max(brush.startY, brush.currentY);
-  if (right - left < 8 || bottom - top < 8) {
-    scheduleDraw();
-    return;
-  }
-  const size = resizeCanvas(els.scatter, scatterCtx);
-  const pointCache = scatterScreenPoints(size);
-  const brushed = [];
-  for (let index = 0; index < pointCache.shells.length; index += 1) {
-    const x = pointCache.points[index * 2];
-    const y = pointCache.points[index * 2 + 1];
-    if (x >= left && x <= right && y >= top && y <= bottom) brushed.push(pointCache.shells[index]);
-  }
-  updateGeographyForBrush(brushed);
-  scheduleDraw();
 }
 
 function startViewportPan(event) {
@@ -3229,7 +2639,7 @@ function showPointTooltip(event, shell) {
     document.createElement("br"),
     document.createTextNode(`${axisLabel(state.xAxis)} ${formatNumber(axisValue(shell, state.xAxis))}, ${axisLabel(state.yAxis)} ${formatNumber(axisValue(shell, state.yAxis))}`),
     document.createElement("br"),
-    document.createTextNode(`Lightness ${formatNumber(shell.color_l_mean, 3)}, chroma ${formatNumber(shell.color_chroma_mean, 3)}`),
+    document.createTextNode(`${shellColorName(shell)}, lightness ${formatNumber(shell.color_l_mean, 3)}`),
   );
   els.pointTooltip.style.left = `${Math.min(Math.max(8, rect.width - 248), Math.max(8, event.clientX - rect.left + 14))}px`;
   els.pointTooltip.style.top = `${Math.min(Math.max(8, rect.height - 84), Math.max(8, event.clientY - rect.top + 14))}px`;
@@ -3826,8 +3236,7 @@ async function handleUploadShell() {
       ...traits,
     };
     shell.trait_pc = projectTraitsToPca(shell);
-    shell.morph_traits = deriveMorphTraits(shell);
-    for (const def of morphTraitDefs) shell[`morph_${def.key}`] = shell.morph_traits[def.key] || 0;
+    shell.morph_traits = deriveMorphMetrics(shell);
     shell.fingerprint_hash = fingerprintHash(shell);
     shell.species_sample_count = 1;
     shell.global_occurrences = 0;
@@ -3861,35 +3270,12 @@ function stepPcaWalk(timestamp) {
   if (!state.walkStartedAt) state.walkStartedAt = timestamp;
   const t = (timestamp - state.walkStartedAt) / 1000;
   const values = [...state.pcValues];
-  const end = state.compareShell;
-  if (state.selected && end && end !== state.selected) {
-    const amount = (1 - Math.cos((t % 5.2) / 5.2 * Math.PI * 2)) / 2;
-    for (let index = 0; index < contourAxisCount(); index += 1) {
-      values[index] = (state.selected.contour_pc?.[index] || 0) * (1 - amount) + (end.contour_pc?.[index] || 0) * amount;
-      updatePcControl(index, values[index]);
-    }
-    const contour = contourFromPcValues(values);
-    if (contour) {
-      state.pcValues = values;
-      state.generatedContour = contour;
-      state.generatedTraits = blendShellTraits(state.selected, end, amount);
-      state.generatedMode = "walk";
-      drawOutline();
-      renderPalette();
-      if (Math.floor(t * 3) !== state.lastWalkNeighborTick) {
-        state.lastWalkNeighborTick = Math.floor(t * 3);
-        renderPathNeighbors(nearestMapNeighbors(values, 8));
-      }
-      if (els.walkStatus) els.walkStatus.textContent = `Walking ${state.selected.species} -> ${end.species}: ${Math.round(amount * 100)}%`;
-    }
-  } else {
-    for (let index = 0; index < contourAxisCount(); index += 1) {
-      const range = state.model.contour_pca_ranges[index];
-      const span = range ? range.p99 - range.p01 : 1;
-      values[index] = Math.sin(t * (0.32 + index * 0.045) + index * 1.73) * span * (0.18 + index * 0.018);
-    }
-    setPcValues(values, false);
+  for (let index = 0; index < contourAxisCount(); index += 1) {
+    const range = state.model.contour_pca_ranges[index];
+    const span = range ? range.p99 - range.p01 : 1;
+    values[index] = Math.sin(t * (0.32 + index * 0.045) + index * 1.73) * span * (0.18 + index * 0.018);
   }
+  setPcValues(values, false);
   state.walkFrame = window.requestAnimationFrame(stepPcaWalk);
 }
 
@@ -3900,7 +3286,6 @@ function togglePcaWalk() {
   }
   state.walkingPca = true;
   state.walkStartedAt = 0;
-  ensureCompareShell();
   els.walkPca.textContent = "Stop";
   els.walkPca.setAttribute("aria-pressed", "true");
   state.walkFrame = window.requestAnimationFrame(stepPcaWalk);
@@ -3929,14 +3314,6 @@ function setupEvents() {
   });
   els.meanShape.addEventListener("click", resetToMeanShape);
   els.walkPca.addEventListener("click", togglePcaWalk);
-  els.compareSearch?.addEventListener("change", () => setCompareShell(shellBySpeciesName(els.compareSearch.value)));
-  els.compareNearest?.addEventListener("click", () => setCompareShell(firstNearestShell(state.selected)));
-  els.compareRandom?.addEventListener("click", () => setCompareShell(randomShellFromSource(state.shells)));
-  els.hybridShell?.addEventListener("click", () => generateHybridShell(0.5));
-  els.emptyShell?.addEventListener("click", sampleEmptyMorphospace);
-  els.playShell?.addEventListener("click", () => playShellMotif(state.selected));
-  els.geoYear?.addEventListener("input", () => updateGeographyForShell(state.selected));
-  els.geoCanvas?.addEventListener("click", selectFromGlobeEvent);
   els.starShell.addEventListener("click", toggleStarredShell);
   els.uploadShell.addEventListener("click", () => els.uploadInput.click());
   els.uploadInput.addEventListener("change", handleUploadShell);
@@ -3964,12 +3341,6 @@ function setupEvents() {
       startViewportPan(event);
       return;
     }
-    if (event.shiftKey) {
-      event.preventDefault();
-      els.scatter.setPointerCapture(event.pointerId);
-      startScatterBrush(event);
-      return;
-    }
     els.scatter.setPointerCapture(event.pointerId);
     const rect = els.scatter.getBoundingClientRect();
     const shell = nearestShell(event.clientX - rect.left, event.clientY - rect.top);
@@ -3986,11 +3357,6 @@ function setupEvents() {
       panViewportFromEvent(event);
       return;
     }
-    if (state.scatterBrush) {
-      event.preventDefault();
-      updateScatterBrush(event);
-      return;
-    }
     if (state.draggingTarget) {
       setTargetFromEvent(event, false);
       els.pointTooltip.hidden = true;
@@ -4001,12 +3367,6 @@ function setupEvents() {
 
   for (const eventName of ["pointerup", "pointerleave", "pointercancel"]) {
     els.scatter.addEventListener(eventName, (event) => {
-      if (state.scatterBrush && eventName === "pointerup") {
-        finishScatterBrush(event);
-      } else if (state.scatterBrush) {
-        state.scatterBrush = null;
-        scheduleDraw();
-      }
       if (state.draggingTarget && eventName === "pointerup") {
         setTargetFromEvent(event, true);
       }
@@ -4023,7 +3383,6 @@ function setupEvents() {
     scheduleDraw();
     renderSourceShell(state.selected);
     renderPalette();
-    drawGlobe();
   });
 }
 
@@ -4067,7 +3426,6 @@ async function init() {
   state.shellsByThumbnailPage = buildThumbnailPageIndex(state.shells);
   buildDerivedShellData(state.shells, localityPayload, speciesTraitsPayload);
   buildTraitFilters();
-  buildSpeciesDatalist(state.shells);
   state.filtered = state.shells;
   state.contours = contourBuffer ? new Uint16Array(contourBuffer) : null;
   state.contourPoints = model.contour_points || 0;
@@ -4099,7 +3457,6 @@ async function init() {
   state.suppressHash = true;
   const selected = shellById(initialHash.get("id")) || state.shells[0];
   selectShell(selected, { renderNearest: false });
-  setCompareShell(firstNearestShell(selected));
   const pcValues = (initialHash.get("pc") || "")
     .split(",")
     .filter((value) => value.trim() !== "")

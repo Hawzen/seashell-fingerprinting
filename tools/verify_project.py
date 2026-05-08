@@ -235,7 +235,7 @@ def verify_entrypoint() -> None:
         if marker not in text:
             raise AssertionError(f"New feature UI is missing {marker!r}")
     for marker in [
-        "deriveMorphTraits",
+        "deriveMorphMetrics",
         "rangeFilterDefs",
         "shellColorBucket",
         "originFilterOptions",
