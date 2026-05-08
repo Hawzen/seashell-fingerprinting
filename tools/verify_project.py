@@ -162,6 +162,7 @@ def verify_entrypoint() -> None:
     expected_color_modes = ["locality", "species", "shell", "pattern", "lightness", "chroma", "roughness", "concavity"]
     if parser.options.get("colorModeSelect") != expected_color_modes:
         raise AssertionError(f"Unexpected color modes: {parser.options.get('colorModeSelect')}")
+    legacy_title = "Seashell " + "PCA Explorer"
     retired = [
         "Variant Lab",
         "Upload Shape",
@@ -171,7 +172,7 @@ def verify_entrypoint() -> None:
         "validation_preview",
         "Stats",
         "Haskell",
-        "Seashell PCA Explorer",
+        legacy_title,
         "Shape + traits",
         "Trait PC1",
         "PCA Axes",
