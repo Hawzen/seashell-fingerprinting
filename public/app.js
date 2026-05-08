@@ -30,6 +30,7 @@ const state = {
   starredIds: [],
   showAllStars: false,
   speciesCounts: new Map(),
+  speciesTraits: new Map(),
   localityMatchRate: 0,
   drawFrame: 0,
   drawTimer: 0,
@@ -120,14 +121,6 @@ function clamp01(value) {
 
 function formatNumber(value, digits = 3) {
   return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: digits });
-}
-
-function formatPercent(value, digits = 4) {
-  if (value == null || !Number.isFinite(value)) return "Unavailable";
-  return Number(value).toLocaleString(undefined, {
-    minimumFractionDigits: value > 0 && value < 0.01 ? digits : 2,
-    maximumFractionDigits: digits,
-  });
 }
 
 function setLoading(text, visible = true) {
@@ -259,26 +252,56 @@ function buildLocalityLookup(localityPayload) {
   return lookup;
 }
 
-function buildDerivedShellData(shells, localityPayload = null) {
+function buildSpeciesTraitsLookup(speciesTraitsPayload) {
+  const lookup = new Map();
+  if (speciesTraitsPayload?.encoding !== "shell-species-traits-v1") return lookup;
+  const names = speciesTraitsPayload.species_names || [];
+  const rarityLabels = speciesTraitsPayload.rarity_labels || [];
+  const protectionLabels = speciesTraitsPayload.protection_status_labels || [];
+  for (let index = 0; index < names.length; index += 1) {
+    const countryCodes = speciesTraitsPayload.known_range_country_codes?.[index] || [];
+    const countryCounts = speciesTraitsPayload.known_range_country_counts?.[index] || [];
+    const rangeCountries = countryCodes.map((code, countryIndex) => ({
+      code,
+      label: countryLabel(speciesTraitsPayload, code),
+      count: countryCounts[countryIndex] || 0,
+    }));
+    lookup.set(names[index], {
+      genus: speciesTraitsPayload.genus?.[index] || "",
+      rarity_label: rarityLabels[speciesTraitsPayload.rarity?.[index]] || "Data deficient",
+      rarity_reason: speciesTraitsPayload.rarity_reasons?.[index] || "",
+      dataset_sample_count: speciesTraitsPayload.dataset_sample_count?.[index] || 0,
+      observation_count: speciesTraitsPayload.observation_count?.[index] || 0,
+      known_range_country_count: speciesTraitsPayload.country_count?.[index] || rangeCountries.length,
+      known_range_countries: rangeCountries,
+      primary_country: speciesTraitsPayload.primary_country_codes?.[index] || "",
+      region_key: speciesTraitsPayload.region_keys?.[index] || "",
+      region_label: regionLabel(speciesTraitsPayload, speciesTraitsPayload.region_keys?.[index] || ""),
+      protection_status: protectionLabels[speciesTraitsPayload.protection_status?.[index]] || "Not assessed",
+      market_price_usd: speciesTraitsPayload.market_price_usd?.[index] ?? null,
+    });
+  }
+  return lookup;
+}
+
+function buildDerivedShellData(shells, localityPayload = null, speciesTraitsPayload = null) {
   state.speciesCounts = new Map();
   for (const shell of shells) {
     state.speciesCounts.set(shell.species, (state.speciesCounts.get(shell.species) || 0) + 1);
   }
   const localityLookup = buildLocalityLookup(localityPayload);
-  const totalOccurrenceProxy = [...localityLookup.values()].reduce(
-    (total, entry) => total + (entry.total_occurrences || 0),
-    0,
-  );
+  const speciesTraitsLookup = buildSpeciesTraitsLookup(speciesTraitsPayload);
+  state.speciesTraits = speciesTraitsLookup;
   state.localityMatchRate = localityPayload?.match_rate || 0;
   for (const shell of shells) {
     const locality = localityLookup.get(shell.species);
+    const traits = speciesTraitsLookup.get(shell.species);
     shell.fingerprint_hash = fingerprintHash(shell);
     shell.species_sample_count = state.speciesCounts.get(shell.species) || 1;
-    shell.global_occurrences = locality?.total_occurrences || 0;
-    shell.global_share_percent = shell.global_occurrences && totalOccurrenceProxy
-      ? (shell.global_occurrences / totalOccurrenceProxy) * 100
-      : null;
-    shell.rarity_source = shell.global_occurrences ? "Occurrence record share" : "Unavailable";
+    shell.species_traits = traits || null;
+    shell.rarity_label = traits?.rarity_label || "Data deficient";
+    shell.rarity_reason = traits?.rarity_reason || "";
+    shell.global_occurrences = traits?.observation_count || locality?.total_occurrences || 0;
     shell.location_label = locality?.location_label || "Locality unavailable";
     shell.location_key = locality?.primary_country || locality?.region_key || "unknown";
     shell.location_color = shell.location_key === "unknown"
@@ -1914,20 +1937,9 @@ function selectShell(shell, { renderNearest = true } = {}) {
   updateHashChips();
   updateStarButton();
   els.selectedDetails.innerHTML = "";
-  const rarityText = shell.global_share_percent == null
-    ? "No true population estimate"
-    : "No true population estimate";
-  const recordedShareText = shell.global_share_percent == null
-    ? "Unavailable"
-    : `${formatPercent(shell.global_share_percent, 6)}% of occurrence records`;
-  const occurrenceText = shell.global_occurrences
-    ? `${shell.global_occurrences.toLocaleString()} occurrence records`
-    : "No occurrence records";
   const details = [
     ["Fingerprint", shell.fingerprint_hash || "-"],
-    ["Rarity", rarityText],
-    ["Recorded share", recordedShareText],
-    ["Occurrence records", occurrenceText],
+    ["Rarity", shell.rarity_label || "Data deficient"],
     ["Samples", `${(shell.species_sample_count || 1).toLocaleString()} images/species`],
     ["Area", `${shell.area?.toLocaleString() || "-"} px²`],
     ["Mean radius", `${formatNumber(shell.mean_radius, 1)} px`],
@@ -2657,8 +2669,8 @@ async function handleUploadShell() {
     shell.fingerprint_hash = fingerprintHash(shell);
     shell.species_sample_count = 1;
     shell.global_occurrences = 0;
-    shell.global_share_percent = null;
-    shell.rarity_source = "Unavailable";
+    shell.rarity_label = "Data deficient";
+    shell.rarity_reason = "uploaded image";
     shell.location_label = "Uploaded image";
     shell.location_key = "uploaded";
     shell.location_color = speciesColor("uploaded");
@@ -2813,9 +2825,10 @@ async function init() {
   const model = await fetchJson(asset("data/model.json"));
   setLoading("Unpacking shell fingerprints");
   const shellPayload = await fetchCompressedJson(asset(`data/${model.shell_file || "shells.json"}`));
-  const localityPayload = model.locality_file
-    ? await fetchCompressedJson(asset(`data/${model.locality_file}`))
-    : null;
+  const [localityPayload, speciesTraitsPayload] = await Promise.all([
+    model.locality_file ? fetchCompressedJson(asset(`data/${model.locality_file}`)) : null,
+    model.species_traits_file ? fetchCompressedJson(asset(`data/${model.species_traits_file}`)) : null,
+  ]);
   setLoading("Unpacking contours");
   const contourBuffer = model.contour_file
     ? await fetchCompressedArrayBuffer(asset(`data/${model.contour_file}`))
@@ -2826,7 +2839,7 @@ async function init() {
   state.shells = unpackShells(shellPayload);
   state.shellById = new Map(state.shells.map((shell) => [shell.id, shell]));
   state.shellsByThumbnailPage = buildThumbnailPageIndex(state.shells);
-  buildDerivedShellData(state.shells, localityPayload);
+  buildDerivedShellData(state.shells, localityPayload, speciesTraitsPayload);
   state.filtered = state.shells;
   state.contours = contourBuffer ? new Uint16Array(contourBuffer) : null;
   state.contourPoints = model.contour_points || 0;

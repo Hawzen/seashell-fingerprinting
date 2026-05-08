@@ -231,6 +231,7 @@ def verify_static(public_data: Path, image_count: int) -> None:
     for key in [
         "shell_file",
         "locality_file",
+        "species_traits_file",
         "contour_file",
         "contour_points",
         "contour_scale",
@@ -301,6 +302,30 @@ def verify_static(public_data: Path, image_count: int) -> None:
     assert_equal(locality_payload.get("species_count"), model["species_count"], "locality species count")
     if locality_payload.get("matched_species_count", 0) < model["species_count"] // 2:
         raise AssertionError("Locality pack matched too few species")
+    traits_path = public_data / model["species_traits_file"]
+    if not traits_path.exists():
+        raise AssertionError(f"Missing {traits_path}")
+    traits_payload = load_json_gzip(traits_path)
+    if traits_payload.get("encoding") != "shell-species-traits-v1":
+        raise AssertionError("Unexpected species traits pack encoding")
+    assert_equal(traits_payload.get("species_count"), model["species_count"], "species traits count")
+    rarity_labels = traits_payload.get("rarity_labels", [])
+    if rarity_labels != ["Common", "Uncommon", "Rare", "Extremely rare", "Data deficient"]:
+        raise AssertionError(f"Unexpected rarity labels: {rarity_labels!r}")
+    rarity = traits_payload.get("rarity", [])
+    if len(rarity) != model["species_count"] or len(set(rarity)) < 4:
+        raise AssertionError("Species traits pack should contain varied coarse rarity labels")
+    for key in [
+        "species_names",
+        "genus",
+        "dataset_sample_count",
+        "observation_count",
+        "known_range_country_codes",
+        "protection_status",
+        "market_price_usd",
+    ]:
+        if len(traits_payload.get(key, [])) != model["species_count"]:
+            raise AssertionError(f"Species traits field {key!r} has the wrong length")
     contour_path = public_data / model["contour_file"]
     if not contour_path.exists():
         raise AssertionError(f"Missing {contour_path}")
@@ -317,7 +342,7 @@ def verify_static(public_data: Path, image_count: int) -> None:
             raise AssertionError(f"Missing thumbnail atlas file {path}")
         thumb_total += path.stat().st_size
     assert_equal(thumb_total, atlas.get("bytes"), "thumbnail atlas byte total")
-    checksum_names = ["model.json", shell_file, model["contour_file"], model["locality_file"]]
+    checksum_names = ["model.json", shell_file, model["contour_file"], model["locality_file"], model["species_traits_file"]]
     checksum_names.extend(f"{atlas['dir']}/{name}" for name in atlas.get("files", []))
     for name in checksum_names:
         checksum = checksums.get(name)
@@ -395,8 +420,10 @@ def run_browser_check(
                 restored.palette < 5 ||
                 restored.description.length < 20 ||
                 !restored.details.includes('Rarity') ||
-                !restored.details.includes('No true population estimate') ||
-                !restored.details.includes('Recorded share') ||
+                !/(Common|Uncommon|Rare|Extremely rare|Data deficient)/.test(restored.details) ||
+                restored.details.includes('No true population estimate') ||
+                restored.details.includes('Recorded share') ||
+                restored.details.includes('Occurrence records') ||
                 restored.details.includes('GBIF') ||
                 restored.description.includes('GBIF') ||
 	                restored.description.includes('is a shell species represented') ||

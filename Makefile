@@ -7,7 +7,7 @@ WORKERS ?= 8
 THUMBNAIL_SIZE ?= 160
 THUMBNAIL_QUALITY ?= 64
 
-.PHONY: fingerprints export-data localities wasm smoke verify verify-browser verify-perf serve
+.PHONY: fingerprints export-data localities species-traits wasm smoke verify verify-browser verify-perf serve
 
 fingerprints:
 	$(PYTHON) tools/build_fingerprints.py --dataset dataset --output processed --max-size $(MAX_SIZE) --smooth-window $(SMOOTH_WINDOW) --center centroid --contour-points $(CONTOUR_POINTS)
@@ -17,6 +17,9 @@ export-data:
 
 localities:
 	$(PYTHON) tools/build_localities.py --offline
+
+species-traits:
+	$(PYTHON) tools/build_species_traits.py
 
 wasm:
 	$(PYTHON) tools/build_wasm.py --output public/shell-generator.wasm

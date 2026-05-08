@@ -1,7 +1,7 @@
 {
   "model.json": {
-    "bytes": 71515,
-    "sha256": "c5829fd4fb8b4611d60a97b97eca08145f1e4340b58c0e64a8da31f293501da3"
+    "bytes": 71646,
+    "sha256": "5802a849591e0404883b21106c41744d14eab19a529310f462dd53e68533cc4f"
   },
   "shells.compact.json.gz": {
     "bytes": 8612594,
@@ -130,5 +130,9 @@
   "localities.compact.json.gz": {
     "bytes": 131157,
     "sha256": "68572a9afed8cb726b9e1d7ad9073f3ce5fec2db6ff7f94520bd630abe97b286"
+  },
+  "species_traits.compact.json.gz": {
+    "bytes": 150659,
+    "sha256": "df3792d1839eb9a00a7a12899c00aa6fd9ae088794c81d160ef2b4d00a1c726d"
   }
 }
