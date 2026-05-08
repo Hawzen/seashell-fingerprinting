@@ -213,10 +213,14 @@ def verify_entrypoint() -> None:
     ]:
         if marker not in styles:
             raise AssertionError(f"Loading animation styles are missing {marker!r}")
-    if "gap: 2px;" not in styles or "flex: 0 0 44px;" not in styles:
-        raise AssertionError("Starred shelf spacing should stay tight and uniform")
+    for marker in ["gap: 1px;", "var(--starred-thumb-width, 44px)", "min-width: 0;"]:
+        if marker not in styles:
+            raise AssertionError("Starred shelf spacing should stay tight and uniform")
     app = Path("public/app.js").read_text(encoding="utf-8")
-    if "drawStarredThumbToCanvas" not in app:
+    for marker in ["drawStarredThumbToCanvas", "starredThumbGeometry", "starredThumbSize"]:
+        if marker not in app:
+            raise AssertionError("Starred shelf should render contour-cropped thumbnails")
+    if "paddedContourCrop(shell, contour, 0.035)" not in app:
         raise AssertionError("Starred shelf should render contour-cropped thumbnails")
     for marker in [
         "traitFilters",
@@ -565,6 +569,37 @@ def run_browser_check(
               }}));
               if (starred.count < 1 || starred.imageOnly < 1 || starred.text || starred.active !== 'true' || !starred.icon) {{
                 throw new Error(`star failed: ${{JSON.stringify(starred)}}`);
+              }}
+
+              for (let index = 0; index < 6; index += 1) {{
+                const before = await page.textContent('#physicalHash');
+                await page.click('#randomShell');
+                await page.waitForFunction(
+                  (previous) => document.querySelector('#physicalHash')?.textContent !== previous,
+                  before,
+                  {{ timeout: 120000 }}
+                );
+                if ((await page.getAttribute('#starShell', 'aria-pressed')) !== 'true') {{
+                  await page.click('#starShell');
+                }}
+              }}
+              await page.waitForTimeout(250);
+              const shelf = await page.evaluate(() => {{
+                const boxes = Array.from(document.querySelectorAll('#starredBand .starred-shell'))
+                  .slice(0, 6)
+                  .map((element) => element.getBoundingClientRect());
+                const gaps = boxes.slice(1).map((box, index) => box.left - boxes[index].right);
+                const widths = boxes.map((box) => Math.round(box.width));
+                return {{
+                  count: boxes.length,
+                  gaps: gaps.map((gap) => Number(gap.toFixed(2))),
+                  widths,
+                  maxGap: gaps.length ? Math.max(...gaps) : 0,
+                  gapSpread: gaps.length ? Math.max(...gaps) - Math.min(...gaps) : 0,
+                }};
+              }});
+              if (shelf.count < 4 || shelf.maxGap > 2.5 || shelf.gapSpread > 1.25) {{
+                throw new Error(`starred shelf spacing failed: ${{JSON.stringify(shelf)}}`);
               }}
 
               const scatterBox = await page.locator('#scatterCanvas').boundingBox();

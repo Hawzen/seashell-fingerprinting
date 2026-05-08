@@ -106,7 +106,7 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 2px;
+  gap: 1px;
   overflow-x: auto;
 }
 
@@ -156,15 +156,17 @@ button:hover {
 
 .starred-shell {
   position: relative;
-  flex: 0 0 44px;
-  width: 44px;
+  flex: 0 0 var(--starred-thumb-width, 44px);
+  width: var(--starred-thumb-width, 44px);
   height: 44px;
-  min-width: 44px;
+  min-width: 0;
   padding: 0;
   overflow: visible;
   border: 0;
   border-radius: 0;
   background: transparent;
+  display: grid;
+  place-items: center;
 }
 
 .starred-shell:first-child {
@@ -179,6 +181,8 @@ button:hover {
 }
 
 .starred-more {
+  flex: 0 0 auto;
+  margin-left: 5px;
   min-height: 34px;
   min-width: 42px;
   padding: 4px 8px;

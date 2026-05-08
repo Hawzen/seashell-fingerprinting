@@ -2043,18 +2043,38 @@ function drawCroppedContourFallback(ctx, shell, contour, crop, frame, frameWidth
   return true;
 }
 
-async function drawStarredThumbToCanvas(canvas, shell) {
-  const ctx = canvas.getContext("2d");
-  canvas.width = 96;
-  canvas.height = 96;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+function starredThumbSize(crop) {
+  const cssHeight = 44;
+  if (!crop?.width || !crop?.height) {
+    return { cssWidth: 44, pixelWidth: 96, pixelHeight: 96 };
+  }
+  const ratio = crop.width / Math.max(1, crop.height);
+  const cssWidth = Math.round(Math.max(20, Math.min(60, cssHeight * ratio)));
+  const pixelHeight = 104;
+  return {
+    cssWidth,
+    pixelWidth: Math.round((cssWidth / cssHeight) * pixelHeight),
+    pixelHeight,
+  };
+}
+
+function starredThumbGeometry(shell) {
   const contour = contourForShell(shell);
-  const crop = paddedContourCrop(shell, contour);
+  const crop = paddedContourCrop(shell, contour, 0.035);
+  return { contour, crop, size: starredThumbSize(crop) };
+}
+
+async function drawStarredThumbToCanvas(canvas, shell, geometry = null) {
+  const ctx = canvas.getContext("2d");
+  const { contour, crop, size } = geometry || starredThumbGeometry(shell);
+  canvas.width = size.pixelWidth;
+  canvas.height = size.pixelHeight;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!contour || !crop) {
     await drawShellThumbToCanvas(canvas, shell);
     return;
   }
-  const frame = fitCropFrame(crop, canvas.width, canvas.height, 3);
+  const frame = fitCropFrame(crop, canvas.width, canvas.height, 2);
   drawCroppedContourFallback(ctx, shell, contour, crop, frame, canvas.width, canvas.height);
   const source = thumbnailSourceRect(shell);
   if (source) {
@@ -2627,9 +2647,11 @@ function renderStarred() {
     const button = document.createElement("button");
     button.className = "starred-shell";
     button.title = `${shell.species} ${shell.fingerprint_hash}`;
+    const geometry = starredThumbGeometry(shell);
+    button.style.setProperty("--starred-thumb-width", `${geometry.size.cssWidth}px`);
     const canvas = document.createElement("canvas");
     button.append(canvas);
-    drawStarredThumbToCanvas(canvas, shell);
+    drawStarredThumbToCanvas(canvas, shell, geometry);
     button.addEventListener("click", () => {
       centerViewportOnShell(shell);
       selectShell(shell);
