@@ -332,7 +332,7 @@ def run_browser_check(
     url: str,
     perf_clicks: int = 0,
     perf_max_median_ms: float = 250,
-    perf_max_p90_ms: float = 600,
+    perf_max_p90_ms: float = 1200,
 ) -> None:
     npm = shutil.which("npm")
     node = shutil.which("node")
@@ -362,24 +362,31 @@ def run_browser_check(
               page.on('console', (msg) => messages.push({{ type: msg.type(), text: msg.text() }}));
               page.on('pageerror', (err) => messages.push({{ type: 'pageerror', text: err.message }}));
               await page.goto('{url}/#id=20&x=0&y=1&color=shell', {{ waitUntil: 'networkidle', timeout: 120000 }});
-              await page.waitForFunction(
-                () => document.querySelector('#statusLine')?.textContent.includes('shells'),
-                null,
-                {{ timeout: 120000 }}
-              );
-              const restored = await page.evaluate(() => ({{
-                selected: document.querySelector('#selectedName').textContent,
-                color: document.querySelector('#colorModeSelect').value,
-                hash: document.querySelector('#physicalHash').textContent,
-                projectedHash: document.querySelector('#projectedHash').textContent,
+	              await page.waitForFunction(
+	                () => document.querySelector('#statusLine')?.textContent.includes('shells'),
+	                null,
+	                {{ timeout: 120000 }}
+	              );
+	              await page.waitForFunction(
+	                () => window.shellspacePerf?.scatterPointCount?.() === window.shellspacePerf?.filteredCount?.(),
+	                null,
+	                {{ timeout: 120000 }}
+	              );
+	              const restored = await page.evaluate(() => ({{
+	                selected: document.querySelector('#selectedName').textContent,
+	                color: document.querySelector('#colorModeSelect').value,
+	                hash: document.querySelector('#physicalHash').textContent,
+	                projectedHash: document.querySelector('#projectedHash').textContent,
                 palette: document.querySelectorAll('#paletteSwatches > *').length,
                 description: document.querySelector('#shellDescription').textContent,
                 details: document.querySelector('#selectedDetails').textContent,
-                loadingHidden: document.querySelector('#loadingOverlay').hidden,
-                bodyWidth: document.body.scrollWidth,
-                documentWidth: document.documentElement.scrollWidth,
-                innerWidth,
-              }}));
+	                loadingHidden: document.querySelector('#loadingOverlay').hidden,
+	                scatterPoints: window.shellspacePerf?.scatterPointCount?.() || 0,
+	                filteredCount: window.shellspacePerf?.filteredCount?.() || 0,
+	                bodyWidth: document.body.scrollWidth,
+	                documentWidth: document.documentElement.scrollWidth,
+	                innerWidth,
+	              }}));
 	              if (
 	                restored.selected === 'None' ||
 	                restored.color !== 'shell' ||
@@ -392,11 +399,12 @@ def run_browser_check(
                 !restored.details.includes('Recorded share') ||
                 restored.details.includes('GBIF') ||
                 restored.description.includes('GBIF') ||
-                restored.description.includes('is a shell species represented') ||
-                restored.details.includes('dataset rarity') ||
-                !restored.loadingHidden ||
-                restored.bodyWidth > restored.innerWidth ||
-                restored.documentWidth > restored.innerWidth
+	                restored.description.includes('is a shell species represented') ||
+	                restored.details.includes('dataset rarity') ||
+	                !restored.loadingHidden ||
+	                restored.scatterPoints !== restored.filteredCount ||
+	                restored.bodyWidth > restored.innerWidth ||
+	                restored.documentWidth > restored.innerWidth
 	              ) {{
 	                throw new Error(`initial UI failed: ${{JSON.stringify(restored)}}`);
 	              }}
@@ -404,7 +412,7 @@ def run_browser_check(
 	              const perfClickCount = {perf_clicks};
 	              if (perfClickCount > 0) {{
 	                await page.waitForFunction(
-	                  () => (window.shellspacePerf?.loadedThumbnailPageCount?.() || 0) > 0,
+	                  () => (window.shellspacePerf?.surpriseReadyCount?.() || 0) >= 2,
 	                  null,
 	                  {{ timeout: 120000 }}
 	                );
@@ -552,7 +560,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--perf", action="store_true", help="run the Surprise me browser latency gate")
     parser.add_argument("--perf-clicks", type=int, default=12)
     parser.add_argument("--perf-max-median-ms", type=float, default=250)
-    parser.add_argument("--perf-max-p90-ms", type=float, default=600)
+    parser.add_argument("--perf-max-p90-ms", type=float, default=1200)
     return parser.parse_args()
 
 

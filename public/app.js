@@ -53,9 +53,13 @@ const state = {
   shellsByThumbnailPage: new Map(),
   loadedThumbnailPages: new Set(),
   warmingThumbnails: false,
+  surpriseQueue: [],
+  surpriseQueueSource: null,
+  surprisePrimeTimer: 0,
   neighborCache: new Map(),
   neighborTimer: 0,
   neighborToken: 0,
+  pointColorCache: new Map(),
   paletteCache: new Map(),
 };
 
@@ -183,6 +187,33 @@ function rgbToHsl(red, green, blue) {
 
 function hslCss(h, s, l) {
   return `hsl(${((h % 360) + 360) % 360}, ${Math.round(clamp01(s) * 100)}%, ${Math.round(clamp01(l) * 100)}%)`;
+}
+
+function hslToRgba(h, s, l, alpha = 1) {
+  const hue = (((h % 360) + 360) % 360) / 360;
+  const sat = clamp01(s);
+  const light = clamp01(l);
+  if (sat === 0) {
+    const value = Math.round(light * 255);
+    return [value, value, value, Math.round(clamp01(alpha) * 255)];
+  }
+  const q = light < 0.5 ? light * (1 + sat) : light + sat - light * sat;
+  const p = 2 * light - q;
+  const channel = (offset) => {
+    let t = hue + offset;
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  return [
+    Math.round(channel(1 / 3) * 255),
+    Math.round(channel(0) * 255),
+    Math.round(channel(-1 / 3) * 255),
+    Math.round(clamp01(alpha) * 255),
+  ];
 }
 
 function physicalLocationLabel(shell) {
@@ -467,6 +498,15 @@ function speciesColor(species, alpha = 0.78) {
   return `hsla(${hash % 360}, 42%, 42%, ${alpha})`;
 }
 
+function speciesColorRgba(species, alpha = 0.78) {
+  let hash = 0;
+  const value = String(species || "");
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hslToRgba(hash % 360, 0.42, 0.42, alpha);
+}
+
 function shellRgb(shell, alpha = 1) {
   const red = Math.round(clamp01(shell.color_r_mean ?? 0.68) * 255);
   const green = Math.round(clamp01(shell.color_g_mean ?? 0.64) * 255);
@@ -474,32 +514,58 @@ function shellRgb(shell, alpha = 1) {
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
-function pointColor(shell) {
-  if (state.colorMode === "locality") {
-    return shell.location_color || "rgba(96, 108, 106, 0.62)";
+function shellRgba(shell, alpha = 1) {
+  return [
+    Math.round(clamp01(shell.color_r_mean ?? 0.68) * 255),
+    Math.round(clamp01(shell.color_g_mean ?? 0.64) * 255),
+    Math.round(clamp01(shell.color_b_mean ?? 0.56) * 255),
+    Math.round(clamp01(alpha) * 255),
+  ];
+}
+
+function pointRgbaForMode(shell, mode) {
+  if (mode === "locality") {
+    if (shell.location_key === "unknown") return [96, 108, 106, 158];
+    return speciesColorRgba(shell.location_key || "unknown", 0.66);
   }
-  if (state.colorMode === "shell") return shellRgb(shell);
-  if (state.colorMode === "lightness") {
+  if (mode === "shell") return shellRgba(shell);
+  if (mode === "lightness") {
     const t = clamp01(shell.color_l_mean ?? 0.5);
-    return `hsl(48, 24%, ${24 + t * 54}%)`;
+    return hslToRgba(48, 0.24, (24 + t * 54) / 100);
   }
-  if (state.colorMode === "chroma") {
+  if (mode === "chroma") {
     const t = clamp01((shell.color_chroma_mean || 0) / 0.42);
-    return `hsl(${40 + t * 220}, ${32 + t * 38}%, ${34 + t * 14}%)`;
+    return hslToRgba(40 + t * 220, (32 + t * 38) / 100, (34 + t * 14) / 100);
   }
-  if (state.colorMode === "pattern") {
+  if (mode === "pattern") {
     const t = clamp01((shell.color_pattern_strength || 0) / 0.22);
-    return `hsl(${204 - t * 162}, ${34 + t * 36}%, ${30 + t * 18}%)`;
+    return hslToRgba(204 - t * 162, (34 + t * 36) / 100, (30 + t * 18) / 100);
   }
-  if (state.colorMode === "roughness") {
+  if (mode === "roughness") {
     const t = clamp01((shell.roughness || 0) / 0.035);
-    return `hsl(${178 - t * 165}, 60%, ${32 + t * 13}%)`;
+    return hslToRgba(178 - t * 165, 0.6, (32 + t * 13) / 100);
   }
-  if (state.colorMode === "concavity") {
+  if (mode === "concavity") {
     const t = clamp01((shell.contour_concavity || 0) / 0.32);
-    return `hsl(${320 - t * 185}, 56%, ${35 + t * 11}%)`;
+    return hslToRgba(320 - t * 185, 0.56, (35 + t * 11) / 100);
   }
-  return shell.species_color || speciesColor(shell.species);
+  return speciesColorRgba(shell.species, 0.78);
+}
+
+function pointColorArray(mode) {
+  if (state.pointColorCache.has(mode)) return state.pointColorCache.get(mode);
+  const colors = new Uint8ClampedArray(state.shells.length * 4);
+  for (const shell of state.shells) {
+    if (shell.id < 0 || shell.id >= state.shells.length) continue;
+    const rgba = pointRgbaForMode(shell, mode);
+    const offset = shell.id * 4;
+    colors[offset] = rgba[0];
+    colors[offset + 1] = rgba[1];
+    colors[offset + 2] = rgba[2];
+    colors[offset + 3] = rgba[3];
+  }
+  state.pointColorCache.set(mode, colors);
+  return colors;
 }
 
 function scheduleDraw(delay = 0) {
@@ -519,11 +585,52 @@ function scheduleDraw(delay = 0) {
   });
 }
 
+function drawScatterPoints(pointCache) {
+  const pixelWidth = els.scatter.width;
+  const pixelHeight = els.scatter.height;
+  if (!pixelWidth || !pixelHeight) return;
+  const dpr = window.devicePixelRatio || 1;
+  const imageData = scatterCtx.createImageData(pixelWidth, pixelHeight);
+  const data = imageData.data;
+  const colors = pointColorArray(state.colorMode);
+  const dotSize = Math.max(1, Math.round(dpr));
+  for (let index = 0; index < pointCache.shells.length; index += 1) {
+    const shell = pointCache.shells[index];
+    const pointX = Math.round(pointCache.points[index * 2] * dpr);
+    const pointY = Math.round(pointCache.points[index * 2 + 1] * dpr);
+    if (pointX < -dotSize || pointX >= pixelWidth + dotSize || pointY < -dotSize || pointY >= pixelHeight + dotSize) {
+      continue;
+    }
+    const colorOffset = shell.id >= 0 && shell.id < state.shells.length ? shell.id * 4 : -1;
+    const fallback = colorOffset < 0 ? pointRgbaForMode(shell, state.colorMode) : null;
+    const red = colorOffset < 0 ? fallback[0] : colors[colorOffset];
+    const green = colorOffset < 0 ? fallback[1] : colors[colorOffset + 1];
+    const blue = colorOffset < 0 ? fallback[2] : colors[colorOffset + 2];
+    const alpha = colorOffset < 0 ? fallback[3] : colors[colorOffset + 3];
+    for (let y = 0; y < dotSize; y += 1) {
+      const py = pointY + y;
+      if (py < 0 || py >= pixelHeight) continue;
+      for (let x = 0; x < dotSize; x += 1) {
+        const px = pointX + x;
+        if (px < 0 || px >= pixelWidth) continue;
+        const offset = (py * pixelWidth + px) * 4;
+        data[offset] = red;
+        data[offset + 1] = green;
+        data[offset + 2] = blue;
+        data[offset + 3] = alpha;
+      }
+    }
+  }
+  scatterCtx.putImageData(imageData, 0, 0);
+}
+
 function drawScatter() {
   const size = resizeCanvas(els.scatter, scatterCtx);
   if (!state.viewport || !state.needsDraw) return;
   state.needsDraw = false;
   scatterCtx.clearRect(0, 0, size.width, size.height);
+  const pointCache = scatterScreenPoints(size);
+  drawScatterPoints(pointCache);
   scatterCtx.save();
   scatterCtx.lineWidth = 1;
   scatterCtx.strokeStyle = "rgba(32, 36, 42, 0.25)";
@@ -539,20 +646,6 @@ function drawScatter() {
     scatterCtx.moveTo(0, origin.y);
     scatterCtx.lineTo(size.width, origin.y);
     scatterCtx.stroke();
-  }
-
-  const pointCache = scatterScreenPoints(size);
-  const maxScatterPoints = 6500;
-  const stride = Math.max(1, Math.ceil(pointCache.shells.length / maxScatterPoints));
-  for (let index = 0; index < pointCache.shells.length; index += stride) {
-    const shell = pointCache.shells[index];
-    const pointX = pointCache.points[index * 2];
-    const pointY = pointCache.points[index * 2 + 1];
-    if (pointX < -3 || pointX > size.width + 3 || pointY < -3 || pointY > size.height + 3) {
-      continue;
-    }
-    scatterCtx.fillStyle = pointColor(shell);
-    scatterCtx.fillRect(pointX - 1, pointY - 1, 2, 2);
   }
 
   const values = activeAxisValues();
@@ -655,6 +748,8 @@ function updateFilter() {
     : state.shells;
   state.scatterHitCache = null;
   state.scatterPointCache = null;
+  resetSurpriseQueue();
+  primeSurpriseQueue();
   scheduleRenderNeighbors(state.selected);
   renderPalette(false);
   scheduleDraw(120);
@@ -682,13 +777,12 @@ function centerViewportOnShell(shell) {
 
 function selectRandomShell() {
   if (!state.filtered.length) return;
-  const pool = randomReadyShellPool(state.filtered);
-  let index = Math.floor(Math.random() * pool.length);
-  if (state.selected && pool.length > 1 && pool[index].id === state.selected.id) {
-    index = (index + 1) % pool.length;
-  }
-  centerViewportOnShell(pool[index]);
-  selectShell(pool[index]);
+  const shell = takeSurpriseShell();
+  if (!shell) return;
+  centerViewportOnShell(shell);
+  selectShell(shell);
+  scheduleDraw(420);
+  primeSurpriseQueue();
 }
 
 function zoom(factor, center = null) {
@@ -1223,30 +1317,78 @@ function buildThumbnailPageIndex(shells) {
   return byPage;
 }
 
-function randomReadyShellPool(source) {
-  if (!source.length || !state.model?.thumbnail_atlas) return source;
-  const selectedPage = thumbnailPageForShell(state.selected);
-  const readyPages = state.loadedThumbnailPages.size
-    ? state.loadedThumbnailPages
-    : new Set([selectedPage ?? 0]);
-  let pool = [];
-  if (source === state.shells) {
-    for (const page of readyPages) {
-      const pageShells = state.shellsByThumbnailPage.get(page);
-      if (pageShells) pool = pool.concat(pageShells);
-    }
-  } else {
-    pool = source.filter((shell) => readyPages.has(thumbnailPageForShell(shell)));
-  }
-  return pool.length > 1 ? pool : source;
-}
-
 function scheduleIdleWork(callback, timeout = 1200) {
   if ("requestIdleCallback" in window) {
     window.requestIdleCallback(callback, { timeout });
     return;
   }
   window.setTimeout(callback, Math.min(timeout, 160));
+}
+
+function randomShellFromSource(source, avoidId = state.selected?.id) {
+  if (!source.length) return null;
+  let index = Math.floor(Math.random() * source.length);
+  if (avoidId != null && source.length > 1 && source[index].id === avoidId) {
+    index = (index + 1 + Math.floor(Math.random() * (source.length - 1))) % source.length;
+  }
+  return source[index];
+}
+
+function resetSurpriseQueue() {
+  state.surpriseQueue = [];
+  state.surpriseQueueSource = null;
+  window.clearTimeout(state.surprisePrimeTimer);
+  state.surprisePrimeTimer = 0;
+}
+
+function queueRandomSurpriseShell(source) {
+  const queuedIds = new Set(state.surpriseQueue.map((entry) => entry.shell?.id));
+  let shell = null;
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const candidate = randomShellFromSource(source);
+    if (!candidate || queuedIds.has(candidate.id)) continue;
+    shell = candidate;
+    break;
+  }
+  if (!shell) shell = randomShellFromSource(source);
+  if (!shell) return;
+  const page = thumbnailPageForShell(shell);
+  const entry = { shell, page, ready: page == null || state.loadedThumbnailPages.has(page) };
+  state.surpriseQueue.push(entry);
+  if (page != null && !entry.ready) {
+    loadThumbnailPage(page).then((image) => {
+      entry.ready = Boolean(image);
+    });
+  }
+}
+
+function primeSurpriseQueue(source = state.filtered, targetSize = 3) {
+  if (!source.length) return;
+  if (state.surpriseQueueSource !== source) {
+    state.surpriseQueue = [];
+    state.surpriseQueueSource = source;
+  }
+  window.clearTimeout(state.surprisePrimeTimer);
+  state.surprisePrimeTimer = window.setTimeout(() => {
+    scheduleIdleWork(() => {
+      while (state.surpriseQueue.length < targetSize) queueRandomSurpriseShell(source);
+    }, 500);
+  }, 80);
+}
+
+function takeSurpriseShell() {
+  if (state.surpriseQueueSource !== state.filtered) resetSurpriseQueue();
+  const avoidId = state.selected?.id;
+  const ready = state.surpriseQueue
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => entry.shell?.id !== avoidId && (entry.ready || entry.page == null || state.loadedThumbnailPages.has(entry.page)));
+  if (ready.length) {
+    const choice = ready[Math.floor(Math.random() * ready.length)];
+    const entry = choice.entry;
+    if (ready.length > 3) state.surpriseQueue.splice(choice.index, 1);
+    return entry.shell;
+  }
+  return randomShellFromSource(state.filtered, avoidId);
 }
 
 function thumbnailWarmOrder() {
@@ -1623,7 +1765,7 @@ function renderNeighbors(shell, token = state.neighborToken) {
   }
 }
 
-function scheduleRenderNeighbors(shell) {
+function scheduleRenderNeighbors(shell, delay = 2500) {
   state.neighborToken += 1;
   const token = state.neighborToken;
   window.clearTimeout(state.neighborTimer);
@@ -1633,7 +1775,7 @@ function scheduleRenderNeighbors(shell) {
   }
   state.neighborTimer = window.setTimeout(() => {
     renderNeighbors(shell, token);
-  }, 90);
+  }, delay);
 }
 
 function loadStarred() {
@@ -2645,6 +2787,10 @@ window.shellspacePerf = {
   loadedThumbnailPageCount: () => state.loadedThumbnailPages.size,
   warmThumbnails: () => warmThumbnailPages({ eager: true }),
   neighborCacheSize: () => state.neighborCache.size,
+  surpriseQueueSize: () => state.surpriseQueue.length,
+  surpriseReadyCount: () => state.surpriseQueue.filter((entry) => entry.ready || entry.page == null || state.loadedThumbnailPages.has(entry.page)).length,
+  scatterPointCount: () => state.scatterPointCache?.shells?.length || 0,
+  filteredCount: () => state.filtered.length,
 };
 
 async function init() {
@@ -2711,6 +2857,7 @@ async function init() {
   scheduleDraw();
   updateHashState();
   setLoading("", false);
+  primeSurpriseQueue();
 }
 
 init().catch((error) => {
