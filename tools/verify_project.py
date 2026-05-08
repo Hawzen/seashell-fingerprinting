@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from functools import partial
+import gzip
 import hashlib
 from html.parser import HTMLParser
 import json
@@ -60,6 +61,13 @@ def load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def load_json_gzip(path: Path) -> dict:
+    if not path.exists():
+        raise AssertionError(f"Missing {path}")
+    with gzip.open(path, "rt", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -81,6 +89,45 @@ def count_images(dataset: Path) -> int:
     )
 
 
+def unpack_shell_payload(payload: dict) -> list[dict]:
+    if isinstance(payload.get("records"), list):
+        return payload["records"]
+    if payload.get("encoding") != "shell-pack-v1":
+        raise AssertionError(f"Unexpected shell payload encoding: {payload.get('encoding')!r}")
+    count = int(payload.get("count", 0))
+    metrics = payload.get("metrics", {})
+    fields = payload.get("fields", list(metrics.keys()))
+    records: list[dict] = []
+    for index in range(count):
+        species_index = payload["species"][index]
+        specimen_index = payload["specimens"][index]
+        view_index = payload["views"][index]
+        record = {
+            "id": index,
+            "file": payload["files"][index],
+            "species": payload["species_names"][species_index],
+            "specimen": payload["specimen_values"][specimen_index],
+            "specimen_label": payload["specimen_labels"][specimen_index],
+            "view": payload["view_values"][view_index],
+            "view_label": payload["view_labels"][view_index],
+            "area": payload["area"][index],
+            "center": payload["centers"][index * 2 : index * 2 + 2],
+            "image_width": payload["dims"][index * 2],
+            "image_height": payload["dims"][index * 2 + 1],
+            "bbox": payload["bbox"][index * 4 : index * 4 + 4],
+            "contour_pc": payload["contour_pc"][
+                index * payload["contour_pc_count"] : (index + 1) * payload["contour_pc_count"]
+            ],
+            "trait_pc": payload["trait_pc"][
+                index * payload["trait_pc_count"] : (index + 1) * payload["trait_pc_count"]
+            ],
+        }
+        for field in fields:
+            record[field] = metrics[field][index]
+        records.append(record)
+    return records
+
+
 def verify_entrypoint() -> None:
     path = Path("index.html")
     text = path.read_text(encoding="utf-8")
@@ -93,6 +140,7 @@ def verify_entrypoint() -> None:
         "yAxisSelect",
         "colorModeSelect",
         "pcaInterpretation",
+        "sourceThumb",
         "sourceImage",
         "sourceOverlay",
         "overlayContour",
@@ -100,6 +148,8 @@ def verify_entrypoint() -> None:
         "outlineCanvas",
         "generatorStatus",
         "pcControls",
+        "uploadShell",
+        "uploadInput",
         "colorMixCanvas",
         "colorMixStatus",
         "colorMixSwatches",
@@ -108,7 +158,7 @@ def verify_entrypoint() -> None:
     missing = sorted(required_ids - parser.ids)
     if missing:
         raise AssertionError(f"index.html is missing required element ids: {missing}")
-    expected_color_modes = ["species", "shell", "lightness", "chroma", "roughness", "concavity", "trait"]
+    expected_color_modes = ["species", "shell", "pattern", "lightness", "chroma", "roughness", "concavity", "trait"]
     if parser.options.get("colorModeSelect") != expected_color_modes:
         raise AssertionError(f"Unexpected color modes: {parser.options.get('colorModeSelect')}")
     retired = [
@@ -118,6 +168,8 @@ def verify_entrypoint() -> None:
         "public/index.html",
         "contour_audit",
         "validation_preview",
+        "Stats",
+        "Haskell",
     ]
     for marker in retired:
         if marker in text:
@@ -152,13 +204,21 @@ def verify_processed(dataset: Path, processed: Path) -> int:
 def verify_static(public_data: Path, image_count: int) -> None:
     model = load_json(public_data / "model.json")
     checksums = load_json(public_data / "checksums.json")
-    shell_payload = load_json(public_data / "shells.json")
-    records = shell_payload["records"]
+    shell_file = model.get("shell_file")
+    if shell_file != "shells.compact.json.gz":
+        raise AssertionError(f"Static model should use compressed shell pack, got {shell_file!r}")
+    shell_payload = load_json_gzip(public_data / shell_file)
+    records = unpack_shell_payload(shell_payload)
     assert_equal(model["processed_count"], image_count, "static model processed_count")
     assert_equal(len(records), image_count, "static shell record count")
+    if (public_data / "shells.json").exists():
+        raise AssertionError("Static app should not ship the oversized uncompressed shells.json")
     if (public_data / "fingerprints.u16").exists() or model.get("fingerprint_file"):
         raise AssertionError("Static app should not ship the retired radial fingerprint binary")
+    if (public_data / "contours.u16").exists():
+        raise AssertionError("Static app should not ship the oversized uncompressed contour binary")
     for key in [
+        "shell_file",
         "contour_file",
         "contour_points",
         "contour_scale",
@@ -168,6 +228,8 @@ def verify_static(public_data: Path, image_count: int) -> None:
         "trait_components",
         "pca_interpretation",
         "color_mix",
+        "color_fingerprint_fields",
+        "thumbnail_atlas",
     ]:
         if key not in model:
             raise AssertionError(f"Static model is missing {key!r}")
@@ -182,8 +244,10 @@ def verify_static(public_data: Path, image_count: int) -> None:
         if len(axes) < 2:
             raise AssertionError(f"Missing PCA interpretations for {space}")
         for axis in axes[:2]:
-            if not axis.get("summary") or not axis.get("drivers"):
+            if not axis.get("label") or not axis.get("drivers"):
                 raise AssertionError(f"Incomplete PCA interpretation for {space} PC{axis.get('axis')}")
+            if "positive values" in str(axis.get("summary", "")):
+                raise AssertionError(f"PCA interpretation is still verbose for {space} PC{axis.get('axis')}")
     color_mix = model["color_mix"]
     if color_mix.get("x", {}).get("field") != "color_a_mean" or color_mix.get("y", {}).get("field") != "color_b_lab_mean":
         raise AssertionError("color_mix must describe the Lab a/b explorer")
@@ -205,7 +269,11 @@ def verify_static(public_data: Path, image_count: int) -> None:
         "color_a_mean",
         "color_b_lab_mean",
         "color_chroma_mean",
+        "color_pattern_strength",
+        "color_pattern_contrast",
         "texture_gradient_mean",
+        "specimen_label",
+        "view_label",
     ]:
         if key not in sample:
             raise AssertionError(f"Static shell records are missing {key!r}")
@@ -215,12 +283,22 @@ def verify_static(public_data: Path, image_count: int) -> None:
     contour_path = public_data / model["contour_file"]
     if not contour_path.exists():
         raise AssertionError(f"Missing {contour_path}")
-    assert_equal(
-        contour_path.stat().st_size,
-        image_count * model["contour_points"] * 2 * 2,
-        "contour binary size",
-    )
-    for name in ["model.json", "shells.json", model["contour_file"]]:
+    with gzip.open(contour_path, "rb") as handle:
+        contour_bytes = len(handle.read())
+    assert_equal(contour_bytes, image_count * model["contour_points"] * 2 * 2, "contour binary size")
+    atlas = model["thumbnail_atlas"]
+    thumb_total = 0
+    if atlas.get("bytes", 0) > 50 * 1024 * 1024:
+        raise AssertionError("Thumbnail atlas exceeds the 50 MiB budget")
+    for file_name in atlas.get("files", []):
+        path = public_data / atlas["dir"] / file_name
+        if not path.exists():
+            raise AssertionError(f"Missing thumbnail atlas file {path}")
+        thumb_total += path.stat().st_size
+    assert_equal(thumb_total, atlas.get("bytes"), "thumbnail atlas byte total")
+    checksum_names = ["model.json", shell_file, model["contour_file"]]
+    checksum_names.extend(f"{atlas['dir']}/{name}" for name in atlas.get("files", []))
+    for name in checksum_names:
         checksum = checksums.get(name)
         if not checksum:
             raise AssertionError(f"checksums.json is missing {name}")
@@ -237,10 +315,21 @@ def run_browser_check(url: str) -> None:
 
     with tempfile.TemporaryDirectory(prefix="seashell-pw-") as directory:
         temp = Path(directory)
+        from PIL import Image, ImageDraw
+
+        upload_path = temp / "upload-shell.png"
+        upload = Image.new("RGB", (420, 300), "black")
+        draw = ImageDraw.Draw(upload)
+        draw.ellipse((62, 42, 360, 264), fill=(216, 185, 135))
+        draw.arc((86, 72, 344, 238), 195, 20, fill=(115, 71, 51), width=18)
+        draw.arc((96, 102, 326, 268), 200, 18, fill=(244, 226, 184), width=10)
+        upload.save(upload_path)
         script = textwrap.dedent(
             f"""
+            const path = require('path');
             const {{ chromium }} = require('playwright');
             (async () => {{
+              const uploadPath = path.join(process.cwd(), 'upload-shell.png');
               const browser = await chromium.launch({{ headless: true }});
               const page = await browser.newPage({{ viewport: {{ width: 1440, height: 980 }} }});
               const messages = [];
@@ -265,7 +354,7 @@ def run_browser_check(url: str) -> None:
               if (
                 restored.selected === 'None' ||
                 restored.color !== 'shell' ||
-                !restored.pcaText.includes('positive values') ||
+                restored.pcaText.includes('positive values') ||
                 !restored.generated.includes('Selected shell') ||
                 restored.swatches < 1 ||
                 restored.bodyWidth > restored.innerWidth ||
@@ -302,7 +391,22 @@ def run_browser_check(url: str) -> None:
               await page.selectOption('#mapSpaceSelect', 'trait');
               await page.waitForTimeout(200);
               const traitText = await page.textContent('#pcaInterpretation');
-              if (!traitText.includes('Trait PC1')) throw new Error(`trait interpretation failed: ${{traitText}}`);
+              if (traitText.includes('positive values') || traitText.length < 8) throw new Error(`trait interpretation failed: ${{traitText}}`);
+
+              await page.setInputFiles('#uploadInput', uploadPath);
+              await page.waitForTimeout(650);
+              const uploaded = await page.evaluate(() => ({{
+                selected: document.querySelector('#selectedName').textContent,
+                details: document.querySelector('#selectedDetails').textContent,
+                generated: document.querySelector('#generatorStatus').textContent,
+              }}));
+              if (
+                !uploaded.selected.includes('Uploaded shell') ||
+                !uploaded.details.includes('Bring your own shell') ||
+                !uploaded.details.includes('Uploaded image')
+              ) {{
+                throw new Error(`upload failed: ${{JSON.stringify(uploaded)}}`);
+              }}
 
               await page.setViewportSize({{ width: 390, height: 844 }});
               await page.goto('{url}/?mobile=1#id=49008&x=0&y=1&color=concavity', {{ waitUntil: 'networkidle', timeout: 120000 }});

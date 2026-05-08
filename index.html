@@ -55,6 +55,7 @@
             <select id="colorModeSelect">
               <option value="species">Species</option>
               <option value="shell">Shell color</option>
+              <option value="pattern">Pattern</option>
               <option value="lightness">Lightness</option>
               <option value="chroma">Chroma</option>
               <option value="roughness">Roughness</option>
@@ -62,18 +63,6 @@
               <option value="trait">Trait PC1</option>
             </select>
           </label>
-        </section>
-
-        <section class="panel-section map-summary">
-          <h2>Stats</h2>
-          <div class="metric-row">
-            <span>Visible</span>
-            <strong id="visibleCount">0</strong>
-          </div>
-          <div class="metric-row">
-            <span>Axes explain</span>
-            <strong id="explainedVariance">0%</strong>
-          </div>
         </section>
 
         <section class="panel-section pca-panel">
@@ -90,7 +79,8 @@
             </div>
           </div>
           <div class="source-frame">
-            <img id="sourceImage" alt="" />
+            <canvas id="sourceThumb" width="420" height="300"></canvas>
+            <img id="sourceImage" alt="" hidden />
             <canvas id="sourceOverlay" width="420" height="300"></canvas>
           </div>
         </section>
@@ -116,8 +106,12 @@
         <section class="panel-section generated-shape">
           <div class="section-title">
             <h2>Generated Shell</h2>
-            <button id="exportSvg" title="Export generated shell as SVG">SVG</button>
+            <div class="title-actions">
+              <button id="uploadShell" class="upload-shell" title="Bring your own shell">+ Bring your own shell</button>
+              <button id="exportSvg" title="Export generated shell as SVG">SVG</button>
+            </div>
           </div>
+          <input id="uploadInput" type="file" accept="image/*" hidden />
           <canvas id="outlineCanvas" width="420" height="420"></canvas>
           <div id="generatorStatus" class="status-box">PCA reconstruction</div>
         </section>

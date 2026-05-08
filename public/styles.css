@@ -239,37 +239,17 @@ select:focus {
   font-size: 13px;
 }
 
-.metric-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 38px;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.map-summary {
-  gap: 0;
-}
-
-.map-summary h2 {
-  margin-bottom: 8px;
-}
-
-.metric-row strong {
-  color: var(--ink);
-}
-
 #pcaInterpretation {
-  display: grid;
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
 }
 
 .pca-axis {
   display: grid;
-  gap: 7px;
-  padding: 9px;
+  gap: 2px;
+  min-width: 86px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: #fbfaf6;
@@ -283,24 +263,7 @@ select:focus {
 .pca-axis p {
   color: var(--muted);
   font-size: 12px;
-  line-height: 1.35;
-}
-
-.pca-drivers {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.pca-drivers span {
-  max-width: 100%;
-  padding: 3px 6px;
-  border-radius: 6px;
-  background: rgba(32, 36, 42, 0.07);
-  color: var(--ink);
-  font-size: 11px;
   line-height: 1.2;
-  overflow-wrap: anywhere;
 }
 
 .mini-segmented {
@@ -327,7 +290,8 @@ select:focus {
   overflow: hidden;
 }
 
-.image-preview img {
+.image-preview img,
+#sourceThumb {
   width: 100%;
   max-height: 300px;
   object-fit: contain;
@@ -340,6 +304,12 @@ select:focus {
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+.upload-shell {
+  border-color: rgba(198, 93, 75, 0.42);
+  background: rgba(198, 93, 75, 0.09);
+  color: #783b30;
 }
 
 .selected-name {
@@ -386,7 +356,8 @@ dd {
   aspect-ratio: 1;
 }
 
-.neighbor-button img {
+.neighbor-button img,
+.neighbor-button canvas {
   width: 100%;
   height: 100%;
   display: block;
@@ -447,7 +418,7 @@ dd {
 
 .pc-row {
   display: grid;
-  grid-template-columns: 34px minmax(120px, 1fr) 78px;
+  grid-template-columns: 82px minmax(120px, 1fr) 78px;
   gap: 10px;
   align-items: center;
 }
@@ -569,7 +540,7 @@ code {
   }
 
   .pc-row {
-    grid-template-columns: 34px 1fr;
+    grid-template-columns: 82px 1fr;
   }
 
   .pc-row input[type="number"] {

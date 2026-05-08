@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ProcessPoolExecutor
+import gzip
 import hashlib
 import json
 import math
@@ -13,6 +14,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image, ImageOps
 
 from build_fingerprints import (
     compute_pca,
@@ -23,6 +25,12 @@ from build_fingerprints import (
     shell_appearance_features,
 )
 
+
+DERIVED_APPEARANCE_FIELDS = [
+    "color_pattern_strength",
+    "color_pattern_contrast",
+    "color_pattern_chroma",
+]
 
 APPEARANCE_FEATURES = [
     ("color_l_mean", "Lightness", "appearance"),
@@ -38,6 +46,9 @@ APPEARANCE_FEATURES = [
     ("texture_gradient_mean", "Texture gradient", "appearance"),
     ("texture_residual_std", "Texture residual", "appearance"),
     ("texture_luma_iqr", "Luma IQR", "appearance"),
+    ("color_pattern_strength", "Pattern", "appearance"),
+    ("color_pattern_contrast", "Pattern contrast", "appearance"),
+    ("color_pattern_chroma", "Pattern color", "appearance"),
 ]
 
 MORPH_FEATURES = [
@@ -52,7 +63,7 @@ APPEARANCE_FIELD_NAMES = [
     "color_r_mean",
     "color_g_mean",
     "color_b_mean",
-    *[name for name, _label, _group in APPEARANCE_FEATURES],
+    *[name for name, _label, _group in APPEARANCE_FEATURES if name not in DERIVED_APPEARANCE_FIELDS],
 ]
 
 INTERPRETATION_FEATURES = [
@@ -62,10 +73,15 @@ INTERPRETATION_FEATURES = [
     ("contour_concavity", "concavity"),
     ("contour_solidity", "solidity"),
     ("color_l_mean", "lightness"),
+    ("color_l_std", "contrast"),
     ("color_chroma_mean", "chroma"),
+    ("color_chroma_std", "chroma contrast"),
     ("color_saturation_mean", "saturation"),
     ("texture_gradient_mean", "texture gradient"),
     ("texture_luma_iqr", "luma variation"),
+    ("color_pattern_strength", "pattern"),
+    ("color_pattern_contrast", "pattern contrast"),
+    ("color_pattern_chroma", "pattern color"),
 ]
 
 
@@ -79,6 +95,28 @@ def file_checksum(path: Path) -> dict[str, object]:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return {"bytes": path.stat().st_size, "sha256": digest.hexdigest()}
+
+
+def write_gzip_json(path: Path, payload: dict[str, object]) -> None:
+    with gzip.open(path, "wt", encoding="utf-8", compresslevel=9) as handle:
+        json.dump(payload, handle, separators=(",", ":"))
+
+
+def gzip_bytes_to_file(path: Path, payload: bytes) -> None:
+    with gzip.open(path, "wb", compresslevel=9) as handle:
+        handle.write(payload)
+
+
+def load_json_maybe_gzip(path: Path) -> dict[str, object] | None:
+    if not path.exists():
+        return None
+    try:
+        if path.suffix == ".gz":
+            with gzip.open(path, "rt", encoding="utf-8") as handle:
+                return json.load(handle)
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def roughness(fingerprint: np.ndarray) -> float:
@@ -111,6 +149,51 @@ def contour_solidity(contour: np.ndarray | None) -> float:
     if hull_area <= 0:
         return 0.0
     return float(np.clip(area / hull_area, 0.0, 1.0))
+
+
+def color_pattern_features(record: dict[str, object]) -> dict[str, float]:
+    l_std = float(record.get("color_l_std", 0.0) or 0.0)
+    chroma_std = float(record.get("color_chroma_std", 0.0) or 0.0)
+    saturation_std = float(record.get("color_saturation_std", 0.0) or 0.0)
+    gradient = float(record.get("texture_gradient_mean", 0.0) or 0.0)
+    residual = float(record.get("texture_residual_std", 0.0) or 0.0)
+    iqr = float(record.get("texture_luma_iqr", 0.0) or 0.0)
+    gradient_unit = min(1.0, max(0.0, gradient / 1.5))
+    strength = np.clip(
+        (
+            l_std * 1.7
+            + chroma_std * 2.2
+            + saturation_std * 0.9
+            + residual * 10.0
+            + iqr * 1.2
+            + gradient_unit
+        )
+        / 6.0,
+        0.0,
+        1.0,
+    )
+    contrast = np.clip((l_std * 2.0 + residual * 12.0 + iqr * 1.3) / 3.0, 0.0, 1.0)
+    chroma_pattern = np.clip((chroma_std * 2.6 + saturation_std * 1.2) / 2.0, 0.0, 1.0)
+    return {
+        "color_pattern_strength": float(strength),
+        "color_pattern_contrast": float(contrast),
+        "color_pattern_chroma": float(chroma_pattern),
+    }
+
+
+def specimen_label(value: object) -> str:
+    text = str(value or "").strip()
+    return f"Specimen {text}" if text else "Unknown specimen"
+
+
+def view_label(value: object) -> str:
+    text = str(value or "").strip()
+    labels = {
+        "A": "Primary view (A)",
+        "B": "Reverse view (B)",
+        "C": "Detail view (C)",
+    }
+    return labels.get(text, f"View {text}" if text else "Unknown view")
 
 
 def normalized_contour_matrix(records: list[dict], contours: np.ndarray) -> np.ndarray:
@@ -254,12 +337,35 @@ def ensure_appearance_features(
             executor.shutdown()
 
 
-def reuse_exported_appearance_features(records: list[dict], previous_shells: Path) -> None:
-    if not previous_shells.exists():
-        return
-    try:
-        previous = json.loads(previous_shells.read_text(encoding="utf-8")).get("records", [])
-    except (OSError, json.JSONDecodeError):
+def shell_records_from_payload(payload: dict[str, object] | None) -> list[dict[str, object]]:
+    if not payload:
+        return []
+    if isinstance(payload.get("records"), list):
+        return list(payload["records"])  # type: ignore[index]
+    if payload.get("encoding") != "shell-pack-v1":
+        return []
+    count = int(payload.get("count", 0) or 0)
+    files = list(payload.get("files", []))
+    metrics = payload.get("metrics", {})
+    if not isinstance(metrics, dict):
+        metrics = {}
+    output: list[dict[str, object]] = []
+    for index in range(count):
+        record: dict[str, object] = {"file": files[index] if index < len(files) else ""}
+        for field, values in metrics.items():
+            if isinstance(values, list) and index < len(values):
+                record[str(field)] = values[index]
+        output.append(record)
+    return output
+
+
+def reuse_exported_appearance_features(records: list[dict], previous_shells: list[Path]) -> None:
+    previous: list[dict[str, object]] = []
+    for path in previous_shells:
+        previous = shell_records_from_payload(load_json_maybe_gzip(path))
+        if previous:
+            break
+    if not previous:
         return
     by_file = {record.get("file"): record for record in previous}
     reused = 0
@@ -320,7 +426,15 @@ def transformed_trait_value(record: dict, field: str) -> float:
     value = float(record.get(field, 0.0) or 0.0)
     if field == "aspect_ratio":
         return math.log1p(max(0.0, value))
-    if field in {"roughness", "contour_concavity", "texture_gradient_mean", "texture_residual_std"}:
+    if field in {
+        "roughness",
+        "contour_concavity",
+        "texture_gradient_mean",
+        "texture_residual_std",
+        "color_pattern_strength",
+        "color_pattern_contrast",
+        "color_pattern_chroma",
+    }:
         return math.log1p(max(0.0, value) * 64.0)
     return value
 
@@ -464,17 +578,36 @@ def axis_examples(
     }
 
 
-def summary_from_drivers(drivers: list[dict[str, object]]) -> str:
-    if not drivers:
-        return "No strong scalar driver; read this axis mostly through the generated outline."
-    positive = [driver["label"] for driver in drivers if int(driver["sign"]) > 0][:2]
-    negative = [driver["label"] for driver in drivers if int(driver["sign"]) < 0][:2]
-    parts = []
-    if positive:
-        parts.append("positive values increase " + " and ".join(positive))
-    if negative:
-        parts.append("positive values decrease " + " and ".join(negative))
-    return "; ".join(parts) + "."
+AXIS_TASTE_LABELS = [
+    ("color_pattern", "Pattern"),
+    ("texture", "Texture"),
+    ("roughness", "Roughness"),
+    ("contour_concavity", "Concavity"),
+    ("solidity", "Fullness"),
+    ("aspect_ratio", "Elongation"),
+    ("mask_ratio", "Mass"),
+    ("color_l_std", "Contrast"),
+    ("contrast", "Contrast"),
+    ("color_l_mean", "Lightness"),
+    ("lightness", "Lightness"),
+    ("chroma", "Color"),
+    ("saturation", "Color"),
+    ("hue", "Hue"),
+    ("color_a", "Hue"),
+    ("color_b", "Hue"),
+    ("contour_pc", "Shape"),
+]
+
+
+def axis_taste_label(drivers: list[dict[str, object]], axis: int) -> str:
+    for driver in drivers:
+        if float(driver.get("strength", 0.0) or 0.0) < 0.12:
+            continue
+        haystack = f"{driver.get('name', '')} {driver.get('label', '')}".lower()
+        for needle, label in AXIS_TASTE_LABELS:
+            if needle in haystack:
+                return label
+    return f"PC{axis + 1}"
 
 
 def pca_interpretations(
@@ -504,8 +637,9 @@ def pca_interpretations(
         axes.append(
             {
                 "axis": axis + 1,
+                "label": axis_taste_label(drivers, axis),
                 "explained": quantize(float(explained[axis]), 8),
-                "summary": summary_from_drivers(drivers),
+                "summary": axis_taste_label(drivers, axis),
                 "drivers": drivers,
                 "correlations": correlations[:8],
                 "examples": axis_examples(scores[:, axis], records),
@@ -534,10 +668,167 @@ def color_mix_model(records: list[dict]) -> dict[str, object]:
             "color_a_mean",
             "color_b_lab_mean",
             "color_chroma_mean",
+            "color_chroma_std",
             "color_saturation_mean",
+            "color_saturation_std",
             "texture_gradient_mean",
+            "texture_residual_std",
+            "texture_luma_iqr",
+            "color_pattern_strength",
+            "color_pattern_contrast",
+            "color_pattern_chroma",
             "roughness",
         ],
+    }
+
+
+def compact_pool(values: list[object]) -> tuple[list[object], list[int]]:
+    pool: list[object] = []
+    lookup: dict[str, int] = {}
+    indices: list[int] = []
+    for value in values:
+        key = str(value)
+        if key not in lookup:
+            lookup[key] = len(pool)
+            pool.append(value)
+        indices.append(lookup[key])
+    return pool, indices
+
+
+def flat_pc_values(records: list[dict], key: str) -> tuple[int, list[float]]:
+    count = max((len(record.get(key, [])) for record in records), default=0)
+    flat: list[float] = []
+    for record in records:
+        values = list(record.get(key, []))
+        for index in range(count):
+            flat.append(quantize(float(values[index] if index < len(values) else 0.0)))
+    return count, flat
+
+
+def compact_shell_records(records: list[dict]) -> dict[str, object]:
+    species_names, species = compact_pool([record.get("species", "") for record in records])
+    specimen_values, specimens = compact_pool([record.get("specimen", "") for record in records])
+    view_values, views = compact_pool([record.get("view", "") for record in records])
+    contour_pc_count, contour_pc = flat_pc_values(records, "contour_pc")
+    trait_pc_count, trait_pc = flat_pc_values(records, "trait_pc")
+    fields = [
+        "center_adjustment",
+        "component_count",
+        "mask_ratio",
+        "roughness",
+        "aspect_ratio",
+        "contour_solidity",
+        "contour_concavity",
+        "mean_radius",
+        *APPEARANCE_FIELD_NAMES,
+        *DERIVED_APPEARANCE_FIELDS,
+    ]
+    metrics = {
+        field: [quantize(float(record.get(field, 0.0) or 0.0)) for record in records]
+        for field in fields
+    }
+    return {
+        "encoding": "shell-pack-v1",
+        "count": len(records),
+        "files": [record.get("file", "") for record in records],
+        "species_names": species_names,
+        "species": species,
+        "specimen_values": specimen_values,
+        "specimens": specimens,
+        "specimen_labels": [specimen_label(value) for value in specimen_values],
+        "view_values": view_values,
+        "views": views,
+        "view_labels": [view_label(value) for value in view_values],
+        "area": [int(record.get("area", 0) or 0) for record in records],
+        "centers": [
+            quantize(value)
+            for record in records
+            for value in (record.get("center", [0.0, 0.0]) or [0.0, 0.0])[:2]
+        ],
+        "dims": [
+            int(value)
+            for record in records
+            for value in [record.get("image_width", 0) or 0, record.get("image_height", 0) or 0]
+        ],
+        "bbox": [
+            int(value)
+            for record in records
+            for value in (record.get("bbox", [0, 0, 0, 0]) or [0, 0, 0, 0])[:4]
+        ],
+        "contour_pc_count": contour_pc_count,
+        "contour_pc": contour_pc,
+        "trait_pc_count": trait_pc_count,
+        "trait_pc": trait_pc,
+        "fields": fields,
+        "metrics": metrics,
+    }
+
+
+def remove_matching_files(directory: Path, pattern: str) -> None:
+    if not directory.exists():
+        return
+    for path in directory.glob(pattern):
+        if path.is_file():
+            path.unlink()
+
+
+def export_thumbnail_atlases(
+    dataset_dir: Path,
+    output_dir: Path,
+    records: list[dict],
+    size: int,
+    quality: int,
+    per_atlas: int,
+    columns: int,
+    budget_mib: float,
+) -> dict[str, object] | None:
+    if not dataset_dir.exists() or not records or size <= 0:
+        return None
+    thumb_dir = output_dir / "thumbs"
+    thumb_dir.mkdir(parents=True, exist_ok=True)
+    remove_matching_files(thumb_dir, "thumb_*.webp")
+
+    columns = max(1, min(columns, per_atlas))
+    per_atlas = max(1, per_atlas)
+    page_files: list[str] = []
+    total_bytes = 0
+    for page, start in enumerate(range(0, len(records), per_atlas)):
+        page_records = records[start : start + per_atlas]
+        rows = math.ceil(len(page_records) / columns)
+        atlas = Image.new("RGB", (columns * size, rows * size), (0, 0, 0))
+        for offset, record in enumerate(page_records):
+            source = dataset_dir / str(record.get("file", ""))
+            try:
+                with Image.open(source) as image:
+                    image = ImageOps.exif_transpose(image).convert("RGB")
+                    image.thumbnail((size, size), Image.Resampling.LANCZOS)
+                    x = (offset % columns) * size + (size - image.width) // 2
+                    y = (offset // columns) * size + (size - image.height) // 2
+                    atlas.paste(image, (x, y))
+            except OSError:
+                continue
+        file_name = f"thumb_{page:03d}.webp"
+        path = thumb_dir / file_name
+        atlas.save(path, "WEBP", quality=quality, method=6)
+        page_files.append(file_name)
+        total_bytes += path.stat().st_size
+        if (page + 1) % 5 == 0 or start + len(page_records) == len(records):
+            print(f"thumbnails {start + len(page_records)}/{len(records)}", flush=True)
+
+    if total_bytes > budget_mib * 1024 * 1024:
+        for name in page_files:
+            (thumb_dir / name).unlink(missing_ok=True)
+        return None
+
+    return {
+        "dir": "thumbs",
+        "files": page_files,
+        "size": size,
+        "quality": quality,
+        "columns": columns,
+        "per_atlas": per_atlas,
+        "count": len(records),
+        "bytes": total_bytes,
     }
 
 
@@ -551,6 +842,12 @@ def main() -> None:
     parser.add_argument("--contour-scale", type=int, default=16)
     parser.add_argument("--contour-workers", type=int, default=0)
     parser.add_argument("--no-contours", action="store_true")
+    parser.add_argument("--thumbnail-size", type=int, default=56)
+    parser.add_argument("--thumbnail-quality", type=int, default=42)
+    parser.add_argument("--thumbnail-per-atlas", type=int, default=2048)
+    parser.add_argument("--thumbnail-columns", type=int, default=64)
+    parser.add_argument("--thumbnail-budget-mib", type=float, default=50.0)
+    parser.add_argument("--no-thumbnails", action="store_true")
     args = parser.parse_args()
 
     manifest = json.loads((args.processed / "manifest.json").read_text(encoding="utf-8"))
@@ -576,7 +873,10 @@ def main() -> None:
             args.record_components,
         )
         contour_scores = contour_pca["scores"]
-    reuse_exported_appearance_features(manifest["records"], args.output / "shells.json")
+    reuse_exported_appearance_features(
+        manifest["records"],
+        [args.output / "shells.compact.json.gz", args.output / "shells.json"],
+    )
     ensure_appearance_features(
         manifest["records"],
         args.dataset.resolve(),
@@ -629,7 +929,9 @@ def main() -> None:
             "name": record["name"],
             "species": record["species"],
             "specimen": record["specimen"],
+            "specimen_label": specimen_label(record["specimen"]),
             "view": record["view"],
+            "view_label": view_label(record["view"]),
             "contour_pc": contour_pc,
             "area": int(record["area"]),
             "center": record["center"],
@@ -647,6 +949,8 @@ def main() -> None:
         }
         for field in APPEARANCE_FIELD_NAMES:
             exported[field] = quantize(record.get(field, 0.0))
+        for field, value in color_pattern_features(exported).items():
+            exported[field] = quantize(value)
         records.append(exported)
 
     trait_pca = None
@@ -699,36 +1003,42 @@ def main() -> None:
         model["pca_interpretation"] = interpretation
     model["color_mix"] = color_mix_model(records)
 
-    (args.output / "model.json").write_text(
-        json.dumps(model, separators=(",", ":")),
-        encoding="utf-8",
+    shell_file = "shells.compact.json.gz"
+    model.update(
+        {
+            "shell_file": shell_file,
+            "shell_encoding": "shell-pack-v1-gzip-json",
+            "color_fingerprint_fields": DERIVED_APPEARANCE_FIELDS,
+        }
     )
-    (args.output / "shells.json").write_text(
-        json.dumps({"records": records}, separators=(",", ":")),
-        encoding="utf-8",
-    )
+
+    write_gzip_json(args.output / shell_file, compact_shell_records(records))
+    old_shell_file = args.output / "shells.json"
+    if old_shell_file.exists():
+        old_shell_file.unlink()
+
     fingerprint_file = args.output / "fingerprints.u16"
     if fingerprint_file.exists():
         fingerprint_file.unlink()
-    contour_file = args.output / "contours.u16"
+    contour_file = args.output / "contours.u16.gz"
+    raw_contour_file = args.output / "contours.u16"
+    if raw_contour_file.exists():
+        raw_contour_file.unlink()
     if args.no_contours:
         if contour_file.exists():
             contour_file.unlink()
     elif "contours" in numeric.files:
         contours = numeric["contours"].astype(np.float32, copy=False)
         encoded_contours = np.rint(np.clip(contours * args.contour_scale, 0, 65535)).astype("<u2")
-        encoded_contours.tofile(contour_file)
+        gzip_bytes_to_file(contour_file, encoded_contours.tobytes(order="C"))
         model.update(
             {
-                "contour_file": "contours.u16",
+                "contour_file": "contours.u16.gz",
                 "contour_encoding": "uint16_xy_fixed",
+                "contour_compression": "gzip",
                 "contour_points": int(contours.shape[1]),
                 "contour_scale": args.contour_scale,
             }
-        )
-        (args.output / "model.json").write_text(
-            json.dumps(model, separators=(",", ":")),
-            encoding="utf-8",
         )
     elif args.dataset.exists():
         export_contours(
@@ -740,35 +1050,61 @@ def main() -> None:
             bool(manifest.get("fill_holes", False)),
             args.contour_workers,
         )
+        if raw_contour_file.exists():
+            gzip_bytes_to_file(contour_file, raw_contour_file.read_bytes())
+            raw_contour_file.unlink()
         model.update(
             {
-                "contour_file": "contours.u16",
+                "contour_file": "contours.u16.gz",
                 "contour_encoding": "uint16_xy_fixed",
+                "contour_compression": "gzip",
                 "contour_points": args.contour_points,
                 "contour_scale": args.contour_scale,
             }
-        )
-        (args.output / "model.json").write_text(
-            json.dumps(model, separators=(",", ":")),
-            encoding="utf-8",
         )
 
     legacy = args.output / "fingerprints.f32"
     if legacy.exists():
         legacy.unlink()
 
+    if args.no_thumbnails:
+        thumb_dir = args.output / "thumbs"
+        remove_matching_files(thumb_dir, "thumb_*.webp")
+    else:
+        thumbnail_atlas = export_thumbnail_atlases(
+            args.dataset.resolve(),
+            args.output,
+            records,
+            args.thumbnail_size,
+            args.thumbnail_quality,
+            args.thumbnail_per_atlas,
+            args.thumbnail_columns,
+            args.thumbnail_budget_mib,
+        )
+        if thumbnail_atlas is not None:
+            model["thumbnail_atlas"] = thumbnail_atlas
+
+    (args.output / "model.json").write_text(
+        json.dumps(model, separators=(",", ":")),
+        encoding="utf-8",
+    )
+
     print(args.output / "model.json")
-    print(args.output / "shells.json")
+    print(args.output / shell_file)
     if contour_file.exists():
         print(contour_file)
 
-    checksum_names = ["model.json", "shells.json"]
+    checksum_names = ["model.json", shell_file]
     if contour_file.exists():
-        checksum_names.append("contours.u16")
-    checksums = {
-        name: file_checksum(args.output / name)
-        for name in checksum_names
-    }
+        checksum_names.append("contours.u16.gz")
+    thumbnail_atlas = model.get("thumbnail_atlas")
+    if isinstance(thumbnail_atlas, dict):
+        checksum_names.extend(
+            f"{thumbnail_atlas.get('dir', 'thumbs')}/{name}"
+            for name in thumbnail_atlas.get("files", [])
+            if isinstance(name, str)
+        )
+    checksums = {name: file_checksum(args.output / name) for name in checksum_names}
     (args.output / "checksums.json").write_text(
         json.dumps(checksums, indent=2),
         encoding="utf-8",

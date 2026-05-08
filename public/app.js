@@ -4,7 +4,7 @@ const repoBase = publicBase.endsWith("/public/")
   : publicBase;
 
 const mapSpaces = ["contour", "trait"];
-const colorModes = ["species", "shell", "lightness", "chroma", "roughness", "concavity", "trait"];
+const colorModes = ["species", "shell", "pattern", "lightness", "chroma", "roughness", "concavity", "trait"];
 const overlayLayerNames = ["contour", "center"];
 
 const state = {
@@ -21,6 +21,7 @@ const state = {
   generatedTraits: null,
   generatedNeighbors: [],
   generatedMode: "selected",
+  uploadImageUrl: "",
   colorMixTarget: null,
   colorMixTraits: null,
   colorMixNeighbors: [],
@@ -37,6 +38,7 @@ const state = {
     contour: true,
     center: true,
   },
+  sourceFrame: null,
   draggingTarget: false,
   draggingColor: false,
   panningViewport: null,
@@ -51,8 +53,6 @@ const state = {
 
 const els = {
   statusLine: document.querySelector("#statusLine"),
-  visibleCount: document.querySelector("#visibleCount"),
-  explainedVariance: document.querySelector("#explainedVariance"),
   search: document.querySelector("#searchBox"),
   randomShell: document.querySelector("#randomShell"),
   mapSpaceSelect: document.querySelector("#mapSpaceSelect"),
@@ -62,6 +62,7 @@ const els = {
   pcaInterpretation: document.querySelector("#pcaInterpretation"),
   scatter: document.querySelector("#scatterCanvas"),
   pointTooltip: document.querySelector("#pointTooltip"),
+  sourceThumb: document.querySelector("#sourceThumb"),
   sourceImage: document.querySelector("#sourceImage"),
   sourceOverlay: document.querySelector("#sourceOverlay"),
   overlayContour: document.querySelector("#overlayContour"),
@@ -74,6 +75,8 @@ const els = {
   pcControls: document.querySelector("#pcControls"),
   meanShape: document.querySelector("#meanShape"),
   walkPca: document.querySelector("#walkPca"),
+  uploadShell: document.querySelector("#uploadShell"),
+  uploadInput: document.querySelector("#uploadInput"),
   exportSvg: document.querySelector("#exportSvg"),
   colorMix: document.querySelector("#colorMixCanvas"),
   colorMixStatus: document.querySelector("#colorMixStatus"),
@@ -87,9 +90,11 @@ const els = {
 
 const scatterCtx = els.scatter.getContext("2d");
 const outlineCtx = els.outline.getContext("2d");
+const sourceThumbCtx = els.sourceThumb.getContext("2d");
 const sourceOverlayCtx = els.sourceOverlay.getContext("2d");
 const colorMixCtx = els.colorMix.getContext("2d");
 const normalizedContourCache = new Map();
+const thumbnailPageCache = new Map();
 
 function asset(path) {
   return `${publicBase}${path}`;
@@ -121,11 +126,70 @@ function fetchJson(url) {
   });
 }
 
-function fetchArrayBuffer(url) {
-  return fetch(url, { cache: "no-store" }).then((response) => {
-    if (!response.ok) throw new Error(`${url} returned ${response.status}`);
-    return response.arrayBuffer();
-  });
+async function fetchCompressedArrayBuffer(url) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error(`${url} returned ${response.status}`);
+  if (!url.endsWith(".gz")) return response.arrayBuffer();
+  if (!("DecompressionStream" in window)) {
+    throw new Error("This browser cannot decompress the shell data pack.");
+  }
+  return new Response(response.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+}
+
+async function fetchCompressedJson(url) {
+  const buffer = await fetchCompressedArrayBuffer(url);
+  return JSON.parse(new TextDecoder().decode(buffer));
+}
+
+function unpackShells(payload) {
+  if (Array.isArray(payload?.records)) return payload.records;
+  if (payload?.encoding !== "shell-pack-v1") {
+    throw new Error("Unsupported shell data pack.");
+  }
+  const count = payload.count || 0;
+  const metrics = payload.metrics || {};
+  const fields = payload.fields || Object.keys(metrics);
+  const contourPcCount = payload.contour_pc_count || 0;
+  const traitPcCount = payload.trait_pc_count || 0;
+  const shells = [];
+  for (let id = 0; id < count; id += 1) {
+    const speciesIndex = payload.species?.[id] ?? 0;
+    const specimenIndex = payload.specimens?.[id] ?? 0;
+    const viewIndex = payload.views?.[id] ?? 0;
+    const shell = {
+      id,
+      file: payload.files?.[id] || "",
+      species: payload.species_names?.[speciesIndex] || "Unknown shell",
+      specimen: payload.specimen_values?.[specimenIndex] || "",
+      specimen_label: payload.specimen_labels?.[specimenIndex] || "Unknown specimen",
+      view: payload.view_values?.[viewIndex] || "",
+      view_label: payload.view_labels?.[viewIndex] || "Unknown view",
+      area: payload.area?.[id] || 0,
+      center: [payload.centers?.[id * 2] || 0, payload.centers?.[id * 2 + 1] || 0],
+      image_width: payload.dims?.[id * 2] || 0,
+      image_height: payload.dims?.[id * 2 + 1] || 0,
+      bbox: [
+        payload.bbox?.[id * 4] || 0,
+        payload.bbox?.[id * 4 + 1] || 0,
+        payload.bbox?.[id * 4 + 2] || 0,
+        payload.bbox?.[id * 4 + 3] || 0,
+      ],
+      contour_pc: [],
+      trait_pc: [],
+    };
+    shell.name = `${shell.species} ${shell.specimen_label} ${shell.view_label}`;
+    for (let pc = 0; pc < contourPcCount; pc += 1) {
+      shell.contour_pc.push(payload.contour_pc?.[id * contourPcCount + pc] || 0);
+    }
+    for (let pc = 0; pc < traitPcCount; pc += 1) {
+      shell.trait_pc.push(payload.trait_pc?.[id * traitPcCount + pc] || 0);
+    }
+    for (const field of fields) {
+      shell[field] = metrics[field]?.[id] || 0;
+    }
+    shells.push(shell);
+  }
+  return shells;
 }
 
 async function initGeneratorKernel() {
@@ -224,8 +288,14 @@ function axisVariance(axisIndex) {
   return state.model.contour_explained_variance_ratio?.[axisIndex] || 0;
 }
 
+function axisMeaning(axisIndex, space = state.mapSpace) {
+  const item = state.model?.pca_interpretation?.[space]?.[axisIndex];
+  const label = item?.label || item?.summary || "";
+  return label && !/^PC\d+$/i.test(label) ? label : `PC${axisIndex + 1}`;
+}
+
 function axisLabel(axisIndex) {
-  return `${state.mapSpace === "trait" ? "Trait" : "Contour"} PC${axisIndex + 1}`;
+  return `${state.mapSpace === "trait" ? "Trait" : "Contour"} ${axisMeaning(axisIndex)}`;
 }
 
 function axisValue(shell, axisIndex) {
@@ -287,6 +357,10 @@ function pointColor(shell) {
   if (state.colorMode === "chroma") {
     const t = clamp01((shell.color_chroma_mean || 0) / 0.42);
     return `hsl(${40 + t * 220}, ${32 + t * 38}%, ${34 + t * 14}%)`;
+  }
+  if (state.colorMode === "pattern") {
+    const t = clamp01((shell.color_pattern_strength || 0) / 0.22);
+    return `hsl(${204 - t * 162}, ${34 + t * 36}%, ${30 + t * 18}%)`;
   }
   if (state.colorMode === "roughness") {
     const t = clamp01((shell.roughness || 0) / 0.035);
@@ -379,7 +453,6 @@ function updateFilter() {
         `${shell.name} ${shell.species} ${shell.file}`.toLowerCase().includes(query),
       )
     : state.shells;
-  els.visibleCount.textContent = state.filtered.length.toLocaleString();
   renderNeighbors(state.selected);
   drawColorMix();
   scheduleDraw();
@@ -446,18 +519,12 @@ function buildAxisControls() {
   els.yAxisSelect.value = String(state.yAxis);
 }
 
-function updateAxisSummary() {
-  const total = axisVariance(state.xAxis) + axisVariance(state.yAxis);
-  els.explainedVariance.textContent = `${formatNumber(total * 100, 1)}%`;
-}
-
 function setAxes(xAxis, yAxis) {
   state.xAxis = xAxis;
   state.yAxis = yAxis;
   els.xAxisSelect.value = String(xAxis);
   els.yAxisSelect.value = String(yAxis);
   state.viewport = initialViewport(xAxis, yAxis);
-  updateAxisSummary();
   renderPcaInterpretation();
   scheduleDraw();
   scheduleHashUpdate();
@@ -472,7 +539,6 @@ function setMapSpace(space) {
   els.mapSpaceSelect.value = state.mapSpace;
   buildAxisControls();
   state.viewport = initialViewport(state.xAxis, state.yAxis);
-  updateAxisSummary();
   renderPcaInterpretation();
   scheduleDraw();
   scheduleHashUpdate();
@@ -492,7 +558,7 @@ function buildPcControls() {
     row.dataset.pcRow = String(index);
 
     const label = document.createElement("label");
-    label.textContent = `PC${index + 1}`;
+    label.textContent = axisMeaning(index, "contour");
     const slider = document.createElement("input");
     slider.type = "range";
     slider.min = String(low);
@@ -564,23 +630,31 @@ function renderPcaInterpretation() {
     axis.className = "pca-axis";
     if (item.axis - 1 === state.xAxis || item.axis - 1 === state.yAxis) axis.classList.add("is-active");
     const heading = document.createElement("h3");
-    heading.textContent = `${axisLabel(item.axis - 1)} · ${formatNumber((item.explained || 0) * 100, 1)}%`;
-    const summary = document.createElement("p");
-    summary.textContent = item.summary || "";
-    const drivers = document.createElement("div");
-    drivers.className = "pca-drivers";
-    for (const driver of (item.drivers || []).slice(0, 4)) {
-      const chip = document.createElement("span");
-      chip.textContent = `${driver.sign > 0 ? "+" : "-"} ${driver.label}`;
-      drivers.append(chip);
-    }
-    axis.append(heading, summary, drivers);
+    heading.textContent = axisMeaning(item.axis - 1);
+    const meta = document.createElement("p");
+    meta.textContent = `PC${item.axis} · ${formatNumber((item.explained || 0) * 100, 1)}%`;
+    axis.append(heading, meta);
     els.pcaInterpretation.append(axis);
   }
 }
 
 function contourForShell(shell) {
-  if (!state.contours || !state.contourPoints || !shell) return null;
+  if (!shell) return null;
+  const uploadContour = shell.upload_contour || (shell.id < 0 && state.selected === shell ? state.selectedContour : null);
+  if (shell.id < 0 && uploadContour) {
+    const points = [];
+    const centerX = shell.center?.[0] || 0;
+    const centerY = shell.center?.[1] || 0;
+    const radius = shell.mean_radius || 1;
+    for (let index = 0; index < uploadContour.length; index += 2) {
+      points.push([
+        centerX + uploadContour[index] * radius,
+        centerY + uploadContour[index + 1] * radius,
+      ]);
+    }
+    return points;
+  }
+  if (!state.contours || !state.contourPoints) return null;
   const start = shell.id * state.contourPoints * 2;
   const end = start + state.contourPoints * 2;
   if (end > state.contours.length) return null;
@@ -592,6 +666,8 @@ function contourForShell(shell) {
 }
 
 function normalizedContour(shell) {
+  if (shell?.upload_contour) return shell.upload_contour;
+  if (shell?.id < 0 && state.selected === shell && state.selectedContour) return state.selectedContour;
   if (normalizedContourCache.has(shell.id)) return normalizedContourCache.get(shell.id);
   if (!state.contours || !state.contourPoints) return null;
   const start = shell.id * state.contourPoints * 2;
@@ -620,9 +696,16 @@ function shapeTraitsFromShell(shell) {
     color_a_mean: shell.color_a_mean,
     color_b_lab_mean: shell.color_b_lab_mean,
     color_chroma_mean: shell.color_chroma_mean,
+    color_chroma_std: shell.color_chroma_std,
     color_saturation_mean: shell.color_saturation_mean,
+    color_saturation_std: shell.color_saturation_std,
+    color_pattern_strength: shell.color_pattern_strength,
+    color_pattern_contrast: shell.color_pattern_contrast,
+    color_pattern_chroma: shell.color_pattern_chroma,
     roughness: shell.roughness,
     texture_gradient_mean: shell.texture_gradient_mean,
+    texture_residual_std: shell.texture_residual_std,
+    texture_luma_iqr: shell.texture_luma_iqr,
     contour_concavity: shell.contour_concavity,
     contour_solidity: shell.contour_solidity,
   };
@@ -690,19 +773,21 @@ function drawGeneratedTexture(ctx, contour, centerX, centerY, scale, traits) {
   const roughness = clamp01((traits?.roughness || 0.012) / 0.04);
   const chroma = clamp01((traits?.color_chroma_mean || 0.08) / 0.35);
   const concavity = clamp01((traits?.contour_concavity || 0.04) / 0.35);
+  const pattern = clamp01((traits?.color_pattern_strength || 0.06) / 0.22);
+  const patternContrast = clamp01((traits?.color_pattern_contrast || 0.04) / 0.18);
   ctx.save();
   contourPath(ctx, contour, centerX, centerY, scale);
   ctx.clip();
-  const ringCount = 5 + Math.round(concavity * 4);
+  const ringCount = 4 + Math.round(concavity * 4 + pattern * 5);
   for (let ring = 1; ring <= ringCount; ring += 1) {
     contourPath(ctx, contour, centerX, centerY, scale * (0.16 + (ring / (ringCount + 1)) * 0.78));
-    ctx.strokeStyle = `rgba(32, 36, 42, ${0.045 + chroma * 0.035})`;
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = `rgba(32, 36, 42, ${0.035 + chroma * 0.035 + patternContrast * 0.05})`;
+    ctx.lineWidth = 0.8 + pattern * 0.55;
     ctx.stroke();
   }
-  const step = Math.max(5, Math.round(15 - roughness * 6 - chroma * 3));
-  ctx.lineWidth = 1.1 + roughness * 0.8;
-  ctx.strokeStyle = `rgba(32, 36, 42, ${0.09 + roughness * 0.14})`;
+  const step = Math.max(4, Math.round(16 - roughness * 5 - chroma * 3 - pattern * 6));
+  ctx.lineWidth = 0.9 + roughness * 0.8 + pattern * 0.6;
+  ctx.strokeStyle = `rgba(32, 36, 42, ${0.07 + roughness * 0.12 + patternContrast * 0.16})`;
   for (let index = 0; index < pointCount; index += step) {
     const x = contour[index * 2];
     const y = contour[index * 2 + 1];
@@ -814,20 +899,133 @@ function contourFallbackDataUrl(shell) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-function setShellImage(image, shell, alt = "") {
-  image.dataset.fallbackApplied = "false";
-  image.alt = alt;
-  image.onerror = () => {
-    if (image.dataset.fallbackApplied === "true") {
-      image.removeAttribute("src");
+function fitImageFrame(imageWidth, imageHeight, frameWidth, frameHeight) {
+  const scale = Math.min(frameWidth / Math.max(1, imageWidth), frameHeight / Math.max(1, imageHeight));
+  const width = imageWidth * scale;
+  const height = imageHeight * scale;
+  return {
+    x: (frameWidth - width) / 2,
+    y: (frameHeight - height) / 2,
+    width,
+    height,
+    scale,
+  };
+}
+
+function thumbnailSourceRect(shell) {
+  const atlas = state.model?.thumbnail_atlas;
+  if (!atlas || shell.id < 0) return null;
+  const tile = atlas.size || 56;
+  const columns = atlas.columns || 64;
+  const perAtlas = atlas.per_atlas || 2048;
+  const page = Math.floor(shell.id / perAtlas);
+  const local = shell.id % perAtlas;
+  const tileX = (local % columns) * tile;
+  const tileY = Math.floor(local / columns) * tile;
+  const imageScale = Math.min(tile / Math.max(1, shell.image_width), tile / Math.max(1, shell.image_height));
+  const width = Math.max(1, shell.image_width * imageScale);
+  const height = Math.max(1, shell.image_height * imageScale);
+  return {
+    page,
+    x: tileX + (tile - width) / 2,
+    y: tileY + (tile - height) / 2,
+    width,
+    height,
+  };
+}
+
+function loadThumbnailPage(page) {
+  const atlas = state.model?.thumbnail_atlas;
+  if (!atlas?.files?.[page]) return Promise.resolve(null);
+  if (thumbnailPageCache.has(page)) return thumbnailPageCache.get(page);
+  const promise = new Promise((resolve) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = asset(`data/${atlas.dir}/${atlas.files[page]}`);
+  });
+  thumbnailPageCache.set(page, promise);
+  return promise;
+}
+
+async function drawThumbnailImage(ctx, shell, frameWidth, frameHeight) {
+  const source = thumbnailSourceRect(shell);
+  if (!source) return false;
+  const image = await loadThumbnailPage(source.page);
+  if (!image) return false;
+  const frame = fitImageFrame(shell.image_width, shell.image_height, frameWidth, frameHeight);
+  ctx.drawImage(
+    image,
+    source.x,
+    source.y,
+    source.width,
+    source.height,
+    frame.x,
+    frame.y,
+    frame.width,
+    frame.height,
+  );
+  return frame;
+}
+
+async function drawShellThumbToCanvas(canvas, shell) {
+  const ctx = canvas.getContext("2d");
+  canvas.width = 96;
+  canvas.height = 96;
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (await drawThumbnailImage(ctx, shell, canvas.width, canvas.height)) return;
+  const contour = normalizedContour(shell);
+  if (!contour) return;
+  const scale = (Math.min(canvas.width, canvas.height) * 0.38) / maxContourRadius([contour]);
+  contourPath(ctx, contour, canvas.width / 2, canvas.height / 2, scale);
+  ctx.fillStyle = shellRgb(shell, 0.82);
+  ctx.strokeStyle = "#287a74";
+  ctx.lineWidth = 3;
+  ctx.fill();
+  ctx.stroke();
+}
+
+function setSourceImageUrl(url, shell, alt = "") {
+  els.sourceThumb.hidden = true;
+  els.sourceImage.hidden = false;
+  els.sourceImage.dataset.fallbackApplied = "false";
+  els.sourceImage.alt = alt;
+  els.sourceImage.onerror = () => {
+    if (els.sourceImage.dataset.fallbackApplied === "true") {
+      els.sourceImage.removeAttribute("src");
       return;
     }
-    image.dataset.fallbackApplied = "true";
+    els.sourceImage.dataset.fallbackApplied = "true";
     const fallback = contourFallbackDataUrl(shell);
-    if (fallback) image.src = fallback;
-    else image.removeAttribute("src");
+    if (fallback) els.sourceImage.src = fallback;
+    else els.sourceImage.removeAttribute("src");
   };
-  image.src = datasetAsset(shell.file);
+  els.sourceImage.src = url;
+  const size = resizeCanvas(els.sourceOverlay, sourceOverlayCtx);
+  state.sourceFrame = fitImageFrame(shell.image_width, shell.image_height, size.width, size.height);
+}
+
+async function renderSourceShell(shell) {
+  if (!shell) return;
+  if (state.uploadImageUrl && shell.id < 0) {
+    setSourceImageUrl(state.uploadImageUrl, shell, shell.species);
+    return;
+  }
+  const size = resizeCanvas(els.sourceThumb, sourceThumbCtx);
+  sourceThumbCtx.fillStyle = "#050505";
+  sourceThumbCtx.fillRect(0, 0, size.width, size.height);
+  els.sourceImage.hidden = true;
+  els.sourceThumb.hidden = false;
+  const frame = await drawThumbnailImage(sourceThumbCtx, shell, size.width, size.height);
+  if (state.selected !== shell) return;
+  if (frame) {
+    state.sourceFrame = frame;
+    drawSourceOverlay();
+    return;
+  }
+  setSourceImageUrl(datasetAsset(shell.file), shell, shell.species);
 }
 
 function updateOverlayButtons() {
@@ -847,11 +1045,10 @@ function drawSourceOverlay() {
   const size = resizeCanvas(els.sourceOverlay, sourceOverlayCtx);
   sourceOverlayCtx.clearRect(0, 0, size.width, size.height);
   if (!shell.image_width || !shell.image_height) return;
-  const imageScale = Math.min(size.width / shell.image_width, size.height / shell.image_height);
-  const imageWidth = shell.image_width * imageScale;
-  const imageHeight = shell.image_height * imageScale;
-  const offsetX = (size.width - imageWidth) / 2;
-  const offsetY = (size.height - imageHeight) / 2;
+  const frame = state.sourceFrame || fitImageFrame(shell.image_width, shell.image_height, size.width, size.height);
+  const imageScale = frame.scale;
+  const offsetX = frame.x;
+  const offsetY = frame.y;
   const contour = state.overlayLayers.contour ? contourForShell(shell) : null;
   if (contour?.length) {
     sourceOverlayCtx.strokeStyle = "rgba(232, 76, 58, 0.96)";
@@ -993,9 +1190,16 @@ function blendTraits(neighbors, weights, keys = null) {
       "color_a_mean",
       "color_b_lab_mean",
       "color_chroma_mean",
+      "color_chroma_std",
       "color_saturation_mean",
+      "color_saturation_std",
       "roughness",
       "texture_gradient_mean",
+      "texture_residual_std",
+      "texture_luma_iqr",
+      "color_pattern_strength",
+      "color_pattern_contrast",
+      "color_pattern_chroma",
       "contour_concavity",
       "contour_solidity",
     ];
@@ -1058,8 +1262,9 @@ function renderNeighbors(shell) {
     const button = document.createElement("button");
     button.className = "neighbor-button";
     button.title = `${item.shell.species} (${formatNumber(item.distance, 3)})`;
-    const image = document.createElement("img");
-    setShellImage(image, item.shell, item.shell.species);
+    const image = document.createElement("canvas");
+    image.setAttribute("aria-label", item.shell.species);
+    drawShellThumbToCanvas(image, item.shell);
     const label = document.createElement("span");
     label.textContent = formatNumber(item.distance, 2);
     button.append(image, label);
@@ -1074,6 +1279,10 @@ function renderNeighbors(shell) {
 function selectShell(shell) {
   if (!shell) return;
   if (state.walkingPca) stopPcaWalk(false);
+  if (shell.id >= 0 && state.uploadImageUrl) {
+    URL.revokeObjectURL(state.uploadImageUrl);
+    state.uploadImageUrl = "";
+  }
   state.selected = shell;
   state.selectedContour = normalizedContour(shell);
   state.generatedContour = state.selectedContour;
@@ -1092,13 +1301,14 @@ function selectShell(shell) {
   els.selectedDetails.innerHTML = "";
   const details = [
     ["File", shell.file],
-    ["Specimen", shell.specimen || "-"],
-    ["View", shell.view || "-"],
+    ["Specimen", shell.specimen_label || shell.specimen || "-"],
+    ["View", shell.view_label || shell.view || "-"],
     ["Contour PC", shell.contour_pc?.slice(0, 2).map((value) => formatNumber(value, 3)).join(", ") || "-"],
     ["Trait PC", shell.trait_pc?.slice(0, 2).map((value) => formatNumber(value, 3)).join(", ") || "-"],
     ["Area", shell.area?.toLocaleString() || "-"],
     ["Lightness", formatNumber(shell.color_l_mean, 3)],
     ["Chroma", formatNumber(shell.color_chroma_mean, 3)],
+    ["Pattern", formatNumber(shell.color_pattern_strength, 3)],
     ["Roughness", formatNumber(shell.roughness, 4)],
     ["Concavity", formatNumber(shell.contour_concavity, 4)],
   ];
@@ -1109,7 +1319,8 @@ function selectShell(shell) {
     dd.textContent = value;
     els.selectedDetails.append(dt, dd);
   }
-  setShellImage(els.sourceImage, shell, shell.species);
+  state.sourceFrame = null;
+  renderSourceShell(shell);
   renderNeighbors(shell);
   updateGeneratorStatus();
   drawOutline();
@@ -1203,6 +1414,8 @@ function showPointTooltip(event, shell) {
   els.pointTooltip.replaceChildren(
     strong,
     document.createTextNode(shell.file),
+    document.createElement("br"),
+    document.createTextNode(`${shell.specimen_label || shell.specimen || "Unknown specimen"}, ${shell.view_label || shell.view || "Unknown view"}`),
     document.createElement("br"),
     document.createTextNode(`${axisLabel(state.xAxis)} ${formatNumber(axisValue(shell, state.xAxis))}, ${axisLabel(state.yAxis)} ${formatNumber(axisValue(shell, state.yAxis))}`),
     document.createElement("br"),
@@ -1341,8 +1554,15 @@ function applyColorMixFromEvent(event) {
     "color_a_mean",
     "color_b_lab_mean",
     "color_chroma_mean",
+    "color_chroma_std",
     "color_saturation_mean",
+    "color_saturation_std",
     "texture_gradient_mean",
+    "texture_residual_std",
+    "texture_luma_iqr",
+    "color_pattern_strength",
+    "color_pattern_contrast",
+    "color_pattern_chroma",
     "roughness",
   ]);
   const names = [];
@@ -1364,6 +1584,468 @@ function resetColorMix() {
   renderColorSwatches();
   drawColorMix();
   drawOutline();
+}
+
+function percentile(sortedValues, q) {
+  if (!sortedValues.length) return 0;
+  const index = Math.min(sortedValues.length - 1, Math.max(0, Math.round((sortedValues.length - 1) * q)));
+  return sortedValues[index];
+}
+
+function srgbToLinear(value) {
+  const v = value / 255;
+  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+}
+
+function labFromRgb(red, green, blue) {
+  const r = srgbToLinear(red);
+  const g = srgbToLinear(green);
+  const b = srgbToLinear(blue);
+  let x = (r * 0.4124564 + g * 0.3575761 + b * 0.1804375) / 0.95047;
+  let y = r * 0.2126729 + g * 0.7151522 + b * 0.072175;
+  let z = (r * 0.0193339 + g * 0.119192 + b * 0.9503041) / 1.08883;
+  const f = (value) => (value > 0.008856 ? Math.cbrt(value) : 7.787 * value + 16 / 116);
+  x = f(x);
+  y = f(y);
+  z = f(z);
+  return {
+    l: clamp01((116 * y - 16) / 100),
+    a: ((500 * (x - y)) / 127),
+    b: ((200 * (y - z)) / 127),
+  };
+}
+
+async function readUploadImage(file, maxSize = 640) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close?.();
+  return ctx.getImageData(0, 0, width, height);
+}
+
+function estimateBorderBackground(data, width, height) {
+  const step = Math.max(1, Math.floor((width + height) / 260));
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let count = 0;
+  const sample = (x, y) => {
+    const offset = (y * width + x) * 4;
+    r += data[offset];
+    g += data[offset + 1];
+    b += data[offset + 2];
+    count += 1;
+  };
+  for (let x = 0; x < width; x += step) {
+    sample(x, 0);
+    sample(x, height - 1);
+  }
+  for (let y = 0; y < height; y += step) {
+    sample(0, y);
+    sample(width - 1, y);
+  }
+  return [r / Math.max(1, count), g / Math.max(1, count), b / Math.max(1, count)];
+}
+
+function otsuThreshold(values) {
+  const bins = 256;
+  const hist = new Uint32Array(bins);
+  let maxValue = 1;
+  for (const value of values) maxValue = Math.max(maxValue, value);
+  for (const value of values) {
+    hist[Math.min(bins - 1, Math.floor((value / maxValue) * (bins - 1)))] += 1;
+  }
+  let sum = 0;
+  let total = 0;
+  for (let index = 0; index < bins; index += 1) {
+    sum += index * hist[index];
+    total += hist[index];
+  }
+  let sumBack = 0;
+  let weightBack = 0;
+  let best = 0;
+  let bestVariance = 0;
+  for (let index = 0; index < bins; index += 1) {
+    weightBack += hist[index];
+    if (!weightBack) continue;
+    const weightFore = total - weightBack;
+    if (!weightFore) break;
+    sumBack += index * hist[index];
+    const meanBack = sumBack / weightBack;
+    const meanFore = (sum - sumBack) / weightFore;
+    const variance = weightBack * weightFore * (meanBack - meanFore) ** 2;
+    if (variance > bestVariance) {
+      bestVariance = variance;
+      best = index;
+    }
+  }
+  return (best / (bins - 1)) * maxValue;
+}
+
+function largestMaskComponent(mask, width, height) {
+  const visited = new Uint8Array(mask.length);
+  const queue = new Int32Array(mask.length);
+  let bestStart = -1;
+  let bestCount = 0;
+  for (let start = 0; start < mask.length; start += 1) {
+    if (!mask[start] || visited[start]) continue;
+    let head = 0;
+    let tail = 0;
+    let count = 0;
+    visited[start] = 1;
+    queue[tail] = start;
+    tail += 1;
+    while (head < tail) {
+      const here = queue[head];
+      head += 1;
+      count += 1;
+      const x = here % width;
+      const y = Math.floor(here / width);
+      const neighbors = [here - 1, here + 1, here - width, here + width];
+      for (const next of neighbors) {
+        if (next < 0 || next >= mask.length || visited[next] || !mask[next]) continue;
+        const nx = next % width;
+        const ny = Math.floor(next / width);
+        if (Math.abs(nx - x) + Math.abs(ny - y) !== 1) continue;
+        visited[next] = 1;
+        queue[tail] = next;
+        tail += 1;
+      }
+    }
+    if (count > bestCount) {
+      bestCount = count;
+      bestStart = start;
+    }
+  }
+  const output = new Uint8Array(mask.length);
+  if (bestStart < 0) return output;
+  queue.fill(0);
+  visited.fill(0);
+  let head = 0;
+  let tail = 0;
+  visited[bestStart] = 1;
+  queue[tail] = bestStart;
+  tail += 1;
+  while (head < tail) {
+    const here = queue[head];
+    head += 1;
+    output[here] = 1;
+    const x = here % width;
+    const y = Math.floor(here / width);
+    for (const next of [here - 1, here + 1, here - width, here + width]) {
+      if (next < 0 || next >= mask.length || visited[next] || !mask[next]) continue;
+      const nx = next % width;
+      const ny = Math.floor(next / width);
+      if (Math.abs(nx - x) + Math.abs(ny - y) !== 1) continue;
+      visited[next] = 1;
+      queue[tail] = next;
+      tail += 1;
+    }
+  }
+  return output;
+}
+
+function isolateUploadMask(imageData) {
+  const { data, width, height } = imageData;
+  const background = estimateBorderBackground(data, width, height);
+  const diffs = new Float32Array(width * height);
+  for (let index = 0; index < width * height; index += 1) {
+    const offset = index * 4;
+    diffs[index] = Math.hypot(
+      data[offset] - background[0],
+      data[offset + 1] - background[1],
+      data[offset + 2] - background[2],
+    );
+  }
+  const threshold = Math.max(14, otsuThreshold(diffs) * 0.72);
+  const mask = new Uint8Array(width * height);
+  for (let index = 0; index < mask.length; index += 1) {
+    mask[index] = diffs[index] > threshold && data[index * 4 + 3] > 20 ? 1 : 0;
+  }
+  return largestMaskComponent(mask, width, height);
+}
+
+function contourFromUploadMask(mask, width, height, pointCount) {
+  let area = 0;
+  let sumX = 0;
+  let sumY = 0;
+  let minX = width;
+  let minY = height;
+  let maxX = 0;
+  let maxY = 0;
+  for (let index = 0; index < mask.length; index += 1) {
+    if (!mask[index]) continue;
+    const x = index % width;
+    const y = Math.floor(index / width);
+    area += 1;
+    sumX += x;
+    sumY += y;
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  }
+  if (area < 32) throw new Error("The uploaded shell mask is too small.");
+  const centerX = sumX / area;
+  const centerY = sumY / area;
+  const maxRadius = Math.ceil(Math.hypot(Math.max(centerX, width - centerX), Math.max(centerY, height - centerY))) + 2;
+  const points = [];
+  const radii = [];
+  for (let point = 0; point < pointCount; point += 1) {
+    const angle = -Math.PI / 2 + (point / pointCount) * Math.PI * 2;
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle);
+    let lastX = centerX;
+    let lastY = centerY;
+    let lastRadius = 0;
+    for (let radius = 0; radius <= maxRadius; radius += 0.75) {
+      const x = Math.round(centerX + dx * radius);
+      const y = Math.round(centerY + dy * radius);
+      if (x < 0 || x >= width || y < 0 || y >= height) break;
+      if (mask[y * width + x]) {
+        lastX = x;
+        lastY = y;
+        lastRadius = radius;
+      }
+    }
+    points.push([lastX, lastY]);
+    radii.push(lastRadius);
+  }
+  const meanRadius = radii.reduce((total, value) => total + value, 0) / Math.max(1, radii.length);
+  const contour = new Float32Array(pointCount * 2);
+  for (let point = 0; point < pointCount; point += 1) {
+    contour[point * 2] = (points[point][0] - centerX) / Math.max(1e-6, meanRadius);
+    contour[point * 2 + 1] = (points[point][1] - centerY) / Math.max(1e-6, meanRadius);
+  }
+  let rough = 0;
+  for (let index = 0; index < radii.length; index += 1) {
+    rough += Math.abs(radii[index] - radii[(index + 1) % radii.length]);
+  }
+  const bboxArea = Math.max(1, (maxX - minX + 1) * (maxY - minY + 1));
+  return {
+    contour,
+    center: [centerX, centerY],
+    meanRadius,
+    area,
+    bbox: [minX, minY, maxX, maxY],
+    aspectRatio: Math.max((maxX - minX + 1) / Math.max(1, maxY - minY + 1), (maxY - minY + 1) / Math.max(1, maxX - minX + 1)),
+    roughness: rough / Math.max(1e-6, meanRadius * radii.length),
+    concavity: clamp01(1 - area / bboxArea),
+  };
+}
+
+function traitsFromUpload(imageData, mask, geometry) {
+  const { data, width, height } = imageData;
+  const lumaImage = new Float32Array(width * height);
+  const luma = [];
+  const chroma = [];
+  const saturation = [];
+  let rTotal = 0;
+  let gTotal = 0;
+  let bTotal = 0;
+  let labL = 0;
+  let labA = 0;
+  let labB = 0;
+  let hueSin = 0;
+  let hueCos = 0;
+  let hueWeight = 0;
+  for (let index = 0; index < width * height; index += 1) {
+    const offset = index * 4;
+    lumaImage[index] = (0.2126 * data[offset] + 0.7152 * data[offset + 1] + 0.0722 * data[offset + 2]) / 255;
+  }
+  for (let index = 0; index < mask.length; index += 1) {
+    if (!mask[index]) continue;
+    const offset = index * 4;
+    const red = data[offset];
+    const green = data[offset + 1];
+    const blue = data[offset + 2];
+    const lab = labFromRgb(red, green, blue);
+    const maxRgb = Math.max(red, green, blue) / 255;
+    const minRgb = Math.min(red, green, blue) / 255;
+    const sat = maxRgb <= 0 ? 0 : (maxRgb - minRgb) / maxRgb;
+    const hue = Math.atan2(Math.sqrt(3) * (green - blue), 2 * red - green - blue);
+    const hueW = Math.max(sat, 0.05);
+    rTotal += red / 255;
+    gTotal += green / 255;
+    bTotal += blue / 255;
+    labL += lab.l;
+    labA += lab.a;
+    labB += lab.b;
+    hueSin += Math.sin(hue) * hueW;
+    hueCos += Math.cos(hue) * hueW;
+    hueWeight += hueW;
+    luma.push(lab.l);
+    chroma.push(Math.hypot(lab.a, lab.b));
+    saturation.push(sat);
+  }
+  const count = Math.max(1, luma.length);
+  const mean = (values) => values.reduce((total, value) => total + value, 0) / Math.max(1, values.length);
+  const std = (values, center) =>
+    Math.sqrt(values.reduce((total, value) => total + (value - center) ** 2, 0) / Math.max(1, values.length));
+  const lMean = mean(luma);
+  const cMean = mean(chroma);
+  const sMean = mean(saturation);
+  const sortedLuma = [...luma].sort((a, b) => a - b);
+  let gradientTotal = 0;
+  let residualValues = [];
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const index = y * width + x;
+      if (!mask[index]) continue;
+      const gx = lumaImage[index + 1] - lumaImage[index - 1];
+      const gy = lumaImage[index + width] - lumaImage[index - width];
+      const local =
+        (lumaImage[index - width] +
+          lumaImage[index + width] +
+          lumaImage[index - 1] +
+          lumaImage[index + 1] +
+          lumaImage[index]) /
+        5;
+      gradientTotal += Math.hypot(gx, gy);
+      residualValues.push(lumaImage[index] - local);
+    }
+  }
+  const residualMean = mean(residualValues);
+  const textureResidual = std(residualValues, residualMean);
+  const textureIqr = percentile(sortedLuma, 0.75) - percentile(sortedLuma, 0.25);
+  const patternStrength = clamp01(
+    (std(luma, lMean) * 1.7 +
+      std(chroma, cMean) * 2.2 +
+      std(saturation, sMean) * 0.9 +
+      textureResidual * 10 +
+      textureIqr * 1.2 +
+      clamp01((gradientTotal / Math.max(1, residualValues.length)) / 1.5)) /
+      6,
+  );
+  const patternContrast = clamp01((std(luma, lMean) * 2 + textureResidual * 12 + textureIqr * 1.3) / 3);
+  const patternChroma = clamp01((std(chroma, cMean) * 2.6 + std(saturation, sMean) * 1.2) / 2);
+  return {
+    visible_shell_ratio: 1,
+    mask_ratio: geometry.area / Math.max(1, width * height),
+    area: geometry.area,
+    center: geometry.center,
+    bbox: geometry.bbox,
+    mean_radius: geometry.meanRadius,
+    image_width: width,
+    image_height: height,
+    roughness: geometry.roughness,
+    aspect_ratio: geometry.aspectRatio,
+    contour_solidity: 1 - geometry.concavity,
+    contour_concavity: geometry.concavity,
+    color_r_mean: rTotal / count,
+    color_g_mean: gTotal / count,
+    color_b_mean: bTotal / count,
+    color_l_mean: labL / count,
+    color_l_std: std(luma, lMean),
+    color_a_mean: labA / count,
+    color_b_lab_mean: labB / count,
+    color_chroma_mean: cMean,
+    color_chroma_std: std(chroma, cMean),
+    color_saturation_mean: sMean,
+    color_saturation_std: std(saturation, sMean),
+    color_hue_sin: hueSin / Math.max(1, hueWeight),
+    color_hue_cos: hueCos / Math.max(1, hueWeight),
+    texture_gradient_mean: gradientTotal / Math.max(1, residualValues.length),
+    texture_residual_std: textureResidual,
+    texture_luma_iqr: textureIqr,
+    color_pattern_strength: patternStrength,
+    color_pattern_contrast: patternContrast,
+    color_pattern_chroma: patternChroma,
+  };
+}
+
+function projectContourToPca(contour) {
+  const mean = state.model.contour_mean || [];
+  const components = state.model.contour_components || [];
+  return components.map((component) => {
+    let score = 0;
+    for (let index = 0; index < Math.min(contour.length, mean.length, component.length); index += 1) {
+      score += (contour[index] - mean[index]) * component[index];
+    }
+    return score;
+  });
+}
+
+function transformedTraitValue(field, value) {
+  const number = Number(value || 0);
+  if (field === "aspect_ratio") return Math.log1p(Math.max(0, number));
+  if (
+    [
+      "roughness",
+      "contour_concavity",
+      "texture_gradient_mean",
+      "texture_residual_std",
+      "color_pattern_strength",
+      "color_pattern_contrast",
+      "color_pattern_chroma",
+    ].includes(field)
+  ) {
+    return Math.log1p(Math.max(0, number) * 64);
+  }
+  return number;
+}
+
+function projectTraitsToPca(shell) {
+  const schema = state.model.trait_feature_schema || [];
+  const mean = state.model.trait_mean || [];
+  const components = state.model.trait_components || [];
+  if (!schema.length || !components.length) return [];
+  const standardized = schema.map((spec, index) => {
+    let raw = 0;
+    if (String(spec.name || "").startsWith("contour_pc")) {
+      const pcIndex = Number(String(spec.name).replace("contour_pc", "")) - 1;
+      raw = shell.contour_pc?.[pcIndex] || 0;
+    } else {
+      raw = transformedTraitValue(spec.name, shell[spec.name]);
+    }
+    return ((raw - (spec.mean || 0)) / Math.max(1e-9, spec.scale || 1)) * (spec.weight || 1) - (mean[index] || 0);
+  });
+  return components.map((component) =>
+    component.reduce((total, loading, index) => total + (standardized[index] || 0) * loading, 0),
+  );
+}
+
+async function handleUploadShell() {
+  const file = els.uploadInput.files?.[0];
+  if (!file) return;
+  try {
+    const imageData = await readUploadImage(file);
+    const mask = isolateUploadMask(imageData);
+    const geometry = contourFromUploadMask(mask, imageData.width, imageData.height, state.contourPoints || 256);
+    const traits = traitsFromUpload(imageData, mask, geometry);
+    const shell = {
+      id: -Date.now(),
+      file: file.name,
+      name: `Uploaded shell ${file.name}`,
+      species: "Uploaded shell",
+      specimen: "",
+      specimen_label: "Bring your own shell",
+      view: "",
+      view_label: "Uploaded image",
+      component_count: 1,
+      contour_pc: projectContourToPca(geometry.contour),
+      upload_contour: geometry.contour,
+      ...traits,
+    };
+    shell.trait_pc = projectTraitsToPca(shell);
+    if (state.uploadImageUrl) URL.revokeObjectURL(state.uploadImageUrl);
+    state.uploadImageUrl = URL.createObjectURL(file);
+    centerViewportOnShell(shell);
+    selectShell(shell);
+    els.generatorStatus.textContent = "Uploaded shell fingerprint";
+  } catch (error) {
+    els.generatorStatus.textContent = error.message || "Upload failed";
+  } finally {
+    els.uploadInput.value = "";
+  }
 }
 
 function stopPcaWalk(updateHash = true) {
@@ -1420,6 +2102,8 @@ function setupEvents() {
   els.overlayCenter.addEventListener("click", () => toggleOverlayLayer("center"));
   els.meanShape.addEventListener("click", resetToMeanShape);
   els.walkPca.addEventListener("click", togglePcaWalk);
+  els.uploadShell.addEventListener("click", () => els.uploadInput.click());
+  els.uploadInput.addEventListener("change", handleUploadShell);
   els.exportSvg.addEventListener("click", exportGeneratedSvg);
   els.resetColorMix.addEventListener("click", resetColorMix);
   els.zoomIn.addEventListener("click", () => zoom(0.72));
@@ -1497,7 +2181,7 @@ function setupEvents() {
 
   window.addEventListener("resize", () => {
     scheduleDraw();
-    drawSourceOverlay();
+    renderSourceShell(state.selected);
     drawColorMix();
   });
   els.sourceImage.addEventListener("load", drawSourceOverlay);
@@ -1505,17 +2189,15 @@ function setupEvents() {
 
 async function init() {
   setupEvents();
-  const [model, shellPayload] = await Promise.all([
-    fetchJson(asset("data/model.json")),
-    fetchJson(asset("data/shells.json")),
-  ]);
+  const model = await fetchJson(asset("data/model.json"));
+  const shellPayload = await fetchCompressedJson(asset(`data/${model.shell_file || "shells.json"}`));
   const contourBuffer = model.contour_file
-    ? await fetchArrayBuffer(asset(`data/${model.contour_file}`))
+    ? await fetchCompressedArrayBuffer(asset(`data/${model.contour_file}`))
     : null;
   await initGeneratorKernel();
 
   state.model = model;
-  state.shells = shellPayload.records;
+  state.shells = unpackShells(shellPayload);
   state.filtered = state.shells;
   state.contours = contourBuffer ? new Uint16Array(contourBuffer) : null;
   state.contourPoints = model.contour_points || 0;
@@ -1529,7 +2211,6 @@ async function init() {
   els.statusLine.textContent = model.species_count
     ? `${model.processed_count.toLocaleString()} shells, ${model.species_count.toLocaleString()} species`
     : `${model.processed_count.toLocaleString()} shells`;
-  els.visibleCount.textContent = state.filtered.length.toLocaleString();
 
   const initialHash = parseHashState();
   if (mapSpaces.includes(initialHash.get("space"))) state.mapSpace = initialHash.get("space");
@@ -1546,7 +2227,6 @@ async function init() {
   els.mapSpaceSelect.value = state.mapSpace;
   els.colorModeSelect.value = state.colorMode;
   updateOverlayButtons();
-  updateAxisSummary();
   renderPcaInterpretation();
 
   state.suppressHash = true;
