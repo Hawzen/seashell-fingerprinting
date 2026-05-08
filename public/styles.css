@@ -336,6 +336,137 @@ select:focus {
   font-size: 13px;
 }
 
+.trait-filters,
+.trait-compare {
+  display: grid;
+  gap: 9px;
+}
+
+.trait-filter-row,
+.trait-bar-row {
+  display: grid;
+  gap: 5px;
+}
+
+.trait-filter-row header,
+.trait-bar-row header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.trait-filter-row input[type="range"] {
+  width: 100%;
+}
+
+.trait-filter-row .range-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.trait-filter-row output,
+.trait-value {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.morphology-lab {
+  display: grid;
+  gap: 10px;
+}
+
+.compact-field {
+  gap: 5px;
+}
+
+.compare-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.compare-actions button {
+  min-width: 0;
+  padding: 5px 6px;
+  font-size: 12px;
+}
+
+.trait-bars {
+  display: grid;
+  gap: 3px;
+}
+
+.trait-bar {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(32, 36, 42, 0.09);
+}
+
+.trait-bar span {
+  display: block;
+  height: 100%;
+  width: calc(var(--value, 0) * 100%);
+  border-radius: inherit;
+  background: var(--teal);
+}
+
+.trait-bar.compare span {
+  background: var(--coral);
+}
+
+.micro-status {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.geography-panel {
+  gap: 10px;
+}
+
+.year-control {
+  min-width: 150px;
+  display: grid;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.year-control input {
+  width: 100%;
+}
+
+#geoCanvas {
+  width: 100%;
+  min-height: 200px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7f7f2;
+}
+
+.live-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.live-links a {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 12px;
+  text-decoration: none;
+  background: #fff;
+}
+
 .source-frame {
   position: relative;
   width: 100%;

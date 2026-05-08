@@ -49,6 +49,7 @@
             <select id="colorModeSelect">
               <option value="locality">Location</option>
               <option value="species">Species</option>
+              <option value="conservation">Conservation</option>
               <option value="shell">Shell color</option>
               <option value="pattern">Pattern</option>
               <option value="lightness">Lightness</option>
@@ -57,6 +58,14 @@
               <option value="concavity">Concavity</option>
             </select>
           </label>
+        </section>
+
+        <section class="panel-section trait-filter-section">
+          <div class="section-title">
+            <h2>Morphology</h2>
+            <button id="resetTraitFilters" title="Reset morphology filters">Reset</button>
+          </div>
+          <div id="traitFilters" class="trait-filters"></div>
         </section>
 
         <section class="panel-section physical-shell">
@@ -101,6 +110,26 @@
             <div id="paletteSwatches" class="palette-swatches"></div>
           </div>
 
+          <div class="morphology-lab">
+            <div class="section-title">
+              <h2>Traits</h2>
+              <button id="emptyShell" title="Sample a sparse morphospace zone">Empty Space</button>
+            </div>
+            <label class="field compact-field">
+              <span>Compare</span>
+              <input id="compareSearch" list="speciesList" type="search" placeholder="Species name" />
+              <datalist id="speciesList"></datalist>
+            </label>
+            <div class="compare-actions">
+              <button id="compareNearest" title="Compare against the nearest real shell">Nearest</button>
+              <button id="compareRandom" title="Compare against a random shell">Random</button>
+              <button id="hybridShell" title="Generate a selected/comparison hybrid">Hybrid</button>
+              <button id="playShell" title="Play this shell as a short motif">Play</button>
+            </div>
+            <div id="traitCompare" class="trait-compare"></div>
+            <p id="walkStatus" class="micro-status">Pick a comparison shell, then Walk interpolates between them.</p>
+          </div>
+
           <div class="slider-stack">
             <div class="section-title">
               <h2>Contour PCs</h2>
@@ -111,6 +140,19 @@
             </div>
             <div id="pcControls"></div>
           </div>
+        </section>
+
+        <section class="panel-section geography-panel">
+          <div class="section-title">
+            <h2>Geography</h2>
+            <label class="year-control">
+              <span id="geoYearLabel">All years</span>
+              <input id="geoYear" type="range" min="0" max="2026" value="0" />
+            </label>
+          </div>
+          <canvas id="geoCanvas" width="360" height="230" aria-label="Occurrence globe"></canvas>
+          <p id="geoStatus" class="micro-status">Locality loads with the selected shell.</p>
+          <div id="liveLinks" class="live-links"></div>
         </section>
 
         <section class="panel-section neighbors">

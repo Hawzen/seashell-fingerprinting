@@ -138,6 +138,8 @@ def verify_entrypoint() -> None:
         "xAxisSelect",
         "yAxisSelect",
         "colorModeSelect",
+        "traitFilters",
+        "resetTraitFilters",
         "starredBand",
         "physicalHash",
         "projectedHash",
@@ -148,6 +150,20 @@ def verify_entrypoint() -> None:
         "shellDescription",
         "outlineCanvas",
         "pcControls",
+        "compareSearch",
+        "speciesList",
+        "compareNearest",
+        "compareRandom",
+        "hybridShell",
+        "emptyShell",
+        "playShell",
+        "traitCompare",
+        "walkStatus",
+        "geoCanvas",
+        "geoYear",
+        "geoYearLabel",
+        "geoStatus",
+        "liveLinks",
         "uploadShell",
         "uploadInput",
         "paletteSwatches",
@@ -159,7 +175,7 @@ def verify_entrypoint() -> None:
     missing = sorted(required_ids - parser.ids)
     if missing:
         raise AssertionError(f"index.html is missing required element ids: {missing}")
-    expected_color_modes = ["locality", "species", "shell", "pattern", "lightness", "chroma", "roughness", "concavity"]
+    expected_color_modes = ["locality", "species", "conservation", "shell", "pattern", "lightness", "chroma", "roughness", "concavity"]
     if parser.options.get("colorModeSelect") != expected_color_modes:
         raise AssertionError(f"Unexpected color modes: {parser.options.get('colorModeSelect')}")
     legacy_title = "Seashell " + "PCA Explorer"
@@ -202,6 +218,28 @@ def verify_entrypoint() -> None:
     app = Path("public/app.js").read_text(encoding="utf-8")
     if "drawStarredThumbToCanvas" not in app:
         raise AssertionError("Starred shelf should render contour-cropped thumbnails")
+    for marker in [
+        "traitFilters",
+        "traitCompare",
+        "geoCanvas",
+        "geoYear",
+        "compareSearch",
+        "hybridShell",
+        "emptyShell",
+        "playShell",
+    ]:
+        if marker not in text:
+            raise AssertionError(f"New feature UI is missing {marker!r}")
+    for marker in [
+        "deriveMorphTraits",
+        "generateHybridShell",
+        "sampleEmptyMorphospace",
+        "updateGeographyForShell",
+        "playShellMotif",
+        "conservationStatus",
+    ]:
+        if marker not in app:
+            raise AssertionError(f"New feature implementation is missing {marker!r}")
     if not Path("public/shell-generator.wasm").exists():
         raise AssertionError("Missing public/shell-generator.wasm")
 
@@ -428,7 +466,11 @@ def run_browser_check(
                 palette: document.querySelectorAll('#paletteSwatches > *').length,
                 description: document.querySelector('#shellDescription').textContent,
                 details: document.querySelector('#selectedDetails').textContent,
-	                loadingHidden: document.querySelector('#loadingOverlay').hidden,
+                traitFilters: document.querySelectorAll('#traitFilters .trait-filter-row').length,
+                traitBars: document.querySelectorAll('#traitCompare .trait-bar-row').length,
+                liveLinks: document.querySelectorAll('#liveLinks a').length,
+                geoWidth: document.querySelector('#geoCanvas').width,
+		                loadingHidden: document.querySelector('#loadingOverlay').hidden,
 	                scatterPoints: window.shellspacePerf?.scatterPointCount?.() || 0,
 	                filteredCount: window.shellspacePerf?.filteredCount?.() || 0,
 	                bodyWidth: document.body.scrollWidth,
@@ -442,7 +484,12 @@ def run_browser_check(
                 restored.projectedHash !== restored.hash ||
                 restored.palette < 5 ||
                 restored.description.length < 20 ||
+                restored.traitFilters < 7 ||
+                restored.traitBars < 7 ||
+                restored.liveLinks < 3 ||
+                restored.geoWidth < 260 ||
                 !restored.details.includes('Rarity') ||
+                !restored.details.includes('IUCN') ||
                 !/(Common|Uncommon|Rare|Extremely rare|Data deficient)/.test(restored.details) ||
                 restored.details.includes('No true population estimate') ||
                 restored.details.includes('Recorded share') ||
