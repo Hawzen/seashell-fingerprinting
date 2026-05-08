@@ -138,26 +138,28 @@ def verify_entrypoint() -> None:
         "xAxisSelect",
         "yAxisSelect",
         "colorModeSelect",
-        "pcaInterpretation",
+        "starredBand",
+        "physicalHash",
+        "projectedHash",
+        "starShell",
         "sourceThumb",
         "sourceImage",
-        "sourceOverlay",
-        "overlayContour",
-        "overlayCenter",
+        "sourceSpinner",
+        "shellDescription",
         "outlineCanvas",
-        "generatorStatus",
         "pcControls",
         "uploadShell",
         "uploadInput",
-        "colorMixCanvas",
-        "colorMixStatus",
-        "colorMixSwatches",
+        "paletteSwatches",
+        "loadingOverlay",
+        "loadingText",
+        "neighborsList",
         "missingData",
     }
     missing = sorted(required_ids - parser.ids)
     if missing:
         raise AssertionError(f"index.html is missing required element ids: {missing}")
-    expected_color_modes = ["species", "shell", "pattern", "lightness", "chroma", "roughness", "concavity"]
+    expected_color_modes = ["locality", "species", "shell", "pattern", "lightness", "chroma", "roughness", "concavity"]
     if parser.options.get("colorModeSelect") != expected_color_modes:
         raise AssertionError(f"Unexpected color modes: {parser.options.get('colorModeSelect')}")
     retired = [
@@ -172,6 +174,12 @@ def verify_entrypoint() -> None:
         "Seashell PCA Explorer",
         "Shape + traits",
         "Trait PC1",
+        "PCA Axes",
+        "Color Mix",
+        "overlayContour",
+        "overlayCenter",
+        "sourceOverlay",
+        "colorMixCanvas",
     ]
     for marker in retired:
         if marker in text:
@@ -346,9 +354,12 @@ def run_browser_check(url: str) -> None:
               const restored = await page.evaluate(() => ({{
                 selected: document.querySelector('#selectedName').textContent,
                 color: document.querySelector('#colorModeSelect').value,
-                pcaText: document.querySelector('#pcaInterpretation').textContent,
-                generated: document.querySelector('#generatorStatus').textContent,
-                swatches: document.querySelectorAll('#colorMixSwatches > *').length,
+                hash: document.querySelector('#physicalHash').textContent,
+                projectedHash: document.querySelector('#projectedHash').textContent,
+                palette: document.querySelectorAll('#paletteSwatches > *').length,
+                description: document.querySelector('#shellDescription').textContent,
+                details: document.querySelector('#selectedDetails').textContent,
+                loadingHidden: document.querySelector('#loadingOverlay').hidden,
                 bodyWidth: document.body.scrollWidth,
                 documentWidth: document.documentElement.scrollWidth,
                 innerWidth,
@@ -356,59 +367,63 @@ def run_browser_check(url: str) -> None:
               if (
                 restored.selected === 'None' ||
                 restored.color !== 'shell' ||
-                restored.pcaText.includes('positive values') ||
-                !restored.generated.includes('Selected shell') ||
-                restored.swatches < 1 ||
+                !/^[0-9A-Z]{{6}}$/.test(restored.hash) ||
+                restored.projectedHash !== restored.hash ||
+                restored.palette < 5 ||
+                !restored.description.includes('locality') ||
+                !restored.details.includes('Rarity') ||
+                !restored.loadingHidden ||
                 restored.bodyWidth > restored.innerWidth ||
                 restored.documentWidth > restored.innerWidth
               ) {{
                 throw new Error(`initial UI failed: ${{JSON.stringify(restored)}}`);
               }}
 
+              await page.click('#starShell');
+              await page.waitForTimeout(250);
+              const starred = await page.evaluate(() => ({{
+                count: document.querySelectorAll('#starredBand .starred-shell').length,
+                text: document.querySelector('#starredBand').textContent,
+              }}));
+              if (starred.count < 1 || !starred.text.includes(restored.hash)) {{
+                throw new Error(`star failed: ${{JSON.stringify(starred)}}`);
+              }}
+
               const scatterBox = await page.locator('#scatterCanvas').boundingBox();
               if (!scatterBox) throw new Error('scatter canvas has no box');
+              const beforeHash = await page.textContent('#projectedHash');
               await page.fill('#searchBox', 'no-such-shell-filter-value');
               await page.waitForTimeout(200);
               await page.mouse.click(scatterBox.x + scatterBox.width * 0.35, scatterBox.y + scatterBox.height * 0.45);
               await page.waitForTimeout(450);
-              const generated = await page.textContent('#generatorStatus');
-              if (!generated.includes('local blend')) throw new Error(`map generation failed: ${{generated}}`);
+              const afterHash = await page.textContent('#projectedHash');
+              if (!afterHash || afterHash === beforeHash) throw new Error(`map generation failed: ${{beforeHash}} -> ${{afterHash}}`);
               await page.fill('#searchBox', '');
               await page.waitForTimeout(250);
 
-              await page.locator('#colorMixCanvas').scrollIntoViewIfNeeded();
-              await page.waitForTimeout(120);
-              const colorBox = await page.locator('#colorMixCanvas').boundingBox();
-              if (!colorBox) throw new Error('color canvas has no box');
-              await page.mouse.click(colorBox.x + colorBox.width * 0.70, colorBox.y + colorBox.height * 0.32);
-              await page.waitForTimeout(250);
-              const color = await page.evaluate(() => ({{
-                status: document.querySelector('#colorMixStatus').textContent,
-                swatches: document.querySelectorAll('#colorMixSwatches > *').length,
-              }}));
-              if (!color.status.includes('Color blend') || color.swatches < 2) {{
-                throw new Error(`color mix failed: ${{JSON.stringify(color)}}`);
+              const axisText = await page.evaluate(() => Array.from(document.querySelectorAll('#xAxisSelect option')).map((option) => option.textContent).join(' '));
+              const hasAxisPanel = await page.$('#pcaInterpretation');
+              if (!axisText.includes('PC1') || axisText.includes('Elongation') || hasAxisPanel) {{
+                throw new Error(`axis labels failed: ${{axisText}}`);
               }}
 
-              const axisText = await page.textContent('#pcaInterpretation');
-              if (
-                axisText.includes('positive values') ||
-                !axisText.includes('PC1') ||
-                axisText.includes('Elongation') ||
-                axisText.includes('Pattern')
-              ) throw new Error(`axis labels failed: ${{axisText}}`);
+              await page.fill('#searchBox', restored.hash);
+              await page.waitForTimeout(250);
+              const hashSearch = await page.evaluate(() => document.querySelector('#statusLine').textContent);
+              await page.fill('#searchBox', '');
 
               await page.setInputFiles('#uploadInput', uploadPath);
               await page.waitForTimeout(650);
               const uploaded = await page.evaluate(() => ({{
                 selected: document.querySelector('#selectedName').textContent,
                 details: document.querySelector('#selectedDetails').textContent,
-                generated: document.querySelector('#generatorStatus').textContent,
+                hash: document.querySelector('#physicalHash').textContent,
               }}));
               if (
                 !uploaded.selected.includes('Uploaded shell') ||
                 !uploaded.details.includes('Bring your own shell') ||
-                !uploaded.details.includes('Uploaded image')
+                !uploaded.details.includes('Uploaded image') ||
+                !/^[0-9A-Z]{{6}}$/.test(uploaded.hash)
               ) {{
                 throw new Error(`upload failed: ${{JSON.stringify(uploaded)}}`);
               }}

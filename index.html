@@ -8,10 +8,11 @@
   </head>
   <body>
     <header class="topbar">
-      <div>
+      <div class="brand-block">
         <h1>Shellspace</h1>
         <p id="statusLine">Loading shell model</p>
       </div>
+      <div id="starredBand" class="starred-band" aria-label="Starred shells"></div>
       <div class="top-actions">
         <button id="zoomOut" title="Zoom out">-</button>
         <button id="zoomIn" title="Zoom in">+</button>
@@ -29,9 +30,6 @@
           <button id="randomShell" title="Select a random visible shell">Surprise me</button>
           <button id="uploadShell" class="upload-shell" title="Bring your own shell">+ Bring your own shell</button>
           <input id="uploadInput" type="file" accept="image/*" hidden />
-        </section>
-
-        <section class="panel-section map-controls">
           <div class="section-title">
             <h2>Map</h2>
           </div>
@@ -48,6 +46,7 @@
           <label class="field">
             <span>Color</span>
             <select id="colorModeSelect">
+              <option value="locality">Location</option>
               <option value="species">Species</option>
               <option value="shell">Shell color</option>
               <option value="pattern">Pattern</option>
@@ -59,35 +58,20 @@
           </label>
         </section>
 
-        <section class="panel-section pca-panel">
-          <h2>PCA Axes</h2>
-          <div id="pcaInterpretation"></div>
-        </section>
-
-        <section class="panel-section image-preview">
+        <section class="panel-section physical-shell">
           <div class="section-title">
-            <h2>Original Shell</h2>
-            <div class="mini-segmented" aria-label="Source overlay layers">
-              <button id="overlayContour" type="button" aria-pressed="true">Contour</button>
-              <button id="overlayCenter" type="button" aria-pressed="true">Center</button>
-            </div>
+            <h2>Physical Shell</h2>
+            <button id="starShell" class="star-button" title="Star this shape" aria-pressed="false">Star</button>
           </div>
+          <div id="physicalHash" class="fingerprint-chip">------</div>
           <div class="source-frame">
+            <div id="sourceSpinner" class="source-spinner" hidden></div>
             <canvas id="sourceThumb" width="420" height="300"></canvas>
             <img id="sourceImage" alt="" hidden />
-            <canvas id="sourceOverlay" width="420" height="300"></canvas>
           </div>
-        </section>
-
-        <section class="panel-section selection">
-          <h2>Selected Shell</h2>
           <div id="selectedName" class="selected-name">None</div>
+          <p id="shellDescription" class="shell-description"></p>
           <dl id="selectedDetails"></dl>
-        </section>
-
-        <section class="panel-section neighbors">
-          <h2>Nearest Shapes</h2>
-          <div id="neighborsList"></div>
         </section>
       </aside>
 
@@ -97,39 +81,49 @@
       </section>
 
       <aside class="panel lab-panel">
-        <section class="panel-section generated-shape">
-          <div class="section-title">
-            <h2>Generated Shell</h2>
-            <div class="title-actions">
-              <button id="exportSvg" title="Export generated shell as SVG">SVG</button>
+        <section class="panel-section projected-lab">
+          <div class="generated-shape">
+            <div class="section-title">
+              <h2>Projected Shell <span id="projectedHash" class="fingerprint-chip compact">------</span></h2>
+            </div>
+            <div class="projection-frame">
+              <canvas id="outlineCanvas" width="420" height="420"></canvas>
+              <button id="exportSvg" class="svg-export" title="Export generated shell as SVG">SVG</button>
             </div>
           </div>
-          <canvas id="outlineCanvas" width="420" height="420"></canvas>
-          <div id="generatorStatus" class="status-box">PCA reconstruction</div>
-        </section>
 
-        <section class="panel-section slider-stack">
-          <div class="section-title">
-            <h2>Contour PCs</h2>
-            <div class="title-actions">
-              <button id="meanShape" title="Reset contour coordinates">Mean</button>
-              <button id="walkPca" title="Animate through contour PCA space">Walk</button>
+          <div class="color-palette">
+            <h2>Palette</h2>
+            <div id="paletteSwatches" class="palette-swatches"></div>
+          </div>
+
+          <div class="slider-stack">
+            <div class="section-title">
+              <h2>Contour PCs</h2>
+              <div class="title-actions">
+                <button id="meanShape" title="Reset contour coordinates">Mean</button>
+                <button id="walkPca" title="Animate through contour PCA space">Walk</button>
+              </div>
             </div>
+            <div id="pcControls"></div>
           </div>
-          <div id="pcControls"></div>
         </section>
 
-        <section class="panel-section color-mix">
+        <section class="panel-section neighbors">
           <div class="section-title">
-            <h2>Color Mix</h2>
-            <button id="resetColorMix" title="Reset color mix">Reset</button>
+            <h2>Nearest Shells</h2>
           </div>
-          <canvas id="colorMixCanvas" width="420" height="260"></canvas>
-          <div id="colorMixStatus" class="status-box">Selected shell color</div>
-          <div id="colorMixSwatches" class="color-swatches"></div>
+          <div id="neighborsList"></div>
         </section>
       </aside>
     </main>
+
+    <div id="loadingOverlay" class="loading-overlay">
+      <div class="loading-shell" aria-hidden="true">
+        <span class="pearl"></span>
+      </div>
+      <p id="loadingText">Opening shell data</p>
+    </div>
 
     <div id="missingData" class="missing-data" hidden>
       <div>

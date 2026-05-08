@@ -3,8 +3,8 @@ const repoBase = publicBase.endsWith("/public/")
   ? publicBase.slice(0, -"public/".length)
   : publicBase;
 
-const colorModes = ["species", "shell", "pattern", "lightness", "chroma", "roughness", "concavity"];
-const overlayLayerNames = ["contour", "center"];
+const colorModes = ["locality", "species", "shell", "pattern", "lightness", "chroma", "roughness", "concavity"];
+const starStorageKey = "shellspace-starred";
 
 const state = {
   shells: [],
@@ -21,23 +21,18 @@ const state = {
   generatedNeighbors: [],
   generatedMode: "selected",
   uploadImageUrl: "",
-  colorMixTarget: null,
-  colorMixTraits: null,
-  colorMixNeighbors: [],
-  colorRange: null,
   generatorKernel: null,
   generatorKernelReady: false,
   xAxis: 0,
   yAxis: 1,
-  colorMode: "species",
+  colorMode: "locality",
   pcValues: [],
-  overlayLayers: {
-    contour: true,
-    center: true,
-  },
+  starredIds: [],
+  showAllStars: false,
+  speciesCounts: new Map(),
+  speciesRarity: new Map(),
   sourceFrame: null,
   draggingTarget: false,
-  draggingColor: false,
   panningViewport: null,
   walkingPca: false,
   walkFrame: 0,
@@ -50,45 +45,43 @@ const state = {
 
 const els = {
   statusLine: document.querySelector("#statusLine"),
+  starredBand: document.querySelector("#starredBand"),
   search: document.querySelector("#searchBox"),
   randomShell: document.querySelector("#randomShell"),
   xAxisSelect: document.querySelector("#xAxisSelect"),
   yAxisSelect: document.querySelector("#yAxisSelect"),
   colorModeSelect: document.querySelector("#colorModeSelect"),
-  pcaInterpretation: document.querySelector("#pcaInterpretation"),
   scatter: document.querySelector("#scatterCanvas"),
   pointTooltip: document.querySelector("#pointTooltip"),
+  physicalHash: document.querySelector("#physicalHash"),
+  projectedHash: document.querySelector("#projectedHash"),
+  starShell: document.querySelector("#starShell"),
   sourceThumb: document.querySelector("#sourceThumb"),
   sourceImage: document.querySelector("#sourceImage"),
-  sourceOverlay: document.querySelector("#sourceOverlay"),
-  overlayContour: document.querySelector("#overlayContour"),
-  overlayCenter: document.querySelector("#overlayCenter"),
+  sourceSpinner: document.querySelector("#sourceSpinner"),
   selectedName: document.querySelector("#selectedName"),
+  shellDescription: document.querySelector("#shellDescription"),
   selectedDetails: document.querySelector("#selectedDetails"),
   neighborsList: document.querySelector("#neighborsList"),
   outline: document.querySelector("#outlineCanvas"),
-  generatorStatus: document.querySelector("#generatorStatus"),
   pcControls: document.querySelector("#pcControls"),
   meanShape: document.querySelector("#meanShape"),
   walkPca: document.querySelector("#walkPca"),
   uploadShell: document.querySelector("#uploadShell"),
   uploadInput: document.querySelector("#uploadInput"),
   exportSvg: document.querySelector("#exportSvg"),
-  colorMix: document.querySelector("#colorMixCanvas"),
-  colorMixStatus: document.querySelector("#colorMixStatus"),
-  colorMixSwatches: document.querySelector("#colorMixSwatches"),
-  resetColorMix: document.querySelector("#resetColorMix"),
+  paletteSwatches: document.querySelector("#paletteSwatches"),
   zoomIn: document.querySelector("#zoomIn"),
   zoomOut: document.querySelector("#zoomOut"),
   resetView: document.querySelector("#resetView"),
+  loadingOverlay: document.querySelector("#loadingOverlay"),
+  loadingText: document.querySelector("#loadingText"),
   missingData: document.querySelector("#missingData"),
 };
 
 const scatterCtx = els.scatter.getContext("2d");
 const outlineCtx = els.outline.getContext("2d");
 const sourceThumbCtx = els.sourceThumb.getContext("2d");
-const sourceOverlayCtx = els.sourceOverlay.getContext("2d");
-const colorMixCtx = els.colorMix.getContext("2d");
 const normalizedContourCache = new Map();
 const thumbnailPageCache = new Map();
 
@@ -108,11 +101,80 @@ function formatNumber(value, digits = 3) {
   return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: digits });
 }
 
-function quantile(values, q) {
-  if (!values.length) return 0;
-  const copy = [...values].sort((a, b) => a - b);
-  const index = Math.min(copy.length - 1, Math.max(0, Math.round((copy.length - 1) * q)));
-  return copy[index];
+function setLoading(text, visible = true) {
+  if (els.loadingText && text) els.loadingText.textContent = text;
+  if (els.loadingOverlay) els.loadingOverlay.hidden = !visible;
+}
+
+function hashString(input) {
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function fingerprintHash(shell) {
+  const pcs = (shell.contour_pc || []).slice(0, 6).map((value) => Number(value || 0).toFixed(4));
+  const seed = `${shell.species}|${shell.specimen}|${shell.view}|${pcs.join(",")}`;
+  return hashString(seed).toString(36).toUpperCase().padStart(6, "0").slice(-6);
+}
+
+function applyFingerprintStyle(node, hash) {
+  const hue = hashString(hash) % 360;
+  node.style.setProperty("--hash-hue", String(hue));
+  node.textContent = hash;
+}
+
+function rgbToHsl(red, green, blue) {
+  const r = clamp01(red);
+  const g = clamp01(green);
+  const b = clamp01(blue);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h /= 6;
+  }
+  return { h: h * 360, s, l };
+}
+
+function hslCss(h, s, l) {
+  return `hsl(${((h % 360) + 360) % 360}, ${Math.round(clamp01(s) * 100)}%, ${Math.round(clamp01(l) * 100)}%)`;
+}
+
+function physicalLocationLabel(shell) {
+  return shell.location_label || "Locality unavailable";
+}
+
+function buildDerivedShellData(shells) {
+  state.speciesCounts = new Map();
+  for (const shell of shells) {
+    state.speciesCounts.set(shell.species, (state.speciesCounts.get(shell.species) || 0) + 1);
+  }
+  const counts = [...state.speciesCounts.values()];
+  const min = Math.min(...counts);
+  const max = Math.max(...counts);
+  state.speciesRarity = new Map();
+  for (const [species, count] of state.speciesCounts) {
+    const rarity = max > min ? 100 - ((count - min) / (max - min)) * 100 : 100;
+    state.speciesRarity.set(species, rarity);
+  }
+  for (const shell of shells) {
+    shell.fingerprint_hash = fingerprintHash(shell);
+    shell.species_sample_count = state.speciesCounts.get(shell.species) || 1;
+    shell.rarity_percent = state.speciesRarity.get(shell.species) ?? 100;
+    shell.location_label = "Locality unavailable";
+    shell.location_key = "unknown";
+  }
 }
 
 function fetchJson(url) {
@@ -325,6 +387,10 @@ function shellRgb(shell, alpha = 1) {
 }
 
 function pointColor(shell) {
+  if (state.colorMode === "locality") {
+    if (shell.location_key === "unknown") return "rgba(96, 108, 106, 0.62)";
+    return speciesColor(shell.location_key);
+  }
   if (state.colorMode === "shell") return shellRgb(shell);
   if (state.colorMode === "lightness") {
     const t = clamp01(shell.color_l_mean ?? 0.5);
@@ -421,11 +487,11 @@ function updateFilter() {
   const query = els.search.value.trim().toLowerCase();
   state.filtered = query
     ? state.shells.filter((shell) =>
-        `${shell.name} ${shell.species} ${shell.file}`.toLowerCase().includes(query),
+        `${shell.name} ${shell.species} ${shell.file} ${shell.fingerprint_hash || ""}`.toLowerCase().includes(query),
       )
     : state.shells;
   renderNeighbors(state.selected);
-  drawColorMix();
+  renderPalette();
   scheduleDraw();
 }
 
@@ -560,19 +626,7 @@ function setPcValues(values, updateHash = true) {
 }
 
 function renderPcaInterpretation() {
-  const items = state.model.pca_interpretation?.contour || [];
-  els.pcaInterpretation.innerHTML = "";
-  for (const item of items.slice(0, axisOptionCount())) {
-    const axis = document.createElement("article");
-    axis.className = "pca-axis";
-    if (item.axis - 1 === state.xAxis || item.axis - 1 === state.yAxis) axis.classList.add("is-active");
-    const heading = document.createElement("h3");
-    heading.textContent = axisMeaning(item.axis - 1);
-    const meta = document.createElement("p");
-    meta.textContent = `${formatNumber((item.explained || 0) * 100, 1)}%`;
-    axis.append(heading, meta);
-    els.pcaInterpretation.append(axis);
-  }
+  return;
 }
 
 function contourForShell(shell) {
@@ -648,11 +702,37 @@ function shapeTraitsFromShell(shell) {
   };
 }
 
+function shellTone(shell) {
+  const lightness = shell.color_l_mean ?? 0.5;
+  const chroma = shell.color_chroma_mean ?? 0.1;
+  if (lightness > 0.68 && chroma < 0.12) return "pale";
+  if (lightness < 0.38) return "dark";
+  if (chroma > 0.22) return "colorful";
+  return "muted";
+}
+
+function shellShapeWord(shell) {
+  if ((shell.aspect_ratio || 1) > 1.55) return "elongated";
+  if ((shell.contour_concavity || 0) > 0.16) return "notched";
+  if ((shell.roughness || 0) > 0.018) return "rugged";
+  return "rounded";
+}
+
+function shellPatternWord(shell) {
+  if ((shell.color_pattern_strength || 0) > 0.22) return "high-pattern";
+  if ((shell.texture_gradient_mean || 0) > 0.35) return "ribbed";
+  if ((shell.color_chroma_mean || 0) > 0.18) return "saturated";
+  return "smooth";
+}
+
+function shellDescription(shell) {
+  if (!shell) return "";
+  const note = `${shellTone(shell)} ${shellPatternWord(shell)} ${shellShapeWord(shell)} shell`;
+  return `${note}; locality unavailable in source dataset.`;
+}
+
 function effectiveGeneratedTraits() {
-  return {
-    ...(state.generatedTraits || shapeTraitsFromShell(state.selected)),
-    ...(state.colorMixTraits || {}),
-  };
+  return state.generatedTraits || shapeTraitsFromShell(state.selected);
 }
 
 function reconstructFromPc() {
@@ -704,6 +784,23 @@ function shellFillColor(traits, alpha = 0.9) {
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
+function generatedFingerprintHash() {
+  const values = state.pcValues.slice(0, 6).map((value) => Number(value || 0).toFixed(4));
+  return hashString(`projected|${values.join(",")}`).toString(36).toUpperCase().padStart(6, "0").slice(-6);
+}
+
+function updateHashChips() {
+  if (state.selected?.fingerprint_hash && els.physicalHash) {
+    applyFingerprintStyle(els.physicalHash, state.selected.fingerprint_hash);
+  }
+  if (els.projectedHash) {
+    const hash = state.generatedMode === "selected" && state.selected?.fingerprint_hash
+      ? state.selected.fingerprint_hash
+      : generatedFingerprintHash();
+    applyFingerprintStyle(els.projectedHash, hash);
+  }
+}
+
 function drawGeneratedTexture(ctx, contour, centerX, centerY, scale, traits) {
   const pointCount = Math.floor(contour.length / 2);
   if (pointCount < 4) return;
@@ -750,21 +847,7 @@ function drawGeneratedTexture(ctx, contour, centerX, centerY, scale, traits) {
 }
 
 function updateGeneratorStatus() {
-  if (state.generatedMode === "selected" && state.selected) {
-    els.generatorStatus.textContent = `Selected shell: ${state.selected.species}`;
-    return;
-  }
-  if (!state.generatedNeighbors.length) {
-    const kernel = state.generatorKernelReady ? "WASM ready" : "JS fallback";
-    els.generatorStatus.textContent = `PCA reconstruction, ${kernel}`;
-    return;
-  }
-  const species = [];
-  for (const item of state.generatedNeighbors) {
-    if (!species.includes(item.shell.species)) species.push(item.shell.species);
-    if (species.length >= 3) break;
-  }
-  els.generatorStatus.textContent = `${state.generatedMode === "wasm" ? "WASM" : "JS"} local blend: ${species.join(", ")}`;
+  return;
 }
 
 function drawOutline() {
@@ -774,6 +857,7 @@ function drawOutline() {
   outlineCtx.fillRect(0, 0, width, height);
   const contour = state.generatedContour || state.selectedContour;
   if (!contour) return;
+  updateHashChips();
   const centerX = width / 2;
   const centerY = height / 2;
   const scale = (Math.min(width, height) * 0.42) / maxContourRadius([contour]);
@@ -927,6 +1011,7 @@ async function drawShellThumbToCanvas(canvas, shell) {
 function setSourceImageUrl(url, shell, alt = "") {
   els.sourceThumb.hidden = true;
   els.sourceImage.hidden = false;
+  if (els.sourceSpinner) els.sourceSpinner.hidden = false;
   els.sourceImage.dataset.fallbackApplied = "false";
   els.sourceImage.alt = alt;
   els.sourceImage.onerror = () => {
@@ -939,13 +1024,15 @@ function setSourceImageUrl(url, shell, alt = "") {
     if (fallback) els.sourceImage.src = fallback;
     else els.sourceImage.removeAttribute("src");
   };
+  els.sourceImage.onload = () => {
+    if (els.sourceSpinner) els.sourceSpinner.hidden = true;
+  };
   els.sourceImage.src = url;
-  const size = resizeCanvas(els.sourceOverlay, sourceOverlayCtx);
-  state.sourceFrame = fitImageFrame(shell.image_width, shell.image_height, size.width, size.height);
 }
 
 async function renderSourceShell(shell) {
   if (!shell) return;
+  if (els.sourceSpinner) els.sourceSpinner.hidden = false;
   if (state.uploadImageUrl && shell.id < 0) {
     setSourceImageUrl(state.uploadImageUrl, shell, shell.species);
     return;
@@ -959,59 +1046,10 @@ async function renderSourceShell(shell) {
   if (state.selected !== shell) return;
   if (frame) {
     state.sourceFrame = frame;
-    drawSourceOverlay();
+    if (els.sourceSpinner) els.sourceSpinner.hidden = true;
     return;
   }
   setSourceImageUrl(datasetAsset(shell.file), shell, shell.species);
-}
-
-function updateOverlayButtons() {
-  els.overlayContour.setAttribute("aria-pressed", state.overlayLayers.contour ? "true" : "false");
-  els.overlayCenter.setAttribute("aria-pressed", state.overlayLayers.center ? "true" : "false");
-}
-
-function toggleOverlayLayer(layer) {
-  state.overlayLayers[layer] = !state.overlayLayers[layer];
-  updateOverlayButtons();
-  drawSourceOverlay();
-}
-
-function drawSourceOverlay() {
-  if (!state.selected) return;
-  const shell = state.selected;
-  const size = resizeCanvas(els.sourceOverlay, sourceOverlayCtx);
-  sourceOverlayCtx.clearRect(0, 0, size.width, size.height);
-  if (!shell.image_width || !shell.image_height) return;
-  const frame = state.sourceFrame || fitImageFrame(shell.image_width, shell.image_height, size.width, size.height);
-  const imageScale = frame.scale;
-  const offsetX = frame.x;
-  const offsetY = frame.y;
-  const contour = state.overlayLayers.contour ? contourForShell(shell) : null;
-  if (contour?.length) {
-    sourceOverlayCtx.strokeStyle = "rgba(232, 76, 58, 0.96)";
-    sourceOverlayCtx.lineWidth = 2;
-    sourceOverlayCtx.beginPath();
-    contour.forEach(([x, y], index) => {
-      const px = offsetX + x * imageScale;
-      const py = offsetY + y * imageScale;
-      if (index === 0) sourceOverlayCtx.moveTo(px, py);
-      else sourceOverlayCtx.lineTo(px, py);
-    });
-    sourceOverlayCtx.closePath();
-    sourceOverlayCtx.stroke();
-  }
-  if (state.overlayLayers.center) {
-    const [centerX, centerY] = shell.center;
-    const cx = offsetX + centerX * imageScale;
-    const cy = offsetY + centerY * imageScale;
-    sourceOverlayCtx.strokeStyle = "rgba(35, 190, 170, 0.96)";
-    sourceOverlayCtx.beginPath();
-    sourceOverlayCtx.moveTo(cx - 7, cy);
-    sourceOverlayCtx.lineTo(cx + 7, cy);
-    sourceOverlayCtx.moveTo(cx, cy - 7);
-    sourceOverlayCtx.lineTo(cx, cy + 7);
-    sourceOverlayCtx.stroke();
-  }
 }
 
 function shellMapVector(shell) {
@@ -1173,6 +1211,7 @@ function generateLocalShellFromTarget() {
   state.generatedMode = wasmContour ? "wasm" : "js";
   updateGeneratorStatus();
   drawOutline();
+  renderPalette();
 }
 
 function contourPcDistance(shell, candidate) {
@@ -1212,6 +1251,75 @@ function renderNeighbors(shell) {
   }
 }
 
+function loadStarred() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(starStorageKey) || "[]");
+    state.starredIds = Array.isArray(raw) ? raw.filter((id) => Number.isFinite(Number(id))).map(Number) : [];
+  } catch (_error) {
+    state.starredIds = [];
+  }
+}
+
+function saveStarred() {
+  localStorage.setItem(starStorageKey, JSON.stringify(state.starredIds.slice(0, 80)));
+}
+
+function isStarred(shell) {
+  return Boolean(shell && state.starredIds.includes(shell.id));
+}
+
+function updateStarButton() {
+  if (!els.starShell) return;
+  const active = isStarred(state.selected);
+  els.starShell.setAttribute("aria-pressed", active ? "true" : "false");
+  els.starShell.textContent = active ? "Starred" : "Star";
+}
+
+function toggleStarredShell() {
+  if (!state.selected) return;
+  const id = state.selected.id;
+  const active = isStarred(state.selected);
+  state.starredIds = state.starredIds.filter((value) => value !== id);
+  if (!active) state.starredIds.unshift(id);
+  saveStarred();
+  updateStarButton();
+  renderStarred();
+}
+
+function renderStarred() {
+  if (!els.starredBand) return;
+  els.starredBand.innerHTML = "";
+  const ids = state.showAllStars ? state.starredIds : state.starredIds.slice(0, 8);
+  for (const id of ids) {
+    const shell = shellById(id);
+    if (!shell) continue;
+    const button = document.createElement("button");
+    button.className = "starred-shell";
+    button.title = `${shell.species} ${shell.fingerprint_hash}`;
+    const canvas = document.createElement("canvas");
+    const label = document.createElement("span");
+    label.textContent = shell.fingerprint_hash;
+    button.append(canvas, label);
+    drawShellThumbToCanvas(canvas, shell);
+    button.addEventListener("click", () => {
+      centerViewportOnShell(shell);
+      selectShell(shell);
+    });
+    els.starredBand.append(button);
+  }
+  if (state.starredIds.length > 8) {
+    const more = document.createElement("button");
+    more.className = "starred-more";
+    more.textContent = state.showAllStars ? "Less" : `+${state.starredIds.length - 8}`;
+    more.title = state.showAllStars ? "Show fewer starred shells" : "Show all starred shells";
+    more.addEventListener("click", () => {
+      state.showAllStars = !state.showAllStars;
+      renderStarred();
+    });
+    els.starredBand.append(more);
+  }
+}
+
 function selectShell(shell) {
   if (!shell) return;
   if (state.walkingPca) stopPcaWalk(false);
@@ -1230,18 +1338,25 @@ function selectShell(shell) {
     updatePcControl(index, value);
   });
   els.selectedName.textContent = shell.species;
+  els.shellDescription.textContent = shellDescription(shell);
+  updateHashChips();
+  updateStarButton();
   els.selectedDetails.innerHTML = "";
   const details = [
-    ["File", shell.file],
-    ["Specimen", shell.specimen_label || shell.specimen || "-"],
+    ["Fingerprint", shell.fingerprint_hash || "-"],
+    ["Rarity", `${formatNumber(shell.rarity_percent, 1)}% dataset rarity`],
+    ["Samples", `${(shell.species_sample_count || 1).toLocaleString()} images/species`],
+    ["Area", `${shell.area?.toLocaleString() || "-"} px²`],
+    ["Mean radius", `${formatNumber(shell.mean_radius, 1)} px`],
+    ["Lightness", `${formatNumber((shell.color_l_mean || 0) * 100, 1)}%`],
+    ["Chroma", `${formatNumber(shell.color_chroma_mean, 3)} Lab units`],
+    ["Pattern", `${formatNumber((shell.color_pattern_strength || 0) * 100, 1)}%`],
+    ["Roughness", `${formatNumber(shell.roughness, 4)} radius units`],
+    ["Concavity", `${formatNumber((shell.contour_concavity || 0) * 100, 1)}%`],
+    ["Locality", physicalLocationLabel(shell)],
     ["View", shell.view_label || shell.view || "-"],
-    ["Contour PC", shell.contour_pc?.slice(0, 2).map((value) => formatNumber(value, 3)).join(", ") || "-"],
-    ["Area", shell.area?.toLocaleString() || "-"],
-    ["Lightness", formatNumber(shell.color_l_mean, 3)],
-    ["Chroma", formatNumber(shell.color_chroma_mean, 3)],
-    ["Pattern", formatNumber(shell.color_pattern_strength, 3)],
-    ["Roughness", formatNumber(shell.roughness, 4)],
-    ["Concavity", formatNumber(shell.contour_concavity, 4)],
+    ["Specimen", shell.specimen_label || shell.specimen || "-"],
+    ["File", shell.file],
   ];
   for (const [key, value] of details) {
     const dt = document.createElement("dt");
@@ -1255,8 +1370,8 @@ function selectShell(shell) {
   renderNeighbors(shell);
   updateGeneratorStatus();
   drawOutline();
-  drawSourceOverlay();
-  drawColorMix();
+  renderPalette();
+  renderStarred();
   scheduleDraw();
   scheduleHashUpdate();
 }
@@ -1350,164 +1465,33 @@ function showPointTooltip(event, shell) {
   els.pointTooltip.hidden = false;
 }
 
-function computeColorRange() {
-  const a = state.shells.map((shell) => shell.color_a_mean || 0);
-  const b = state.shells.map((shell) => shell.color_b_lab_mean || 0);
-  state.colorRange = {
-    aMin: quantile(a, 0.01),
-    aMax: quantile(a, 0.99),
-    bMin: quantile(b, 0.01),
-    bMax: quantile(b, 0.99),
+function renderPalette() {
+  if (!els.paletteSwatches) return;
+  els.paletteSwatches.innerHTML = "";
+  const traits = effectiveGeneratedTraits();
+  const base = {
+    r: clamp01(traits.color_r_mean ?? 0.72),
+    g: clamp01(traits.color_g_mean ?? 0.66),
+    b: clamp01(traits.color_b_mean ?? 0.54),
   };
-}
-
-function colorWorldToScreen(a, b, size) {
-  const range = state.colorRange;
-  return {
-    x: ((a - range.aMin) / (range.aMax - range.aMin)) * size.width,
-    y: size.height - ((b - range.bMin) / (range.bMax - range.bMin)) * size.height,
-  };
-}
-
-function colorScreenToWorld(x, y, size) {
-  const range = state.colorRange;
-  return {
-    a: range.aMin + (x / size.width) * (range.aMax - range.aMin),
-    b: range.bMin + ((size.height - y) / size.height) * (range.bMax - range.bMin),
-  };
-}
-
-function drawColorMix() {
-  const size = resizeCanvas(els.colorMix, colorMixCtx);
-  if (!state.colorRange) return;
-  colorMixCtx.clearRect(0, 0, size.width, size.height);
-  colorMixCtx.fillStyle = "#f7f7f2";
-  colorMixCtx.fillRect(0, 0, size.width, size.height);
-  colorMixCtx.strokeStyle = "rgba(32, 36, 42, 0.10)";
-  for (let step = 1; step < 4; step += 1) {
-    const x = (size.width * step) / 4;
-    const y = (size.height * step) / 4;
-    colorMixCtx.beginPath();
-    colorMixCtx.moveTo(x, 0);
-    colorMixCtx.lineTo(x, size.height);
-    colorMixCtx.moveTo(0, y);
-    colorMixCtx.lineTo(size.width, y);
-    colorMixCtx.stroke();
+  const hsl = rgbToHsl(base.r, base.g, base.b);
+  const palette = [
+    ["Shell", hslCss(hsl.h, hsl.s, hsl.l)],
+    ["Tint", hslCss(hsl.h, hsl.s * 0.72, Math.min(0.88, hsl.l + 0.24))],
+    ["Shade", hslCss(hsl.h, Math.min(1, hsl.s * 1.1), Math.max(0.18, hsl.l - 0.24))],
+    ["Analog", hslCss(hsl.h - 28, hsl.s, hsl.l)],
+    ["Complement", hslCss(hsl.h + 180, hsl.s, hsl.l)],
+  ];
+  for (const [label, color] of palette) {
+    const swatch = document.createElement("span");
+    swatch.className = "palette-swatch";
+    swatch.style.background = color;
+    swatch.title = `${label}: ${color}`;
+    const name = document.createElement("span");
+    name.textContent = label;
+    swatch.append(name);
+    els.paletteSwatches.append(swatch);
   }
-  const stride = state.filtered.length > 30000 ? 2 : 1;
-  for (let index = 0; index < state.filtered.length; index += stride) {
-    const shell = state.filtered[index];
-    const point = colorWorldToScreen(shell.color_a_mean || 0, shell.color_b_lab_mean || 0, size);
-    if (point.x < -3 || point.x > size.width + 3 || point.y < -3 || point.y > size.height + 3) continue;
-    colorMixCtx.fillStyle = shellRgb(shell, 0.72);
-    colorMixCtx.fillRect(point.x - 1, point.y - 1, 2, 2);
-  }
-  if (state.selected) {
-    const selected = colorWorldToScreen(
-      state.selected.color_a_mean || 0,
-      state.selected.color_b_lab_mean || 0,
-      size,
-    );
-    colorMixCtx.strokeStyle = "#20242a";
-    colorMixCtx.lineWidth = 2;
-    colorMixCtx.beginPath();
-    colorMixCtx.arc(selected.x, selected.y, 6, 0, Math.PI * 2);
-    colorMixCtx.stroke();
-  }
-  if (state.colorMixTarget) {
-    const target = colorWorldToScreen(state.colorMixTarget.a, state.colorMixTarget.b, size);
-    colorMixCtx.strokeStyle = "#c65d4b";
-    colorMixCtx.lineWidth = 2;
-    colorMixCtx.beginPath();
-    colorMixCtx.moveTo(target.x - 9, target.y);
-    colorMixCtx.lineTo(target.x + 9, target.y);
-    colorMixCtx.moveTo(target.x, target.y - 9);
-    colorMixCtx.lineTo(target.x, target.y + 9);
-    colorMixCtx.stroke();
-  }
-}
-
-function nearestColorNeighbors(target, count = 12) {
-  const range = state.colorRange;
-  const aSpan = Math.max(1e-6, range.aMax - range.aMin);
-  const bSpan = Math.max(1e-6, range.bMax - range.bMin);
-  const best = [];
-  const source = state.filtered.length ? state.filtered : state.shells;
-  for (const shell of source) {
-    const da = ((shell.color_a_mean || 0) - target.a) / aSpan;
-    const db = ((shell.color_b_lab_mean || 0) - target.b) / bSpan;
-    const distanceSq = da * da + db * db;
-    best.push({ distanceSq, shell });
-    best.sort((a, b) => a.distanceSq - b.distanceSq);
-    if (best.length > count) best.pop();
-  }
-  return best;
-}
-
-function renderColorSwatches() {
-  els.colorMixSwatches.innerHTML = "";
-  const traits = state.colorMixTraits || effectiveGeneratedTraits();
-  const swatch = document.createElement("span");
-  swatch.className = "color-swatch is-mix";
-  swatch.title = "Mixed color";
-  swatch.style.background = shellFillColor(traits, 1);
-  els.colorMixSwatches.append(swatch);
-  for (const item of state.colorMixNeighbors.slice(0, 7)) {
-    const node = document.createElement("button");
-    node.className = "color-swatch";
-    node.title = item.shell.species;
-    node.style.background = shellRgb(item.shell);
-    node.addEventListener("click", () => selectShell(item.shell));
-    els.colorMixSwatches.append(node);
-  }
-}
-
-function applyColorMixFromEvent(event) {
-  const rect = els.colorMix.getBoundingClientRect();
-  const size = resizeCanvas(els.colorMix, colorMixCtx);
-  const target = colorScreenToWorld(event.clientX - rect.left, event.clientY - rect.top, size);
-  const neighbors = nearestColorNeighbors(target);
-  const weights = neighborWeights(neighbors);
-  state.colorMixTarget = target;
-  state.colorMixNeighbors = neighbors;
-  state.colorMixTraits = blendTraits(neighbors, weights, [
-    "color_r_mean",
-    "color_g_mean",
-    "color_b_mean",
-    "color_l_mean",
-    "color_a_mean",
-    "color_b_lab_mean",
-    "color_chroma_mean",
-    "color_chroma_std",
-    "color_saturation_mean",
-    "color_saturation_std",
-    "texture_gradient_mean",
-    "texture_residual_std",
-    "texture_luma_iqr",
-    "color_pattern_strength",
-    "color_pattern_contrast",
-    "color_pattern_chroma",
-    "roughness",
-  ]);
-  const names = [];
-  for (const item of neighbors) {
-    if (!names.includes(item.shell.species)) names.push(item.shell.species);
-    if (names.length >= 3) break;
-  }
-  els.colorMixStatus.textContent = `Color blend: ${names.join(", ")}`;
-  renderColorSwatches();
-  drawColorMix();
-  drawOutline();
-}
-
-function resetColorMix() {
-  state.colorMixTarget = null;
-  state.colorMixTraits = null;
-  state.colorMixNeighbors = [];
-  els.colorMixStatus.textContent = "Selected shell color";
-  renderColorSwatches();
-  drawColorMix();
-  drawOutline();
 }
 
 function percentile(sortedValues, q) {
@@ -1960,13 +1944,17 @@ async function handleUploadShell() {
       ...traits,
     };
     shell.trait_pc = projectTraitsToPca(shell);
+    shell.fingerprint_hash = fingerprintHash(shell);
+    shell.species_sample_count = 1;
+    shell.rarity_percent = 100;
+    shell.location_label = "Uploaded image";
+    shell.location_key = "uploaded";
     if (state.uploadImageUrl) URL.revokeObjectURL(state.uploadImageUrl);
     state.uploadImageUrl = URL.createObjectURL(file);
     centerViewportOnShell(shell);
     selectShell(shell);
-    els.generatorStatus.textContent = "Uploaded shell fingerprint";
   } catch (error) {
-    els.generatorStatus.textContent = error.message || "Upload failed";
+    els.statusLine.textContent = error.message || "Upload failed";
   } finally {
     els.uploadInput.value = "";
   }
@@ -2021,14 +2009,12 @@ function setupEvents() {
     scheduleDraw();
     scheduleHashUpdate();
   });
-  els.overlayContour.addEventListener("click", () => toggleOverlayLayer("contour"));
-  els.overlayCenter.addEventListener("click", () => toggleOverlayLayer("center"));
   els.meanShape.addEventListener("click", resetToMeanShape);
   els.walkPca.addEventListener("click", togglePcaWalk);
+  els.starShell.addEventListener("click", toggleStarredShell);
   els.uploadShell.addEventListener("click", () => els.uploadInput.click());
   els.uploadInput.addEventListener("change", handleUploadShell);
   els.exportSvg.addEventListener("click", exportGeneratedSvg);
-  els.resetColorMix.addEventListener("click", resetColorMix);
   els.zoomIn.addEventListener("click", () => zoom(0.72));
   els.zoomOut.addEventListener("click", () => zoom(1.38));
   els.resetView.addEventListener("click", () => {
@@ -2088,32 +2074,20 @@ function setupEvents() {
     if (event.button === 1) event.preventDefault();
   });
 
-  els.colorMix.addEventListener("pointerdown", (event) => {
-    els.colorMix.setPointerCapture(event.pointerId);
-    state.draggingColor = true;
-    applyColorMixFromEvent(event);
-  });
-  els.colorMix.addEventListener("pointermove", (event) => {
-    if (state.draggingColor) applyColorMixFromEvent(event);
-  });
-  for (const eventName of ["pointerup", "pointerleave", "pointercancel"]) {
-    els.colorMix.addEventListener(eventName, () => {
-      state.draggingColor = false;
-    });
-  }
-
   window.addEventListener("resize", () => {
     scheduleDraw();
     renderSourceShell(state.selected);
-    drawColorMix();
+    renderPalette();
   });
-  els.sourceImage.addEventListener("load", drawSourceOverlay);
 }
 
 async function init() {
   setupEvents();
+  setLoading("Opening shell model");
   const model = await fetchJson(asset("data/model.json"));
+  setLoading("Unpacking shell fingerprints");
   const shellPayload = await fetchCompressedJson(asset(`data/${model.shell_file || "shells.json"}`));
+  setLoading("Unpacking contours");
   const contourBuffer = model.contour_file
     ? await fetchCompressedArrayBuffer(asset(`data/${model.contour_file}`))
     : null;
@@ -2121,11 +2095,11 @@ async function init() {
 
   state.model = model;
   state.shells = unpackShells(shellPayload);
+  buildDerivedShellData(state.shells);
   state.filtered = state.shells;
   state.contours = contourBuffer ? new Uint16Array(contourBuffer) : null;
   state.contourPoints = model.contour_points || 0;
   state.contourScale = model.contour_scale || 1;
-  computeColorRange();
 
   const expectedContourValues = model.processed_count * model.contour_points * 2;
   if (!state.contours || state.contours.length < expectedContourValues) {
@@ -2147,8 +2121,8 @@ async function init() {
   buildAxisControls();
   buildPcControls();
   els.colorModeSelect.value = state.colorMode;
-  updateOverlayButtons();
   renderPcaInterpretation();
+  loadStarred();
 
   state.suppressHash = true;
   const selected = shellById(initialHash.get("id")) || state.shells[0];
@@ -2161,13 +2135,16 @@ async function init() {
   if (pcValues.length) setPcValues(pcValues.slice(0, 6), false);
   state.suppressHash = false;
   state.hashReady = true;
-  resetColorMix();
+  renderStarred();
+  renderPalette();
   scheduleDraw();
   updateHashState();
+  setLoading("", false);
 }
 
 init().catch((error) => {
   els.statusLine.textContent = error.message;
+  setLoading("", false);
   if (els.missingData) els.missingData.hidden = false;
   console.error(error);
 });
