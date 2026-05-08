@@ -121,23 +121,14 @@ button:hover {
   background: #050505;
 }
 
+.starred-shell:first-child {
+  box-shadow: 0 0 0 1px rgba(207, 162, 60, 0.45), 0 0 18px rgba(207, 162, 60, 0.34);
+}
+
 .starred-shell canvas {
   width: 100%;
   height: 100%;
   display: block;
-}
-
-.starred-shell span {
-  position: absolute;
-  left: 3px;
-  bottom: 3px;
-  padding: 2px 3px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--ink);
-  font-size: 9px;
-  line-height: 1;
-  font-weight: 700;
 }
 
 .starred-more {
@@ -201,6 +192,13 @@ button:hover {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.section-title h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .section-title button {
@@ -329,9 +327,48 @@ select:focus {
   color: #783b30;
 }
 
+.star-button {
+  position: relative;
+  width: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #9a7a22;
+  font-size: 28px;
+  line-height: 1;
+  text-shadow: 0 1px 0 #fff;
+}
+
+.star-button:hover {
+  border-color: transparent;
+  background: transparent;
+  color: #c38d18;
+}
+
 .star-button[aria-pressed="true"] {
-  border-color: #cfa23c;
-  background: rgba(207, 162, 60, 0.18);
+  color: #d79b18;
+  filter: drop-shadow(0 0 10px rgba(215, 155, 24, 0.62));
+}
+
+.star-button::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(226, 183, 66, 0.46), transparent 64%);
+  opacity: 0;
+  transform: scale(0.5);
+  pointer-events: none;
+}
+
+.star-button.star-pop {
+  animation: star-pop 0.78s ease-out;
+}
+
+.star-button.star-pop::after {
+  animation: star-glow 0.78s ease-out;
 }
 
 .fingerprint-chip {
@@ -345,14 +382,25 @@ select:focus {
     linear-gradient(135deg, hsla(var(--hash-hue), 62%, 76%, 0.34), rgba(255, 255, 255, 0.92)),
     repeating-linear-gradient(45deg, transparent 0 6px, hsla(var(--hash-hue), 60%, 46%, 0.08) 6px 9px);
   color: hsl(var(--hash-hue), 54%, 24%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.08em;
 }
 
+.fingerprint-chip::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round'%3E%3Cpath d='M6.4 18.8c.5-2.6.5-5.3 0-7.9a5.8 5.8 0 0 1 11.3 0c.4 2 .5 4 .2 6'/%3E%3Cpath d='M9.2 21c.7-3.1.7-6.4.1-9.6a2.8 2.8 0 0 1 5.5 0c.5 2.8.5 5.6 0 8.4'/%3E%3Cpath d='M12 21.5c.4-2.2.4-4.6.1-6.8'/%3E%3Cpath d='M4.3 14.7c-.2-1.2-.3-2.3-.2-3.5a8 8 0 0 1 15.8 0'/%3E%3Cpath d='M7.8 6.1a6.9 6.9 0 0 1 8.4 0'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
+}
+
 .fingerprint-chip.compact {
-  display: inline-block;
+  display: inline-flex;
   margin-left: 6px;
   padding: 3px 6px;
   font-size: 10px;
@@ -499,28 +547,21 @@ input[type="range"] {
 }
 
 .palette-swatches {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
+  display: flex;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgba(32, 36, 42, 0.16);
+  border-radius: 7px;
 }
 
 .palette-swatch {
+  flex: 1 1 20%;
   min-height: 56px;
-  border: 1px solid rgba(32, 36, 42, 0.16);
-  border-radius: 7px;
-  overflow: hidden;
-  display: flex;
-  align-items: flex-end;
+  border-right: 1px solid rgba(255, 255, 255, 0.5);
 }
 
-.palette-swatch span {
-  width: 100%;
-  padding: 4px;
-  background: rgba(255, 255, 255, 0.78);
-  color: var(--ink);
-  font-size: 10px;
-  line-height: 1;
-  text-align: center;
+.palette-swatch:last-child {
+  border-right: 0;
 }
 
 .loading-overlay {
@@ -598,6 +639,29 @@ input[type="range"] {
   }
   50% {
     transform: rotateX(-24deg) translateY(4px);
+  }
+}
+
+@keyframes star-pop {
+  0% {
+    transform: scale(1);
+  }
+  38% {
+    transform: scale(1.42) rotate(-8deg);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes star-glow {
+  0% {
+    opacity: 0.8;
+    transform: scale(0.4);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.4);
   }
 }
 

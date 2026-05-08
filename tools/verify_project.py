@@ -230,6 +230,7 @@ def verify_static(public_data: Path, image_count: int) -> None:
         raise AssertionError("Static app should not ship the oversized uncompressed contour binary")
     for key in [
         "shell_file",
+        "locality_file",
         "contour_file",
         "contour_points",
         "contour_scale",
@@ -291,6 +292,15 @@ def verify_static(public_data: Path, image_count: int) -> None:
     for retired in ["pc", "radial_area_ratio", "radial_mismatch"]:
         if retired in sample:
             raise AssertionError(f"Retired static shell field is still exported: {retired}")
+    locality_path = public_data / model["locality_file"]
+    if not locality_path.exists():
+        raise AssertionError(f"Missing {locality_path}")
+    locality_payload = load_json_gzip(locality_path)
+    if locality_payload.get("encoding") != "shell-localities-v1":
+        raise AssertionError("Unexpected locality pack encoding")
+    assert_equal(locality_payload.get("species_count"), model["species_count"], "locality species count")
+    if locality_payload.get("matched_species_count", 0) < model["species_count"] // 2:
+        raise AssertionError("Locality pack matched too few species")
     contour_path = public_data / model["contour_file"]
     if not contour_path.exists():
         raise AssertionError(f"Missing {contour_path}")
@@ -307,7 +317,7 @@ def verify_static(public_data: Path, image_count: int) -> None:
             raise AssertionError(f"Missing thumbnail atlas file {path}")
         thumb_total += path.stat().st_size
     assert_equal(thumb_total, atlas.get("bytes"), "thumbnail atlas byte total")
-    checksum_names = ["model.json", shell_file, model["contour_file"]]
+    checksum_names = ["model.json", shell_file, model["contour_file"], model["locality_file"]]
     checksum_names.extend(f"{atlas['dir']}/{name}" for name in atlas.get("files", []))
     for name in checksum_names:
         checksum = checksums.get(name)
@@ -346,7 +356,7 @@ def run_browser_check(url: str) -> None:
               const messages = [];
               page.on('console', (msg) => messages.push({{ type: msg.type(), text: msg.text() }}));
               page.on('pageerror', (err) => messages.push({{ type: 'pageerror', text: err.message }}));
-              await page.goto('{url}/#id=12&x=0&y=1&color=shell', {{ waitUntil: 'networkidle', timeout: 120000 }});
+              await page.goto('{url}/#id=20&x=0&y=1&color=shell', {{ waitUntil: 'networkidle', timeout: 120000 }});
               await page.waitForFunction(
                 () => document.querySelector('#statusLine')?.textContent.includes('shells'),
                 null,
@@ -371,8 +381,10 @@ def run_browser_check(url: str) -> None:
                 !/^[0-9A-Z]{{6}}$/.test(restored.hash) ||
                 restored.projectedHash !== restored.hash ||
                 restored.palette < 5 ||
-                !restored.description.includes('locality') ||
+                restored.description.length < 20 ||
                 !restored.details.includes('Rarity') ||
+                !restored.details.includes('GBIF shell records') ||
+                restored.details.includes('dataset rarity') ||
                 !restored.loadingHidden ||
                 restored.bodyWidth > restored.innerWidth ||
                 restored.documentWidth > restored.innerWidth
@@ -384,9 +396,11 @@ def run_browser_check(url: str) -> None:
               await page.waitForTimeout(250);
               const starred = await page.evaluate(() => ({{
                 count: document.querySelectorAll('#starredBand .starred-shell').length,
-                text: document.querySelector('#starredBand').textContent,
+                imageOnly: document.querySelectorAll('#starredBand .starred-shell canvas').length,
+                text: document.querySelector('#starredBand').textContent.trim(),
+                button: document.querySelector('#starShell').textContent,
               }}));
-              if (starred.count < 1 || !starred.text.includes(restored.hash)) {{
+              if (starred.count < 1 || starred.imageOnly < 1 || starred.text || starred.button !== '★') {{
                 throw new Error(`star failed: ${{JSON.stringify(starred)}}`);
               }}
 

@@ -30,8 +30,13 @@ const state = {
   starredIds: [],
   showAllStars: false,
   speciesCounts: new Map(),
-  speciesRarity: new Map(),
+  localityMatchRate: 0,
+  drawFrame: 0,
   sourceFrame: null,
+  scatterHitCache: null,
+  tooltipFrame: 0,
+  tooltipEvent: null,
+  tooltipLastAt: 0,
   draggingTarget: false,
   panningViewport: null,
   walkingPca: false,
@@ -101,6 +106,14 @@ function formatNumber(value, digits = 3) {
   return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: digits });
 }
 
+function formatPercent(value, digits = 4) {
+  if (value == null || !Number.isFinite(value)) return "Unavailable";
+  return Number(value).toLocaleString(undefined, {
+    minimumFractionDigits: value > 0 && value < 0.01 ? digits : 2,
+    maximumFractionDigits: digits,
+  });
+}
+
 function setLoading(text, visible = true) {
   if (els.loadingText && text) els.loadingText.textContent = text;
   if (els.loadingOverlay) els.loadingOverlay.hidden = !visible;
@@ -155,25 +168,75 @@ function physicalLocationLabel(shell) {
   return shell.location_label || "Locality unavailable";
 }
 
-function buildDerivedShellData(shells) {
+function regionLabel(localityPayload, key) {
+  if (!key) return "";
+  return localityPayload?.region_labels?.[key] || key.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function countryLabel(localityPayload, code) {
+  return localityPayload?.countries?.[code]?.title || code;
+}
+
+function buildLocalityLookup(localityPayload) {
+  const lookup = new Map();
+  if (localityPayload?.encoding !== "shell-localities-v1") return lookup;
+  const names = localityPayload.species_names || [];
+  for (let index = 0; index < names.length; index += 1) {
+    const country = localityPayload.primary_country_codes?.[index] || "";
+    const region = localityPayload.region_keys?.[index] || "";
+    const total = localityPayload.total_occurrences?.[index] || 0;
+    const topCodes = localityPayload.top_country_codes?.[index] || [];
+    const topCounts = localityPayload.top_country_counts?.[index] || [];
+    const countryName = country ? countryLabel(localityPayload, country) : "";
+    const regionName = regionLabel(localityPayload, region);
+    const topCountries = topCodes.map((code, topIndex) => ({
+      code,
+      label: countryLabel(localityPayload, code),
+      count: topCounts[topIndex] || 0,
+    }));
+    lookup.set(names[index], {
+      primary_country: country,
+      primary_country_label: countryName,
+      region_key: region,
+      region_label: regionName,
+      total_occurrences: total,
+      top_countries: topCountries,
+      location_label: countryName && regionName ? `${countryName}, ${regionName}` : countryName || regionName || "",
+    });
+  }
+  return lookup;
+}
+
+function buildDerivedShellData(shells, localityPayload = null) {
   state.speciesCounts = new Map();
   for (const shell of shells) {
     state.speciesCounts.set(shell.species, (state.speciesCounts.get(shell.species) || 0) + 1);
   }
-  const counts = [...state.speciesCounts.values()];
-  const min = Math.min(...counts);
-  const max = Math.max(...counts);
-  state.speciesRarity = new Map();
-  for (const [species, count] of state.speciesCounts) {
-    const rarity = max > min ? 100 - ((count - min) / (max - min)) * 100 : 100;
-    state.speciesRarity.set(species, rarity);
-  }
+  const localityLookup = buildLocalityLookup(localityPayload);
+  const totalOccurrenceProxy = [...localityLookup.values()].reduce(
+    (total, entry) => total + (entry.total_occurrences || 0),
+    0,
+  );
+  state.localityMatchRate = localityPayload?.match_rate || 0;
   for (const shell of shells) {
+    const locality = localityLookup.get(shell.species);
     shell.fingerprint_hash = fingerprintHash(shell);
     shell.species_sample_count = state.speciesCounts.get(shell.species) || 1;
-    shell.rarity_percent = state.speciesRarity.get(shell.species) ?? 100;
-    shell.location_label = "Locality unavailable";
-    shell.location_key = "unknown";
+    shell.global_occurrences = locality?.total_occurrences || 0;
+    shell.global_share_percent = shell.global_occurrences && totalOccurrenceProxy
+      ? (shell.global_occurrences / totalOccurrenceProxy) * 100
+      : null;
+    shell.rarity_source = shell.global_occurrences ? "GBIF occurrence share proxy" : "Unavailable";
+    shell.location_label = locality?.location_label || "Locality unavailable";
+    shell.location_key = locality?.primary_country || locality?.region_key || "unknown";
+    shell.location_color = shell.location_key === "unknown"
+      ? "rgba(96, 108, 106, 0.62)"
+      : speciesColor(shell.location_key);
+    shell.species_color = speciesColor(shell.species);
+    shell.region_label = locality?.region_label || "";
+    shell.top_countries_label = locality?.top_countries?.length
+      ? locality.top_countries.slice(0, 3).map((country) => country.label).join(", ")
+      : "";
   }
 }
 
@@ -305,6 +368,7 @@ function resizeCanvas(canvas, ctx) {
     canvas.height = height;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     state.needsDraw = true;
+    if (canvas === els.scatter) state.scatterHitCache = null;
   }
   return { width: rect.width, height: rect.height };
 }
@@ -388,8 +452,7 @@ function shellRgb(shell, alpha = 1) {
 
 function pointColor(shell) {
   if (state.colorMode === "locality") {
-    if (shell.location_key === "unknown") return "rgba(96, 108, 106, 0.62)";
-    return speciesColor(shell.location_key);
+    return shell.location_color || "rgba(96, 108, 106, 0.62)";
   }
   if (state.colorMode === "shell") return shellRgb(shell);
   if (state.colorMode === "lightness") {
@@ -412,12 +475,17 @@ function pointColor(shell) {
     const t = clamp01((shell.contour_concavity || 0) / 0.32);
     return `hsl(${320 - t * 185}, 56%, ${35 + t * 11}%)`;
   }
-  return speciesColor(shell.species);
+  return shell.species_color || speciesColor(shell.species);
 }
 
 function scheduleDraw() {
   state.needsDraw = true;
-  requestAnimationFrame(drawScatter);
+  state.scatterHitCache = null;
+  if (state.drawFrame) return;
+  state.drawFrame = requestAnimationFrame(() => {
+    state.drawFrame = 0;
+    drawScatter();
+  });
 }
 
 function drawScatter() {
@@ -442,15 +510,17 @@ function drawScatter() {
     scatterCtx.stroke();
   }
 
-  const stride = state.filtered.length > 30000 ? 2 : 1;
-  for (let index = 0; index < state.filtered.length; index += stride) {
-    const shell = state.filtered[index];
-    const point = worldToScreen(axisValue(shell, state.xAxis), axisValue(shell, state.yAxis), size);
-    if (point.x < -3 || point.x > size.width + 3 || point.y < -3 || point.y > size.height + 3) {
+  const hitCache = scatterHitPoints(size);
+  const stride = hitCache.shells.length > 30000 ? 2 : 1;
+  for (let index = 0; index < hitCache.shells.length; index += stride) {
+    const shell = hitCache.shells[index];
+    const pointX = hitCache.points[index * 2];
+    const pointY = hitCache.points[index * 2 + 1];
+    if (pointX < -3 || pointX > size.width + 3 || pointY < -3 || pointY > size.height + 3) {
       continue;
     }
     scatterCtx.fillStyle = pointColor(shell);
-    scatterCtx.fillRect(point.x - 1, point.y - 1, 2, 2);
+    scatterCtx.fillRect(pointX - 1, pointY - 1, 2, 2);
   }
 
   const values = activeAxisValues();
@@ -483,13 +553,58 @@ function drawScatter() {
   scatterCtx.restore();
 }
 
+function scatterHitKey(size) {
+  const viewport = state.viewport || {};
+  return [
+    state.xAxis,
+    state.yAxis,
+    size.width.toFixed(1),
+    size.height.toFixed(1),
+    Number(viewport.minX || 0).toFixed(4),
+    Number(viewport.maxX || 0).toFixed(4),
+    Number(viewport.minY || 0).toFixed(4),
+    Number(viewport.maxY || 0).toFixed(4),
+  ].join("|");
+}
+
+function scatterHitPoints(size) {
+  const key = scatterHitKey(size);
+  if (state.scatterHitCache?.key === key && state.scatterHitCache.shells === state.filtered) {
+    return state.scatterHitCache;
+  }
+  const shells = state.filtered;
+  const points = new Float32Array(shells.length * 2);
+  const cellSize = 24;
+  const grid = new Map();
+  for (let index = 0; index < shells.length; index += 1) {
+    const point = worldToScreen(axisValue(shells[index], state.xAxis), axisValue(shells[index], state.yAxis), size);
+    points[index * 2] = point.x;
+    points[index * 2 + 1] = point.y;
+    if (point.x < -cellSize || point.x > size.width + cellSize || point.y < -cellSize || point.y > size.height + cellSize) {
+      continue;
+    }
+    const cellX = Math.floor(point.x / cellSize);
+    const cellY = Math.floor(point.y / cellSize);
+    const cellKey = `${cellX},${cellY}`;
+    let bucket = grid.get(cellKey);
+    if (!bucket) {
+      bucket = [];
+      grid.set(cellKey, bucket);
+    }
+    bucket.push(index);
+  }
+  state.scatterHitCache = { key, shells, points, grid, cellSize };
+  return state.scatterHitCache;
+}
+
 function updateFilter() {
   const query = els.search.value.trim().toLowerCase();
   state.filtered = query
     ? state.shells.filter((shell) =>
-        `${shell.name} ${shell.species} ${shell.file} ${shell.fingerprint_hash || ""}`.toLowerCase().includes(query),
+        `${shell.name} ${shell.species} ${shell.file} ${shell.fingerprint_hash || ""} ${shell.location_label || ""}`.toLowerCase().includes(query),
       )
     : state.shells;
+  state.scatterHitCache = null;
   renderNeighbors(state.selected);
   renderPalette();
   scheduleDraw();
@@ -702,33 +817,47 @@ function shapeTraitsFromShell(shell) {
   };
 }
 
-function shellTone(shell) {
+function shellColorName(shell) {
   const lightness = shell.color_l_mean ?? 0.5;
   const chroma = shell.color_chroma_mean ?? 0.1;
-  if (lightness > 0.68 && chroma < 0.12) return "pale";
-  if (lightness < 0.38) return "dark";
-  if (chroma > 0.22) return "colorful";
-  return "muted";
+  const hue = ((Math.atan2(shell.color_hue_sin || 0, shell.color_hue_cos || 1) * 180) / Math.PI + 360) % 360;
+  if (lightness > 0.72 && chroma < 0.12) return "ivory";
+  if (lightness < 0.32) return "dark brown";
+  if (chroma < 0.08) return lightness > 0.58 ? "chalky cream" : "stone gray";
+  if (hue < 28 || hue >= 342) return "rose-brown";
+  if (hue < 58) return lightness > 0.58 ? "golden cream" : "amber-brown";
+  if (hue < 92) return "olive-tan";
+  if (hue < 165) return "green-gray";
+  if (hue < 235) return "blue-gray";
+  if (hue < 292) return "violet-gray";
+  return "pink-tan";
 }
 
-function shellShapeWord(shell) {
-  if ((shell.aspect_ratio || 1) > 1.55) return "elongated";
-  if ((shell.contour_concavity || 0) > 0.16) return "notched";
-  if ((shell.roughness || 0) > 0.018) return "rugged";
-  return "rounded";
+function shellSilhouettePhrase(shell) {
+  const aspect = shell.aspect_ratio || 1;
+  if (aspect > 3.1) return "long, blade-like";
+  if (aspect > 2.05) return "tall, narrow";
+  if ((shell.contour_concavity || 0) > 0.18) return "notched, irregular";
+  if (aspect < 1.16) return "compact rounded";
+  if ((shell.mask_ratio || 0) > 0.36) return "broad oval";
+  return "balanced oval";
 }
 
-function shellPatternWord(shell) {
-  if ((shell.color_pattern_strength || 0) > 0.22) return "high-pattern";
-  if ((shell.texture_gradient_mean || 0) > 0.35) return "ribbed";
-  if ((shell.color_chroma_mean || 0) > 0.18) return "saturated";
-  return "smooth";
+function shellSurfacePhrase(shell) {
+  if ((shell.texture_gradient_mean || 0) > 0.82) return "strong ribbing and high relief";
+  if ((shell.color_pattern_strength || 0) > 0.48) return "bold mottled patterning";
+  if ((shell.color_pattern_strength || 0) > 0.32) return "visible banding and color variation";
+  if ((shell.roughness || 0) > 0.018) return "a rugged outer rim";
+  if ((shell.color_chroma_mean || 0) > 0.2) return "clean saturated color";
+  return "a smooth, low-contrast surface";
 }
 
 function shellDescription(shell) {
   if (!shell) return "";
-  const note = `${shellTone(shell)} ${shellPatternWord(shell)} ${shellShapeWord(shell)} shell`;
-  return `${note}; locality unavailable in source dataset.`;
+  const place = shell.top_countries_label
+    ? `GBIF records concentrated in ${shell.top_countries_label}`
+    : "no reliable GBIF locality signal";
+  return `${shell.species} is a shell species represented here by a ${shellSilhouettePhrase(shell)} ${shellColorName(shell)} shell with ${shellSurfacePhrase(shell)}, ${place}.`;
 }
 
 function effectiveGeneratedTraits() {
@@ -1026,6 +1155,7 @@ function setSourceImageUrl(url, shell, alt = "") {
   };
   els.sourceImage.onload = () => {
     if (els.sourceSpinner) els.sourceSpinner.hidden = true;
+    renderPalette();
   };
   els.sourceImage.src = url;
 }
@@ -1047,6 +1177,7 @@ async function renderSourceShell(shell) {
   if (frame) {
     state.sourceFrame = frame;
     if (els.sourceSpinner) els.sourceSpinner.hidden = true;
+    renderPalette();
     return;
   }
   setSourceImageUrl(datasetAsset(shell.file), shell, shell.species);
@@ -1070,9 +1201,12 @@ function nearestMapNeighbors(values, count = 14) {
       distanceSq += delta * delta;
     }
     best.push({ distanceSq, shell });
-    best.sort((a, b) => a.distanceSq - b.distanceSq);
-    if (best.length > count) best.pop();
+    if (best.length > count) {
+      best.sort((a, b) => a.distanceSq - b.distanceSq);
+      best.pop();
+    }
   }
+  best.sort((a, b) => a.distanceSq - b.distanceSq);
   return best;
 }
 
@@ -1230,9 +1364,12 @@ function renderNeighbors(shell) {
   for (const candidate of state.shells) {
     if (candidate.id === shell.id) continue;
     best.push({ distance: contourPcDistance(shell, candidate), shell: candidate });
-    best.sort((a, b) => a.distance - b.distance);
-    if (best.length > 8) best.pop();
+    if (best.length > 8) {
+      best.sort((a, b) => a.distance - b.distance);
+      best.pop();
+    }
   }
+  best.sort((a, b) => a.distance - b.distance);
   for (const item of best) {
     const button = document.createElement("button");
     button.className = "neighbor-button";
@@ -1272,7 +1409,7 @@ function updateStarButton() {
   if (!els.starShell) return;
   const active = isStarred(state.selected);
   els.starShell.setAttribute("aria-pressed", active ? "true" : "false");
-  els.starShell.textContent = active ? "Starred" : "Star";
+  els.starShell.textContent = active ? "★" : "☆";
 }
 
 function toggleStarredShell() {
@@ -1280,7 +1417,13 @@ function toggleStarredShell() {
   const id = state.selected.id;
   const active = isStarred(state.selected);
   state.starredIds = state.starredIds.filter((value) => value !== id);
-  if (!active) state.starredIds.unshift(id);
+  if (!active) {
+    state.starredIds.unshift(id);
+    els.starShell.classList.remove("star-pop");
+    void els.starShell.offsetWidth;
+    els.starShell.classList.add("star-pop");
+    window.setTimeout(() => els.starShell.classList.remove("star-pop"), 850);
+  }
   saveStarred();
   updateStarButton();
   renderStarred();
@@ -1297,9 +1440,7 @@ function renderStarred() {
     button.className = "starred-shell";
     button.title = `${shell.species} ${shell.fingerprint_hash}`;
     const canvas = document.createElement("canvas");
-    const label = document.createElement("span");
-    label.textContent = shell.fingerprint_hash;
-    button.append(canvas, label);
+    button.append(canvas);
     drawShellThumbToCanvas(canvas, shell);
     button.addEventListener("click", () => {
       centerViewportOnShell(shell);
@@ -1342,9 +1483,16 @@ function selectShell(shell) {
   updateHashChips();
   updateStarButton();
   els.selectedDetails.innerHTML = "";
+  const rarityText = shell.global_share_percent == null
+    ? "Unavailable GBIF share"
+    : `${formatPercent(shell.global_share_percent, 6)}% of GBIF shell records`;
+  const occurrenceText = shell.global_occurrences
+    ? `${shell.global_occurrences.toLocaleString()} GBIF records`
+    : "No GBIF proxy records";
   const details = [
     ["Fingerprint", shell.fingerprint_hash || "-"],
-    ["Rarity", `${formatNumber(shell.rarity_percent, 1)}% dataset rarity`],
+    ["Rarity", rarityText],
+    ["Global records", occurrenceText],
     ["Samples", `${(shell.species_sample_count || 1).toLocaleString()} images/species`],
     ["Area", `${shell.area?.toLocaleString() || "-"} px²`],
     ["Mean radius", `${formatNumber(shell.mean_radius, 1)} px`],
@@ -1378,20 +1526,36 @@ function selectShell(shell) {
 
 function nearestShell(screenX, screenY) {
   const size = resizeCanvas(els.scatter, scatterCtx);
+  const hitCache = scatterHitPoints(size);
   let best = null;
   let bestDistance = Infinity;
-  for (const shell of state.filtered) {
-    const point = worldToScreen(axisValue(shell, state.xAxis), axisValue(shell, state.yAxis), size);
-    const distance = (point.x - screenX) ** 2 + (point.y - screenY) ** 2;
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = shell;
+  const cellX = Math.floor(screenX / hitCache.cellSize);
+  const cellY = Math.floor(screenY / hitCache.cellSize);
+  for (let radius = 0; radius <= 1; radius += 1) {
+    for (let y = cellY - radius; y <= cellY + radius; y += 1) {
+      for (let x = cellX - radius; x <= cellX + radius; x += 1) {
+        if (radius && x > cellX - radius && x < cellX + radius && y > cellY - radius && y < cellY + radius) {
+          continue;
+        }
+        const bucket = hitCache.grid.get(`${x},${y}`);
+        if (!bucket) continue;
+        for (const index of bucket) {
+          const dx = hitCache.points[index * 2] - screenX;
+          const dy = hitCache.points[index * 2 + 1] - screenY;
+          const distance = dx * dx + dy * dy;
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            best = hitCache.shells[index];
+          }
+        }
+      }
     }
+    if (bestDistance <= 14 * 14) break;
   }
   return bestDistance <= 14 * 14 ? best : null;
 }
 
-function setTargetFromEvent(event) {
+function setTargetFromEvent(event, blend = false) {
   const rect = els.scatter.getBoundingClientRect();
   const size = resizeCanvas(els.scatter, scatterCtx);
   const point = screenToWorld(event.clientX - rect.left, event.clientY - rect.top, size);
@@ -1400,7 +1564,7 @@ function setTargetFromEvent(event) {
   updatePcControl(state.xAxis, point.x);
   updatePcControl(state.yAxis, point.y);
   reconstructFromPc();
-  generateLocalShellFromTarget();
+  if (blend) generateLocalShellFromTarget();
   scheduleDraw();
   scheduleHashUpdate();
 }
@@ -1465,31 +1629,136 @@ function showPointTooltip(event, shell) {
   els.pointTooltip.hidden = false;
 }
 
-function renderPalette() {
-  if (!els.paletteSwatches) return;
-  els.paletteSwatches.innerHTML = "";
-  const traits = effectiveGeneratedTraits();
+function queuePointTooltip(event) {
+  state.tooltipEvent = {
+    clientX: event.clientX,
+    clientY: event.clientY,
+  };
+  if (state.tooltipFrame) return;
+  state.tooltipFrame = requestAnimationFrame(() => {
+    state.tooltipFrame = 0;
+    const now = performance.now();
+    if (now - state.tooltipLastAt < 60) return;
+    state.tooltipLastAt = now;
+    const next = state.tooltipEvent;
+    if (!next) return;
+    const rect = els.scatter.getBoundingClientRect();
+    showPointTooltip(next, nearestShell(next.clientX - rect.left, next.clientY - rect.top));
+  });
+}
+
+function rgbCssFromTriplet(color) {
+  return `rgb(${Math.round(color[0])}, ${Math.round(color[1])}, ${Math.round(color[2])})`;
+}
+
+function colorDistanceSq(a, b) {
+  const red = a[0] - b[0];
+  const green = a[1] - b[1];
+  const blue = a[2] - b[2];
+  return red * red + green * green + blue * blue;
+}
+
+function fiveDistinctColorsFromPixels(pixels) {
+  if (!pixels.length) return null;
+  const centers = [pixels.reduce((best, color) => {
+    const chroma = Math.max(color[0], color[1], color[2]) - Math.min(color[0], color[1], color[2]);
+    const bestChroma = Math.max(best[0], best[1], best[2]) - Math.min(best[0], best[1], best[2]);
+    return chroma > bestChroma ? color : best;
+  }, pixels[0]).slice()];
+  while (centers.length < 5) {
+    let next = pixels[0];
+    let nextDistance = -1;
+    for (const color of pixels) {
+      const distance = Math.min(...centers.map((center) => colorDistanceSq(color, center)));
+      if (distance > nextDistance) {
+        nextDistance = distance;
+        next = color;
+      }
+    }
+    centers.push(next.slice());
+  }
+  for (let pass = 0; pass < 5; pass += 1) {
+    const totals = centers.map(() => [0, 0, 0, 0]);
+    for (const color of pixels) {
+      let best = 0;
+      let bestDistance = Infinity;
+      for (let index = 0; index < centers.length; index += 1) {
+        const distance = colorDistanceSq(color, centers[index]);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = index;
+        }
+      }
+      totals[best][0] += color[0];
+      totals[best][1] += color[1];
+      totals[best][2] += color[2];
+      totals[best][3] += 1;
+    }
+    for (let index = 0; index < centers.length; index += 1) {
+      if (!totals[index][3]) continue;
+      centers[index] = [
+        totals[index][0] / totals[index][3],
+        totals[index][1] / totals[index][3],
+        totals[index][2] / totals[index][3],
+      ];
+    }
+  }
+  return centers
+    .sort((a, b) => rgbToHsl(a[0] / 255, a[1] / 255, a[2] / 255).l - rgbToHsl(b[0] / 255, b[1] / 255, b[2] / 255).l)
+    .map(rgbCssFromTriplet);
+}
+
+function paletteFromSourceCanvas() {
+  if (els.sourceThumb.hidden || !els.sourceThumb.width || !els.sourceThumb.height) return null;
+  let data;
+  try {
+    data = sourceThumbCtx.getImageData(0, 0, els.sourceThumb.width, els.sourceThumb.height).data;
+  } catch (_error) {
+    return null;
+  }
+  const pixels = [];
+  const step = Math.max(4, Math.floor(Math.sqrt((els.sourceThumb.width * els.sourceThumb.height) / 2200)));
+  for (let y = 0; y < els.sourceThumb.height; y += step) {
+    for (let x = 0; x < els.sourceThumb.width; x += step) {
+      const offset = (y * els.sourceThumb.width + x) * 4;
+      const red = data[offset];
+      const green = data[offset + 1];
+      const blue = data[offset + 2];
+      const alpha = data[offset + 3];
+      if (alpha < 180 || red + green + blue < 48) continue;
+      pixels.push([red, green, blue]);
+    }
+  }
+  return fiveDistinctColorsFromPixels(pixels);
+}
+
+function paletteFromTraits(traits) {
   const base = {
     r: clamp01(traits.color_r_mean ?? 0.72),
     g: clamp01(traits.color_g_mean ?? 0.66),
     b: clamp01(traits.color_b_mean ?? 0.54),
   };
   const hsl = rgbToHsl(base.r, base.g, base.b);
-  const palette = [
-    ["Shell", hslCss(hsl.h, hsl.s, hsl.l)],
-    ["Tint", hslCss(hsl.h, hsl.s * 0.72, Math.min(0.88, hsl.l + 0.24))],
-    ["Shade", hslCss(hsl.h, Math.min(1, hsl.s * 1.1), Math.max(0.18, hsl.l - 0.24))],
-    ["Analog", hslCss(hsl.h - 28, hsl.s, hsl.l)],
-    ["Complement", hslCss(hsl.h + 180, hsl.s, hsl.l)],
+  const contrast = clamp01((traits.color_l_std || 0.18) / 0.32);
+  return [
+    hslCss(hsl.h, hsl.s * 0.78, Math.max(0.12, hsl.l - 0.28 - contrast * 0.08)),
+    hslCss(hsl.h - 8, hsl.s * 0.92, Math.max(0.22, hsl.l - 0.12)),
+    hslCss(hsl.h, hsl.s, hsl.l),
+    hslCss(hsl.h + 6, hsl.s * 0.72, Math.min(0.86, hsl.l + 0.16)),
+    hslCss(hsl.h, hsl.s * 0.48, Math.min(0.94, hsl.l + 0.3 + contrast * 0.04)),
   ];
-  for (const [label, color] of palette) {
+}
+
+function renderPalette() {
+  if (!els.paletteSwatches) return;
+  els.paletteSwatches.innerHTML = "";
+  const traits = effectiveGeneratedTraits();
+  const palette = paletteFromSourceCanvas() || paletteFromTraits(traits);
+  for (const color of palette) {
     const swatch = document.createElement("span");
     swatch.className = "palette-swatch";
     swatch.style.background = color;
-    swatch.title = `${label}: ${color}`;
-    const name = document.createElement("span");
-    name.textContent = label;
-    swatch.append(name);
+    swatch.title = color;
     els.paletteSwatches.append(swatch);
   }
 }
@@ -1946,9 +2215,13 @@ async function handleUploadShell() {
     shell.trait_pc = projectTraitsToPca(shell);
     shell.fingerprint_hash = fingerprintHash(shell);
     shell.species_sample_count = 1;
-    shell.rarity_percent = 100;
+    shell.global_occurrences = 0;
+    shell.global_share_percent = null;
+    shell.rarity_source = "Unavailable";
     shell.location_label = "Uploaded image";
     shell.location_key = "uploaded";
+    shell.location_color = speciesColor("uploaded");
+    shell.species_color = speciesColor(shell.species);
     if (state.uploadImageUrl) URL.revokeObjectURL(state.uploadImageUrl);
     state.uploadImageUrl = URL.createObjectURL(file);
     centerViewportOnShell(shell);
@@ -2044,7 +2317,7 @@ function setupEvents() {
     if (shell) selectShell(shell);
     else {
       state.draggingTarget = true;
-      setTargetFromEvent(event);
+      setTargetFromEvent(event, false);
     }
   });
 
@@ -2055,16 +2328,18 @@ function setupEvents() {
       return;
     }
     if (state.draggingTarget) {
-      setTargetFromEvent(event);
+      setTargetFromEvent(event, false);
       els.pointTooltip.hidden = true;
       return;
     }
-    const rect = els.scatter.getBoundingClientRect();
-    showPointTooltip(event, nearestShell(event.clientX - rect.left, event.clientY - rect.top));
+    queuePointTooltip(event);
   });
 
   for (const eventName of ["pointerup", "pointerleave", "pointercancel"]) {
-    els.scatter.addEventListener(eventName, () => {
+    els.scatter.addEventListener(eventName, (event) => {
+      if (state.draggingTarget && eventName === "pointerup") {
+        setTargetFromEvent(event, true);
+      }
       state.draggingTarget = false;
       stopViewportPan();
       if (eventName !== "pointerup") els.pointTooltip.hidden = true;
@@ -2087,6 +2362,9 @@ async function init() {
   const model = await fetchJson(asset("data/model.json"));
   setLoading("Unpacking shell fingerprints");
   const shellPayload = await fetchCompressedJson(asset(`data/${model.shell_file || "shells.json"}`));
+  const localityPayload = model.locality_file
+    ? await fetchCompressedJson(asset(`data/${model.locality_file}`))
+    : null;
   setLoading("Unpacking contours");
   const contourBuffer = model.contour_file
     ? await fetchCompressedArrayBuffer(asset(`data/${model.contour_file}`))
@@ -2095,7 +2373,7 @@ async function init() {
 
   state.model = model;
   state.shells = unpackShells(shellPayload);
-  buildDerivedShellData(state.shells);
+  buildDerivedShellData(state.shells, localityPayload);
   state.filtered = state.shells;
   state.contours = contourBuffer ? new Uint16Array(contourBuffer) : null;
   state.contourPoints = model.contour_points || 0;

@@ -1,7 +1,7 @@
 {
   "model.json": {
-    "bytes": 71419,
-    "sha256": "d96a05cbe4ee9a95a9e798b11188bba2409a66ef2d8bbc94b73ed1d57d0bdddc"
+    "bytes": 71515,
+    "sha256": "c5829fd4fb8b4611d60a97b97eca08145f1e4340b58c0e64a8da31f293501da3"
   },
   "shells.compact.json.gz": {
     "bytes": 8612594,
@@ -126,5 +126,9 @@
   "thumbs/thumb_028.webp": {
     "bytes": 1573106,
     "sha256": "8b84f1998a794cb56bc7baec6b30b858ccfd49cf97c42410f1e52a038c73249e"
+  },
+  "localities.compact.json.gz": {
+    "bytes": 131157,
+    "sha256": "68572a9afed8cb726b9e1d7ad9073f3ce5fec2db6ff7f94520bd630abe97b286"
   }
 }
