@@ -1444,6 +1444,31 @@ function drawLoadedThumbnailImage(ctx, shell, source, image, frameWidth, frameHe
   return frame;
 }
 
+function thumbnailContourPath(ctx, shell, frame) {
+  const contour = contourForShell(shell);
+  if (!contour?.length || !frame) return false;
+  ctx.beginPath();
+  for (let index = 0; index < contour.length; index += 1) {
+    const x = frame.x + contour[index][0] * frame.scale;
+    const y = frame.y + contour[index][1] * frame.scale;
+    if (index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  return true;
+}
+
+function drawContourFallbackThumb(ctx, shell, frame, frameWidth, frameHeight) {
+  if (!thumbnailContourPath(ctx, shell, frame)) return false;
+  ctx.fillStyle = shellRgb(shell, 0.9);
+  ctx.fill();
+  const hsl = rgbToHsl(shell.color_r_mean ?? 0.68, shell.color_g_mean ?? 0.64, shell.color_b_mean ?? 0.56);
+  ctx.strokeStyle = hslCss(hsl.h, Math.max(0.18, hsl.s * 0.8), Math.max(0.16, hsl.l - 0.22));
+  ctx.lineWidth = Math.max(1.25, Math.min(frameWidth, frameHeight) * 0.025);
+  ctx.stroke();
+  return true;
+}
+
 async function drawThumbnailImage(ctx, shell, frameWidth, frameHeight, { onlyIfReady = false } = {}) {
   const source = thumbnailSourceRect(shell);
   if (!source) return false;
@@ -1458,29 +1483,17 @@ async function drawShellThumbToCanvas(canvas, shell, { loadImage = true } = {}) 
   canvas.width = 96;
   canvas.height = 96;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const contour = normalizedContour(shell);
-  if (contour) {
-    const scale = (Math.min(canvas.width, canvas.height) * 0.39) / maxContourRadius([contour]);
+  const frame = fitImageFrame(shell.image_width || canvas.width, shell.image_height || canvas.height, canvas.width, canvas.height);
+  const hasContour = thumbnailContourPath(ctx, shell, frame);
+  if (hasContour) {
     ctx.save();
-    contourPath(ctx, contour, canvas.width / 2, canvas.height / 2, scale);
     ctx.clip();
     const drewImage = await drawThumbnailImage(ctx, shell, canvas.width, canvas.height, { onlyIfReady: !loadImage });
-    if (!drewImage) {
-      ctx.fillStyle = shellRgb(shell, 0.82);
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
     ctx.restore();
+    if (!drewImage) drawContourFallbackThumb(ctx, shell, frame, canvas.width, canvas.height);
     return;
   }
   if (await drawThumbnailImage(ctx, shell, canvas.width, canvas.height, { onlyIfReady: !loadImage })) return;
-  if (!contour) return;
-  const scale = (Math.min(canvas.width, canvas.height) * 0.38) / maxContourRadius([contour]);
-  contourPath(ctx, contour, canvas.width / 2, canvas.height / 2, scale);
-  ctx.fillStyle = shellRgb(shell, 0.82);
-  ctx.strokeStyle = "#287a74";
-  ctx.lineWidth = 3;
-  ctx.fill();
-  ctx.stroke();
 }
 
 function setSourceImageUrl(url, shell, alt = "") {
@@ -1753,7 +1766,7 @@ function renderNeighbors(shell, token = state.neighborToken) {
     button.title = `${item.shell.species} (${formatNumber(item.distance, 3)})`;
     const image = document.createElement("canvas");
     image.setAttribute("aria-label", item.shell.species);
-    drawShellThumbToCanvas(image, item.shell, { loadImage: false });
+    drawShellThumbToCanvas(image, item.shell);
     const label = document.createElement("span");
     label.textContent = formatNumber(item.distance, 2);
     button.append(image, label);
@@ -1859,7 +1872,7 @@ function renderStarred() {
     button.title = `${shell.species} ${shell.fingerprint_hash}`;
     const canvas = document.createElement("canvas");
     button.append(canvas);
-    drawShellThumbToCanvas(canvas, shell, { loadImage: false });
+    drawShellThumbToCanvas(canvas, shell);
     button.addEventListener("click", () => {
       centerViewportOnShell(shell);
       selectShell(shell);
@@ -1879,7 +1892,7 @@ function renderStarred() {
   }
 }
 
-function selectShell(shell) {
+function selectShell(shell, { renderNearest = true } = {}) {
   if (!shell) return;
   if (state.walkingPca) stopPcaWalk(false);
   if (shell.id >= 0 && state.uploadImageUrl) {
@@ -1937,7 +1950,8 @@ function selectShell(shell) {
   }
   state.sourceFrame = null;
   renderSourceShell(shell);
-  scheduleRenderNeighbors(shell);
+  if (renderNearest) scheduleRenderNeighbors(shell);
+  else els.neighborsList.innerHTML = "";
   updateGeneratorStatus();
   drawOutline();
   renderPalette(false);
@@ -2843,7 +2857,7 @@ async function init() {
 
   state.suppressHash = true;
   const selected = shellById(initialHash.get("id")) || state.shells[0];
-  selectShell(selected);
+  selectShell(selected, { renderNearest: false });
   const pcValues = (initialHash.get("pc") || "")
     .split(",")
     .filter((value) => value.trim() !== "")
