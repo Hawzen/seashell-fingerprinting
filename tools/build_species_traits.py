@@ -94,6 +94,7 @@ def build_traits(shell_pack: dict[str, Any], localities: dict[str, Any]) -> dict
     region_keys: list[str] = []
     rarity: list[int] = []
     rarity_reasons: list[str] = []
+    commonness: list[str] = []
 
     for index, species in enumerate(species_names):
         locality_position = locality_index.get(species)
@@ -122,6 +123,7 @@ def build_traits(shell_pack: dict[str, Any], localities: dict[str, Any]) -> dict
         region_keys.append(region)
         rarity.append(code)
         rarity_reasons.append(rarity_reason(code, observations, len(range_codes), samples))
+        commonness.append(RARITY_LABELS[code])
 
     return {
         "encoding": "shell-species-traits-v1",
@@ -129,13 +131,16 @@ def build_traits(shell_pack: dict[str, Any], localities: dict[str, Any]) -> dict
         "source_urls": [DATASET_URL, GBIF_OCCURRENCE_URL],
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "species_count": len(species_names),
+        "species": species_names,
         "species_names": species_names,
         "genus": genera,
         "rarity_labels": RARITY_LABELS,
         "rarity": rarity,
         "rarity_reasons": rarity_reasons,
+        "commonness": commonness,
         "dataset_sample_count": dataset_sample_count,
         "observation_count": observation_count,
+        "known_range": known_range_country_codes,
         "known_range_country_codes": known_range_country_codes,
         "known_range_country_counts": known_range_country_counts,
         "country_count": country_count,

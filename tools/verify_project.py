@@ -316,16 +316,22 @@ def verify_static(public_data: Path, image_count: int) -> None:
     if len(rarity) != model["species_count"] or len(set(rarity)) < 4:
         raise AssertionError("Species traits pack should contain varied coarse rarity labels")
     for key in [
+        "species",
         "species_names",
         "genus",
+        "commonness",
         "dataset_sample_count",
         "observation_count",
+        "known_range",
         "known_range_country_codes",
         "protection_status",
         "market_price_usd",
     ]:
         if len(traits_payload.get(key, [])) != model["species_count"]:
             raise AssertionError(f"Species traits field {key!r} has the wrong length")
+    commonness = traits_payload.get("commonness", [])
+    if not all(label in rarity_labels for label in commonness[:100]):
+        raise AssertionError("Species traits commonness labels do not match rarity labels")
     contour_path = public_data / model["contour_file"]
     if not contour_path.exists():
         raise AssertionError(f"Missing {contour_path}")
