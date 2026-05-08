@@ -239,8 +239,13 @@ def verify_entrypoint() -> None:
         "generateHybridShell",
         "sampleEmptyMorphospace",
         "updateGeographyForShell",
+        "updateGeographyForBrush",
+        "startScatterBrush",
         "playShellMotif",
         "conservationStatus",
+        "lookupConservationStatus",
+        "api.inaturalist.org/v1/taxa/autocomplete",
+        "api.gbif.org/v1/occurrence/search",
     ]:
         if marker not in app:
             raise AssertionError(f"New feature implementation is missing {marker!r}")
@@ -510,6 +515,114 @@ def run_browser_check(
 	                throw new Error(`initial UI failed: ${{JSON.stringify(restored)}}`);
 	              }}
 
+              await page.selectOption('#colorModeSelect', 'conservation');
+              const liveConservation = await page.evaluate(async () => {{
+                const lookup = await window.shellspacePerf.lookupConservationStatus('Haliotis rufescens');
+                const id = window.shellspacePerf.selectSpecies('Haliotis rufescens');
+                return {{
+                  id,
+                  status: lookup?.status || '',
+                  selectedStatus: window.shellspacePerf.conservationStatusForSelected?.() || '',
+                }};
+              }});
+              await page.waitForFunction(
+                () => /Critically endangered/i.test(document.querySelector('#selectedDetails')?.textContent || ''),
+                null,
+                {{ timeout: 120000 }}
+              );
+              if (liveConservation.id == null || !/Critically endangered/i.test(liveConservation.status)) {{
+                throw new Error(`live conservation lookup failed: ${{JSON.stringify(liveConservation)}}`);
+              }}
+
+              const labProbe = await page.evaluate(async () => {{
+                const baseFiltered = window.shellspacePerf.filteredCount();
+                const firstTraitMin = document.querySelector('#traitFilters input[type="range"]');
+                firstTraitMin.value = '60';
+                firstTraitMin.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                const traitFiltered = window.shellspacePerf.filteredCount();
+                document.querySelector('#resetTraitFilters').click();
+                const resetFiltered = window.shellspacePerf.filteredCount();
+                const beforeHash = document.querySelector('#projectedHash').textContent;
+                document.querySelector('#compareRandom').click();
+                document.querySelector('#hybridShell').click();
+                const hybridHash = document.querySelector('#projectedHash').textContent;
+                const hybridStatus = document.querySelector('#walkStatus').textContent;
+                document.querySelector('#emptyShell').click();
+                const emptyHash = document.querySelector('#projectedHash').textContent;
+                const emptyStatus = document.querySelector('#walkStatus').textContent;
+                document.querySelector('#compareRandom').click();
+                document.querySelector('#walkPca').click();
+                return await new Promise((resolve) => {{
+                  window.setTimeout(() => {{
+                    const walkPressed = document.querySelector('#walkPca').getAttribute('aria-pressed');
+                    const walkStatus = document.querySelector('#walkStatus').textContent;
+                    document.querySelector('#walkPca').click();
+                    resolve({{
+                      baseFiltered,
+                      traitFiltered,
+                      resetFiltered,
+                      beforeHash,
+                      hybridHash,
+                      hybridStatus,
+                      emptyHash,
+                      emptyStatus,
+                      walkPressed,
+                      walkStatus,
+                    }});
+                  }}, 650);
+                }});
+              }});
+              if (
+                labProbe.traitFiltered >= labProbe.baseFiltered ||
+                labProbe.resetFiltered !== labProbe.baseFiltered ||
+                labProbe.hybridHash === labProbe.beforeHash ||
+                !/Hybrid:/i.test(labProbe.hybridStatus) ||
+                labProbe.emptyHash === labProbe.hybridHash ||
+                !/Sparse-zone/i.test(labProbe.emptyStatus) ||
+                labProbe.walkPressed !== 'true' ||
+                !/Walking/i.test(labProbe.walkStatus)
+              ) {{
+                throw new Error(`morphology lab failed: ${{JSON.stringify(labProbe)}}`);
+              }}
+
+              await page.evaluate(() => {{
+                const year = document.querySelector('#geoYear');
+                year.value = '2020';
+                year.dispatchEvent(new Event('input', {{ bubbles: true }}));
+              }});
+              await page.waitForTimeout(900);
+              const geoProbe = await page.evaluate(() => {{
+                const canvas = document.querySelector('#geoCanvas');
+                const context = canvas.getContext('2d');
+                const image = context.getImageData(0, 0, canvas.width, canvas.height).data;
+                let coloredPixels = 0;
+                for (let index = 0; index < image.length; index += 4) {{
+                  if (image[index + 3] && (image[index] !== 0 || image[index + 1] !== 0 || image[index + 2] !== 0)) coloredPixels += 1;
+                }}
+                return {{
+                  status: document.querySelector('#geoStatus').textContent,
+                  label: document.querySelector('#geoYearLabel').textContent,
+                  coloredPixels,
+                }};
+              }});
+              if (geoProbe.label !== '2020' || geoProbe.coloredPixels < 1000 || !/(live GBIF|Local country|Using local|No geography)/i.test(geoProbe.status)) {{
+                throw new Error(`geography probe failed: ${{JSON.stringify(geoProbe)}}`);
+              }}
+
+              const brushBox = await page.locator('#scatterCanvas').boundingBox();
+              if (!brushBox) throw new Error('scatter canvas has no brush box');
+              await page.keyboard.down('Shift');
+              await page.mouse.move(brushBox.x + brushBox.width * 0.35, brushBox.y + brushBox.height * 0.35);
+              await page.mouse.down();
+              await page.mouse.move(brushBox.x + brushBox.width * 0.66, brushBox.y + brushBox.height * 0.66, {{ steps: 6 }});
+              await page.mouse.up();
+              await page.keyboard.up('Shift');
+              await page.waitForFunction(
+                () => /brushed morphospace/i.test(document.querySelector('#geoStatus')?.textContent || ''),
+                null,
+                {{ timeout: 120000 }}
+              );
+
 	              const perfClickCount = {perf_clicks};
 	              if (perfClickCount > 0) {{
 	                const samples = [];
@@ -558,7 +671,7 @@ def run_browser_check(
 	                }}
 	              }}
 
-	              await page.click('#starShell');
+	              await page.evaluate(() => document.querySelector('#starShell').click());
               await page.waitForTimeout(250);
               const starred = await page.evaluate(() => ({{
                 count: document.querySelectorAll('#starredBand .starred-shell').length,
@@ -573,14 +686,14 @@ def run_browser_check(
 
               for (let index = 0; index < 6; index += 1) {{
                 const before = await page.textContent('#physicalHash');
-                await page.click('#randomShell');
+                await page.evaluate(() => document.querySelector('#randomShell').click());
                 await page.waitForFunction(
                   (previous) => document.querySelector('#physicalHash')?.textContent !== previous,
                   before,
                   {{ timeout: 120000 }}
                 );
                 if ((await page.getAttribute('#starShell', 'aria-pressed')) !== 'true') {{
-                  await page.click('#starShell');
+                  await page.evaluate(() => document.querySelector('#starShell').click());
                 }}
               }}
               await page.waitForTimeout(250);

@@ -51,6 +51,10 @@ const state = {
   geoRecords: [],
   geoPoints: [],
   geoCache: new Map(),
+  conservationCache: new Map(),
+  conservationFetchToken: 0,
+  conservationTimer: 0,
+  conservationAbort: null,
   geoFetchToken: 0,
   geoTimer: 0,
   geoYear: 0,
@@ -67,6 +71,7 @@ const state = {
   tooltipEvent: null,
   tooltipLastAt: 0,
   draggingTarget: false,
+  scatterBrush: null,
   panningViewport: null,
   walkingPca: false,
   walkFrame: 0,
@@ -628,7 +633,7 @@ function shellRgba(shell, alpha = 1) {
 }
 
 function conservationStatus(shell) {
-  return shell?.species_traits?.protection_status || "Not assessed";
+  return shell?.live_conservation_status || shell?.species_traits?.protection_status || "Not assessed";
 }
 
 function conservationRgba(shell) {
@@ -793,6 +798,17 @@ function drawScatter() {
     scatterCtx.arc(selected.x, selected.y, 6, 0, Math.PI * 2);
     scatterCtx.fill();
     scatterCtx.stroke();
+  }
+  if (state.scatterBrush) {
+    const left = Math.min(state.scatterBrush.startX, state.scatterBrush.currentX);
+    const top = Math.min(state.scatterBrush.startY, state.scatterBrush.currentY);
+    const width = Math.abs(state.scatterBrush.currentX - state.scatterBrush.startX);
+    const height = Math.abs(state.scatterBrush.currentY - state.scatterBrush.startY);
+    scatterCtx.fillStyle = "rgba(40, 122, 116, 0.12)";
+    scatterCtx.strokeStyle = "rgba(40, 122, 116, 0.82)";
+    scatterCtx.lineWidth = 1.5;
+    scatterCtx.fillRect(left, top, width, height);
+    scatterCtx.strokeRect(left, top, width, height);
   }
   scatterCtx.restore();
 }
@@ -1074,6 +1090,150 @@ function updateLiveLinks() {
     link.textContent = label;
     els.liveLinks.append(link);
   }
+}
+
+function speciesCacheKey(species) {
+  return String(species || "").trim().toLowerCase();
+}
+
+function iucnStatusName(code) {
+  const normalized = String(code || "").trim().toUpperCase();
+  return {
+    EX: "Extinct",
+    EW: "Extinct in the wild",
+    CR: "Critically endangered",
+    EN: "Endangered",
+    VU: "Vulnerable",
+    NT: "Near threatened",
+    LC: "Least concern",
+    DD: "Data deficient",
+  }[normalized] || normalized;
+}
+
+function conservationRecordIsGlobal(record) {
+  return record && (record.place == null && record.place_id == null);
+}
+
+function conservationRecordIsIucn(record) {
+  return /iucn/i.test(String(record?.authority || "")) || Number(record?.iucn || 0) > 0;
+}
+
+function bestConservationRecord(...taxa) {
+  const records = [];
+  for (const taxon of taxa) {
+    if (!taxon) continue;
+    if (taxon.conservation_status) records.push(taxon.conservation_status);
+    if (Array.isArray(taxon.conservation_statuses)) records.push(...taxon.conservation_statuses);
+  }
+  return records.find((record) => conservationRecordIsGlobal(record) && conservationRecordIsIucn(record))
+    || records.find((record) => conservationRecordIsIucn(record))
+    || records.find((record) => conservationRecordIsGlobal(record))
+    || records[0]
+    || null;
+}
+
+function conservationStatusLabel(record) {
+  if (!record) return "Not assessed";
+  const code = String(record.status || "").trim().toUpperCase();
+  const rawName = record.status_name || record.description || iucnStatusName(code) || code;
+  const name = String(rawName || "").trim();
+  if (!name) return "Not assessed";
+  if (!code || name.toUpperCase().includes(`(${code})`) || name.toUpperCase() === code) return name;
+  return `${name} (${code})`;
+}
+
+function pickINaturalistTaxon(results, species) {
+  const key = speciesCacheKey(species);
+  return results.find((taxon) => speciesCacheKey(taxon.name) === key)
+    || results.find((taxon) => speciesCacheKey(taxon.matched_term) === key)
+    || results.find((taxon) => taxon.rank === "species")
+    || results[0]
+    || null;
+}
+
+async function lookupConservationStatus(species, { signal = null } = {}) {
+  const key = speciesCacheKey(species);
+  if (!key) return { status: "Not assessed", authority: "", url: "", taxonId: null };
+  if (state.conservationCache.has(key)) return state.conservationCache.get(key);
+  const params = new URLSearchParams({ q: species, per_page: "8" });
+  const fallback = { status: "Not assessed", authority: "iNaturalist", url: liveUrl("iucn", species), taxonId: null };
+  try {
+    const searchResponse = await fetch(`https://api.inaturalist.org/v1/taxa/autocomplete?${params.toString()}`, { signal });
+    if (!searchResponse.ok) return fallback;
+    const searchPayload = await searchResponse.json();
+    const taxon = pickINaturalistTaxon(searchPayload.results || [], species);
+    if (!taxon?.id) {
+      state.conservationCache.set(key, fallback);
+      return fallback;
+    }
+    let detailTaxon = taxon;
+    const detailResponse = await fetch(`https://api.inaturalist.org/v1/taxa/${taxon.id}`, { signal });
+    if (detailResponse.ok) {
+      const detailPayload = await detailResponse.json();
+      detailTaxon = detailPayload.results?.[0] || taxon;
+    }
+    const record = bestConservationRecord(detailTaxon, taxon);
+    const result = {
+      status: conservationStatusLabel(record),
+      authority: record?.authority || "iNaturalist",
+      url: record?.url || liveUrl("iucn", species),
+      taxonId: taxon.id,
+    };
+    state.conservationCache.set(key, result);
+    return result;
+  } catch (error) {
+    if (error?.name === "AbortError") throw error;
+    return fallback;
+  }
+}
+
+function updateSelectedDetail(label, value) {
+  const terms = Array.from(els.selectedDetails?.querySelectorAll("dt") || []);
+  const term = terms.find((node) => node.textContent === label);
+  const detail = term?.nextElementSibling;
+  if (detail) detail.textContent = value;
+}
+
+function applyConservationLookup(species, lookup) {
+  for (const shell of state.shells) {
+    if (shell.species !== species) continue;
+    shell.live_conservation_status = lookup.status;
+    shell.live_conservation_authority = lookup.authority || "";
+    shell.live_conservation_url = lookup.url || "";
+  }
+  state.pointColorCache.delete("conservation");
+  scheduleDraw();
+}
+
+function updateConservationForShell(shell) {
+  if (!shell?.species || shell.id < 0) return;
+  const key = speciesCacheKey(shell.species);
+  const cached = state.conservationCache.get(key);
+  if (cached) {
+    applyConservationLookup(shell.species, cached);
+    if (state.selected?.species === shell.species) updateSelectedDetail("IUCN", cached.status);
+    return;
+  }
+  window.clearTimeout(state.conservationTimer);
+  if (state.conservationAbort) state.conservationAbort.abort();
+  const token = ++state.conservationFetchToken;
+  if (conservationStatus(shell) === "Not assessed") updateSelectedDetail("IUCN", "Checking live status...");
+  state.conservationTimer = window.setTimeout(async () => {
+    const controller = new AbortController();
+    state.conservationAbort = controller;
+    try {
+      const lookup = await lookupConservationStatus(shell.species, { signal: controller.signal });
+      if (token !== state.conservationFetchToken) return;
+      applyConservationLookup(shell.species, lookup);
+      if (state.selected?.species === shell.species) updateSelectedDetail("IUCN", lookup.status);
+    } catch (error) {
+      if (error?.name !== "AbortError" && token === state.conservationFetchToken && state.selected?.species === shell.species) {
+        updateSelectedDetail("IUCN", conservationStatus(shell));
+      }
+    } finally {
+      if (state.conservationAbort === controller) state.conservationAbort = null;
+    }
+  }, 420);
 }
 
 function countryGeoPoint(code, regionKey = "", index = 0) {
@@ -2679,6 +2839,7 @@ function selectShell(shell, { renderNearest = true } = {}) {
     state.uploadImageUrl = "";
   }
   state.selected = shell;
+  state.scatterBrush = null;
   state.selectedContour = normalizedContour(shell);
   state.generatedContour = state.selectedContour;
   state.generatedTraits = shapeTraitsFromShell(shell);
@@ -2728,6 +2889,7 @@ function selectShell(shell, { renderNearest = true } = {}) {
   renderSourceShell(shell);
   renderTraitCompare();
   updateGeographyForShell(shell);
+  updateConservationForShell(shell);
   if (renderNearest) scheduleRenderNeighbors(shell);
   else els.neighborsList.innerHTML = "";
   updateGeneratorStatus();
@@ -2780,6 +2942,74 @@ function setTargetFromEvent(event, blend = false) {
   if (blend) generateLocalShellFromTarget();
   scheduleDraw();
   scheduleHashUpdate();
+}
+
+function updateGeographyForBrush(shells) {
+  if (!els.geoCanvas) return;
+  window.clearTimeout(state.geoTimer);
+  state.geoFetchToken += 1;
+  const unique = [];
+  const seen = new Set();
+  for (const shell of shells) {
+    if (!shell || seen.has(shell.species)) continue;
+    seen.add(shell.species);
+    unique.push(shell);
+    if (unique.length >= 90) break;
+  }
+  state.geoPoints = unique.flatMap((shell) => localGeoPointsForShell(shell));
+  drawGlobe();
+  if (els.geoStatus) {
+    els.geoStatus.textContent = unique.length
+      ? `${unique.length} brushed morphospace species shown on the globe.`
+      : "No locality facets inside this morphospace brush.";
+  }
+}
+
+function startScatterBrush(event) {
+  const rect = els.scatter.getBoundingClientRect();
+  state.scatterBrush = {
+    pointerId: event.pointerId,
+    startX: event.clientX - rect.left,
+    startY: event.clientY - rect.top,
+    currentX: event.clientX - rect.left,
+    currentY: event.clientY - rect.top,
+  };
+  state.draggingTarget = false;
+  els.pointTooltip.hidden = true;
+  scheduleDraw();
+}
+
+function updateScatterBrush(event) {
+  if (!state.scatterBrush || state.scatterBrush.pointerId !== event.pointerId) return;
+  const rect = els.scatter.getBoundingClientRect();
+  state.scatterBrush.currentX = event.clientX - rect.left;
+  state.scatterBrush.currentY = event.clientY - rect.top;
+  scheduleDraw();
+}
+
+function finishScatterBrush(event) {
+  if (!state.scatterBrush || state.scatterBrush.pointerId !== event.pointerId) return;
+  updateScatterBrush(event);
+  const brush = state.scatterBrush;
+  state.scatterBrush = null;
+  const left = Math.min(brush.startX, brush.currentX);
+  const right = Math.max(brush.startX, brush.currentX);
+  const top = Math.min(brush.startY, brush.currentY);
+  const bottom = Math.max(brush.startY, brush.currentY);
+  if (right - left < 8 || bottom - top < 8) {
+    scheduleDraw();
+    return;
+  }
+  const size = resizeCanvas(els.scatter, scatterCtx);
+  const pointCache = scatterScreenPoints(size);
+  const brushed = [];
+  for (let index = 0; index < pointCache.shells.length; index += 1) {
+    const x = pointCache.points[index * 2];
+    const y = pointCache.points[index * 2 + 1];
+    if (x >= left && x <= right && y >= top && y <= bottom) brushed.push(pointCache.shells[index]);
+  }
+  updateGeographyForBrush(brushed);
+  scheduleDraw();
 }
 
 function startViewportPan(event) {
@@ -3565,6 +3795,12 @@ function setupEvents() {
       startViewportPan(event);
       return;
     }
+    if (event.shiftKey) {
+      event.preventDefault();
+      els.scatter.setPointerCapture(event.pointerId);
+      startScatterBrush(event);
+      return;
+    }
     els.scatter.setPointerCapture(event.pointerId);
     const rect = els.scatter.getBoundingClientRect();
     const shell = nearestShell(event.clientX - rect.left, event.clientY - rect.top);
@@ -3581,6 +3817,11 @@ function setupEvents() {
       panViewportFromEvent(event);
       return;
     }
+    if (state.scatterBrush) {
+      event.preventDefault();
+      updateScatterBrush(event);
+      return;
+    }
     if (state.draggingTarget) {
       setTargetFromEvent(event, false);
       els.pointTooltip.hidden = true;
@@ -3591,6 +3832,12 @@ function setupEvents() {
 
   for (const eventName of ["pointerup", "pointerleave", "pointercancel"]) {
     els.scatter.addEventListener(eventName, (event) => {
+      if (state.scatterBrush && eventName === "pointerup") {
+        finishScatterBrush(event);
+      } else if (state.scatterBrush) {
+        state.scatterBrush = null;
+        scheduleDraw();
+      }
       if (state.draggingTarget && eventName === "pointerup") {
         setTargetFromEvent(event, true);
       }
@@ -3620,6 +3867,13 @@ window.shellspacePerf = {
   surpriseReadyCount: () => state.surpriseQueue.filter((entry) => entry.ready || entry.page == null || state.loadedThumbnailPages.has(entry.page)).length,
   scatterPointCount: () => state.scatterPointCache?.shells?.length || 0,
   filteredCount: () => state.filtered.length,
+  lookupConservationStatus,
+  conservationStatusForSelected: () => conservationStatus(state.selected),
+  selectSpecies: (species) => {
+    const shell = state.shells.find((item) => item.species === species);
+    if (shell) selectShell(shell);
+    return shell?.id ?? null;
+  },
 };
 
 async function init() {
