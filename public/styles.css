@@ -106,7 +106,7 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 7px;
+  gap: 2px;
   overflow-x: auto;
 }
 
@@ -156,9 +156,10 @@ button:hover {
 
 .starred-shell {
   position: relative;
-  width: 54px;
-  height: 46px;
-  min-width: 54px;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
   padding: 0;
   overflow: visible;
   border: 0;

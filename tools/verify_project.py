@@ -197,6 +197,11 @@ def verify_entrypoint() -> None:
     ]:
         if marker not in styles:
             raise AssertionError(f"Loading animation styles are missing {marker!r}")
+    if "gap: 2px;" not in styles or "flex: 0 0 44px;" not in styles:
+        raise AssertionError("Starred shelf spacing should stay tight and uniform")
+    app = Path("public/app.js").read_text(encoding="utf-8")
+    if "drawStarredThumbToCanvas" not in app:
+        raise AssertionError("Starred shelf should render contour-cropped thumbnails")
     if not Path("public/shell-generator.wasm").exists():
         raise AssertionError("Missing public/shell-generator.wasm")
 

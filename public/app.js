@@ -1478,6 +1478,118 @@ function drawContourFallbackThumb(ctx, shell, frame, frameWidth, frameHeight) {
   return true;
 }
 
+function contourPointBounds(points) {
+  if (!points?.length) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of points) {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  }
+  if (!Number.isFinite(minX) || maxX <= minX || maxY <= minY) return null;
+  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+}
+
+function paddedContourCrop(shell, contour, paddingRatio = 0.08) {
+  const bounds = contourPointBounds(contour);
+  if (!bounds) return null;
+  const pad = Math.max(2, Math.max(bounds.width, bounds.height) * paddingRatio);
+  const imageWidth = Math.max(shell.image_width || 0, bounds.maxX + pad);
+  const imageHeight = Math.max(shell.image_height || 0, bounds.maxY + pad);
+  const x = Math.max(0, bounds.minX - pad);
+  const y = Math.max(0, bounds.minY - pad);
+  const right = Math.min(imageWidth, bounds.maxX + pad);
+  const bottom = Math.min(imageHeight, bounds.maxY + pad);
+  return {
+    x,
+    y,
+    width: Math.max(1, right - x),
+    height: Math.max(1, bottom - y),
+  };
+}
+
+function fitCropFrame(crop, frameWidth, frameHeight, inset = 2) {
+  const availableWidth = Math.max(1, frameWidth - inset * 2);
+  const availableHeight = Math.max(1, frameHeight - inset * 2);
+  const scale = Math.min(availableWidth / crop.width, availableHeight / crop.height);
+  const width = crop.width * scale;
+  const height = crop.height * scale;
+  return {
+    x: (frameWidth - width) / 2,
+    y: (frameHeight - height) / 2,
+    width,
+    height,
+    scale,
+  };
+}
+
+function croppedContourPath(ctx, contour, crop, frame) {
+  if (!contour?.length || !crop || !frame) return false;
+  ctx.beginPath();
+  for (let index = 0; index < contour.length; index += 1) {
+    const x = frame.x + (contour[index][0] - crop.x) * frame.scale;
+    const y = frame.y + (contour[index][1] - crop.y) * frame.scale;
+    if (index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  return true;
+}
+
+function drawCroppedContourFallback(ctx, shell, contour, crop, frame, frameWidth, frameHeight) {
+  if (!croppedContourPath(ctx, contour, crop, frame)) return false;
+  ctx.fillStyle = shellRgb(shell, 0.92);
+  ctx.fill();
+  const hsl = rgbToHsl(shell.color_r_mean ?? 0.68, shell.color_g_mean ?? 0.64, shell.color_b_mean ?? 0.56);
+  ctx.strokeStyle = hslCss(hsl.h, Math.max(0.2, hsl.s * 0.84), Math.max(0.14, hsl.l - 0.24));
+  ctx.lineWidth = Math.max(1.4, Math.min(frameWidth, frameHeight) * 0.035);
+  ctx.stroke();
+  return true;
+}
+
+async function drawStarredThumbToCanvas(canvas, shell) {
+  const ctx = canvas.getContext("2d");
+  canvas.width = 96;
+  canvas.height = 96;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const contour = contourForShell(shell);
+  const crop = paddedContourCrop(shell, contour);
+  if (!contour || !crop) {
+    await drawShellThumbToCanvas(canvas, shell);
+    return;
+  }
+  const frame = fitCropFrame(crop, canvas.width, canvas.height, 3);
+  drawCroppedContourFallback(ctx, shell, contour, crop, frame, canvas.width, canvas.height);
+  const source = thumbnailSourceRect(shell);
+  if (source) {
+    const image = await loadThumbnailPage(source.page);
+    const scaleX = source.width / Math.max(1, shell.image_width || crop.width);
+    const scaleY = source.height / Math.max(1, shell.image_height || crop.height);
+    if (image && croppedContourPath(ctx, contour, crop, frame)) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      croppedContourPath(ctx, contour, crop, frame);
+      ctx.save();
+      ctx.clip();
+      ctx.drawImage(
+        image,
+        source.x + crop.x * scaleX,
+        source.y + crop.y * scaleY,
+        crop.width * scaleX,
+        crop.height * scaleY,
+        frame.x,
+        frame.y,
+        frame.width,
+        frame.height,
+      );
+      ctx.restore();
+    }
+  }
+}
+
 async function drawThumbnailImage(ctx, shell, frameWidth, frameHeight, { onlyIfReady = false } = {}) {
   const source = thumbnailSourceRect(shell);
   if (!source) return false;
@@ -1896,7 +2008,7 @@ function renderStarred() {
     button.title = `${shell.species} ${shell.fingerprint_hash}`;
     const canvas = document.createElement("canvas");
     button.append(canvas);
-    drawShellThumbToCanvas(canvas, shell);
+    drawStarredThumbToCanvas(canvas, shell);
     button.addEventListener("click", () => {
       centerViewportOnShell(shell);
       selectShell(shell);
