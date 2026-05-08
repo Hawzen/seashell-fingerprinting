@@ -328,7 +328,12 @@ def verify_static(public_data: Path, image_count: int) -> None:
         assert_equal(checksum.get("sha256"), sha256_file(path), f"{name} checksum sha256")
 
 
-def run_browser_check(url: str) -> None:
+def run_browser_check(
+    url: str,
+    perf_clicks: int = 0,
+    perf_max_median_ms: float = 250,
+    perf_max_p90_ms: float = 600,
+) -> None:
     npm = shutil.which("npm")
     node = shutil.which("node")
     if npm is None or node is None:
@@ -375,32 +380,82 @@ def run_browser_check(url: str) -> None:
                 documentWidth: document.documentElement.scrollWidth,
                 innerWidth,
               }}));
-              if (
-                restored.selected === 'None' ||
-                restored.color !== 'shell' ||
-                !/^[0-9A-Z]{{6}}$/.test(restored.hash) ||
+	              if (
+	                restored.selected === 'None' ||
+	                restored.color !== 'shell' ||
+	                !/^[0-9A-Z]{{6}}$/.test(restored.hash) ||
                 restored.projectedHash !== restored.hash ||
                 restored.palette < 5 ||
                 restored.description.length < 20 ||
                 !restored.details.includes('Rarity') ||
-                !restored.details.includes('GBIF shell records') ||
+                !restored.details.includes('No true population estimate') ||
+                !restored.details.includes('Recorded share') ||
+                restored.details.includes('GBIF') ||
+                restored.description.includes('GBIF') ||
+                restored.description.includes('is a shell species represented') ||
                 restored.details.includes('dataset rarity') ||
                 !restored.loadingHidden ||
                 restored.bodyWidth > restored.innerWidth ||
                 restored.documentWidth > restored.innerWidth
-              ) {{
-                throw new Error(`initial UI failed: ${{JSON.stringify(restored)}}`);
-              }}
+	              ) {{
+	                throw new Error(`initial UI failed: ${{JSON.stringify(restored)}}`);
+	              }}
 
-              await page.click('#starShell');
+	              const perfClickCount = {perf_clicks};
+	              if (perfClickCount > 0) {{
+	                await page.waitForFunction(
+	                  () => (window.shellspacePerf?.loadedThumbnailPageCount?.() || 0) > 0,
+	                  null,
+	                  {{ timeout: 120000 }}
+	                );
+	                const samples = [];
+	                for (let index = 0; index < perfClickCount; index += 1) {{
+	                  const before = await page.evaluate(() => ({{
+	                    hash: document.querySelector('#physicalHash')?.textContent || '',
+	                    selected: document.querySelector('#selectedName')?.textContent || '',
+	                  }}));
+	                  const started = await page.evaluate(() => performance.now());
+	                  await page.click('#randomShell', {{ timeout: 10000, noWaitAfter: true }});
+	                  await page.waitForFunction(
+	                    (previous) => {{
+	                      const hash = document.querySelector('#physicalHash')?.textContent || '';
+	                      const selected = document.querySelector('#selectedName')?.textContent || '';
+	                      const spinner = document.querySelector('#sourceSpinner');
+	                      return spinner?.hidden === true && (hash !== previous.hash || selected !== previous.selected);
+	                    }},
+	                    before,
+	                    {{ timeout: 120000 }}
+	                  );
+	                  samples.push(await page.evaluate((start) => performance.now() - start, started));
+	                }}
+	                const sorted = [...samples].sort((a, b) => a - b);
+	                const perf = {{
+	                  samples: samples.map((value) => Math.round(value)),
+	                  median: sorted[Math.floor(sorted.length / 2)],
+	                  p90: sorted[Math.floor(sorted.length * 0.9)],
+	                  loadedPages: await page.evaluate(() => window.shellspacePerf?.loadedThumbnailPageCount?.() ?? -1),
+	                }};
+	                console.log(`surprise perf ${{JSON.stringify({{
+	                  samples: perf.samples,
+	                  median: Math.round(perf.median),
+	                  p90: Math.round(perf.p90),
+	                  loadedPages: perf.loadedPages,
+	                }})}}`);
+	                if (perf.median > {perf_max_median_ms} || perf.p90 > {perf_max_p90_ms}) {{
+	                  throw new Error(`surprise perf failed: ${{JSON.stringify(perf)}}`);
+	                }}
+	              }}
+
+	              await page.click('#starShell');
               await page.waitForTimeout(250);
               const starred = await page.evaluate(() => ({{
                 count: document.querySelectorAll('#starredBand .starred-shell').length,
                 imageOnly: document.querySelectorAll('#starredBand .starred-shell canvas').length,
                 text: document.querySelector('#starredBand').textContent.trim(),
-                button: document.querySelector('#starShell').textContent,
+                active: document.querySelector('#starShell').getAttribute('aria-pressed'),
+                icon: Boolean(document.querySelector('#starShell .star-icon')),
               }}));
-              if (starred.count < 1 || starred.imageOnly < 1 || starred.text || starred.button !== '★') {{
+              if (starred.count < 1 || starred.imageOnly < 1 || starred.text || starred.active !== 'true' || !starred.icon) {{
                 throw new Error(`star failed: ${{JSON.stringify(starred)}}`);
               }}
 
@@ -494,6 +549,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--processed", type=Path, default=Path("processed"))
     parser.add_argument("--public-data", type=Path, default=Path("public/data"))
     parser.add_argument("--browser", action="store_true")
+    parser.add_argument("--perf", action="store_true", help="run the Surprise me browser latency gate")
+    parser.add_argument("--perf-clicks", type=int, default=12)
+    parser.add_argument("--perf-max-median-ms", type=float, default=250)
+    parser.add_argument("--perf-max-p90-ms", type=float, default=600)
     return parser.parse_args()
 
 
@@ -508,15 +567,21 @@ def main() -> None:
 
     server, url = serve_repo(Path.cwd())
     try:
-        if args.browser:
+        if args.browser or args.perf:
             print("checking browser UI...", flush=True)
-            run_browser_check(url)
+            run_browser_check(
+                url,
+                perf_clicks=args.perf_clicks if args.perf else 0,
+                perf_max_median_ms=args.perf_max_median_ms,
+                perf_max_p90_ms=args.perf_max_p90_ms,
+            )
     finally:
         server.shutdown()
 
     print("OK")
     print(f"dataset images: {image_count}")
     print(f"browser checked: {args.browser}")
+    print(f"perf checked: {args.perf}")
 
 
 if __name__ == "__main__":

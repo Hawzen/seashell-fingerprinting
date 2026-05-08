@@ -13,6 +13,7 @@
         <p id="statusLine">Loading shell model</p>
       </div>
       <div id="starredBand" class="starred-band" aria-label="Starred shells"></div>
+      <div id="starBurst" class="star-burst" aria-hidden="true"></div>
       <div class="top-actions">
         <button id="zoomOut" title="Zoom out">-</button>
         <button id="zoomIn" title="Zoom in">+</button>
@@ -61,7 +62,11 @@
         <section class="panel-section physical-shell">
           <div class="section-title">
             <h2>Physical Shell <span id="physicalHash" class="fingerprint-chip compact">------</span></h2>
-            <button id="starShell" class="star-button" title="Star this shape" aria-pressed="false">☆</button>
+            <button id="starShell" class="star-button" title="Star this shape" aria-label="Star this shape" aria-pressed="false">
+              <svg class="star-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path class="star-shape" d="M12 2.8l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.6l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9L12 2.8z" />
+              </svg>
+            </button>
           </div>
           <div class="source-frame">
             <div id="sourceSpinner" class="source-spinner" hidden></div>

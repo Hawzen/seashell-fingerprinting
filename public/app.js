@@ -32,6 +32,7 @@ const state = {
   speciesCounts: new Map(),
   localityMatchRate: 0,
   drawFrame: 0,
+  drawTimer: 0,
   sourceFrame: null,
   scatterHitCache: null,
   tooltipFrame: 0,
@@ -46,11 +47,22 @@ const state = {
   suppressHash: false,
   hashTimer: 0,
   needsDraw: true,
+  sourceToken: 0,
+  scatterPointCache: null,
+  shellById: new Map(),
+  shellsByThumbnailPage: new Map(),
+  loadedThumbnailPages: new Set(),
+  warmingThumbnails: false,
+  neighborCache: new Map(),
+  neighborTimer: 0,
+  neighborToken: 0,
+  paletteCache: new Map(),
 };
 
 const els = {
   statusLine: document.querySelector("#statusLine"),
   starredBand: document.querySelector("#starredBand"),
+  starBurst: document.querySelector("#starBurst"),
   search: document.querySelector("#searchBox"),
   randomShell: document.querySelector("#randomShell"),
   xAxisSelect: document.querySelector("#xAxisSelect"),
@@ -140,6 +152,15 @@ function applyFingerprintStyle(node, hash) {
   node.textContent = hash;
 }
 
+function applyShellFingerprintStyle(node, shell, hash = shell?.fingerprint_hash) {
+  if (!node || !hash) return;
+  const color = rgbToHsl(shell?.color_r_mean ?? 0.68, shell?.color_g_mean ?? 0.62, shell?.color_b_mean ?? 0.52);
+  node.style.setProperty("--hash-hue", String(Math.round(color.h)));
+  node.style.setProperty("--hash-saturation", `${Math.round(Math.max(0.28, color.s) * 100)}%`);
+  node.style.setProperty("--hash-lightness", `${Math.round(Math.max(0.3, Math.min(0.72, color.l)) * 100)}%`);
+  node.textContent = hash;
+}
+
 function rgbToHsl(red, green, blue) {
   const r = clamp01(red);
   const g = clamp01(green);
@@ -226,7 +247,7 @@ function buildDerivedShellData(shells, localityPayload = null) {
     shell.global_share_percent = shell.global_occurrences && totalOccurrenceProxy
       ? (shell.global_occurrences / totalOccurrenceProxy) * 100
       : null;
-    shell.rarity_source = shell.global_occurrences ? "GBIF occurrence share proxy" : "Unavailable";
+    shell.rarity_source = shell.global_occurrences ? "Occurrence record share" : "Unavailable";
     shell.location_label = locality?.location_label || "Locality unavailable";
     shell.location_key = locality?.primary_country || locality?.region_key || "unknown";
     shell.location_color = shell.location_key === "unknown"
@@ -367,8 +388,11 @@ function resizeCanvas(canvas, ctx) {
     canvas.width = width;
     canvas.height = height;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    state.needsDraw = true;
-    if (canvas === els.scatter) state.scatterHitCache = null;
+    if (canvas === els.scatter) {
+      state.needsDraw = true;
+      state.scatterHitCache = null;
+      state.scatterPointCache = null;
+    }
   }
   return { width: rect.width, height: rect.height };
 }
@@ -478,9 +502,16 @@ function pointColor(shell) {
   return shell.species_color || speciesColor(shell.species);
 }
 
-function scheduleDraw() {
+function scheduleDraw(delay = 0) {
   state.needsDraw = true;
   state.scatterHitCache = null;
+  if (delay > 0) {
+    window.clearTimeout(state.drawTimer);
+    state.drawTimer = window.setTimeout(() => scheduleDraw(), delay);
+    return;
+  }
+  window.clearTimeout(state.drawTimer);
+  state.drawTimer = 0;
   if (state.drawFrame) return;
   state.drawFrame = requestAnimationFrame(() => {
     state.drawFrame = 0;
@@ -510,12 +541,13 @@ function drawScatter() {
     scatterCtx.stroke();
   }
 
-  const hitCache = scatterHitPoints(size);
-  const stride = hitCache.shells.length > 30000 ? 2 : 1;
-  for (let index = 0; index < hitCache.shells.length; index += stride) {
-    const shell = hitCache.shells[index];
-    const pointX = hitCache.points[index * 2];
-    const pointY = hitCache.points[index * 2 + 1];
+  const pointCache = scatterScreenPoints(size);
+  const maxScatterPoints = 6500;
+  const stride = Math.max(1, Math.ceil(pointCache.shells.length / maxScatterPoints));
+  for (let index = 0; index < pointCache.shells.length; index += stride) {
+    const shell = pointCache.shells[index];
+    const pointX = pointCache.points[index * 2];
+    const pointY = pointCache.points[index * 2 + 1];
     if (pointX < -3 || pointX > size.width + 3 || pointY < -3 || pointY > size.height + 3) {
       continue;
     }
@@ -567,24 +599,41 @@ function scatterHitKey(size) {
   ].join("|");
 }
 
-function scatterHitPoints(size) {
+function scatterScreenPoints(size) {
   const key = scatterHitKey(size);
-  if (state.scatterHitCache?.key === key && state.scatterHitCache.shells === state.filtered) {
-    return state.scatterHitCache;
+  if (state.scatterPointCache?.key === key && state.scatterPointCache.shells === state.filtered) {
+    return state.scatterPointCache;
   }
   const shells = state.filtered;
   const points = new Float32Array(shells.length * 2);
-  const cellSize = 24;
-  const grid = new Map();
   for (let index = 0; index < shells.length; index += 1) {
     const point = worldToScreen(axisValue(shells[index], state.xAxis), axisValue(shells[index], state.yAxis), size);
     points[index * 2] = point.x;
     points[index * 2 + 1] = point.y;
-    if (point.x < -cellSize || point.x > size.width + cellSize || point.y < -cellSize || point.y > size.height + cellSize) {
+  }
+  state.scatterPointCache = { key, shells, points };
+  state.scatterHitCache = null;
+  return state.scatterPointCache;
+}
+
+function scatterHitPoints(size) {
+  const pointCache = scatterScreenPoints(size);
+  const key = pointCache.key;
+  if (state.scatterHitCache?.key === key && state.scatterHitCache.shells === state.filtered) {
+    return state.scatterHitCache;
+  }
+  const shells = pointCache.shells;
+  const points = pointCache.points;
+  const cellSize = 24;
+  const grid = new Map();
+  for (let index = 0; index < shells.length; index += 1) {
+    const pointX = points[index * 2];
+    const pointY = points[index * 2 + 1];
+    if (pointX < -cellSize || pointX > size.width + cellSize || pointY < -cellSize || pointY > size.height + cellSize) {
       continue;
     }
-    const cellX = Math.floor(point.x / cellSize);
-    const cellY = Math.floor(point.y / cellSize);
+    const cellX = Math.floor(pointX / cellSize);
+    const cellY = Math.floor(pointY / cellSize);
     const cellKey = `${cellX},${cellY}`;
     let bucket = grid.get(cellKey);
     if (!bucket) {
@@ -605,15 +654,16 @@ function updateFilter() {
       )
     : state.shells;
   state.scatterHitCache = null;
-  renderNeighbors(state.selected);
-  renderPalette();
-  scheduleDraw();
+  state.scatterPointCache = null;
+  scheduleRenderNeighbors(state.selected);
+  renderPalette(false);
+  scheduleDraw(120);
 }
 
 function shellById(id) {
   const numeric = Number(id);
   if (!Number.isFinite(numeric)) return null;
-  return state.shells.find((shell) => shell.id === numeric) || null;
+  return state.shellById.get(numeric) || null;
 }
 
 function centerViewportOnShell(shell) {
@@ -632,12 +682,13 @@ function centerViewportOnShell(shell) {
 
 function selectRandomShell() {
   if (!state.filtered.length) return;
-  let index = Math.floor(Math.random() * state.filtered.length);
-  if (state.selected && state.filtered.length > 1 && state.filtered[index].id === state.selected.id) {
-    index = (index + 1) % state.filtered.length;
+  const pool = randomReadyShellPool(state.filtered);
+  let index = Math.floor(Math.random() * pool.length);
+  if (state.selected && pool.length > 1 && pool[index].id === state.selected.id) {
+    index = (index + 1) % pool.length;
   }
-  centerViewportOnShell(state.filtered[index]);
-  selectShell(state.filtered[index]);
+  centerViewportOnShell(pool[index]);
+  selectShell(pool[index]);
 }
 
 function zoom(factor, center = null) {
@@ -678,7 +729,7 @@ function setAxes(xAxis, yAxis) {
   els.yAxisSelect.value = String(yAxis);
   state.viewport = initialViewport(xAxis, yAxis);
   renderPcaInterpretation();
-  scheduleDraw();
+  scheduleDraw(120);
   scheduleHashUpdate();
 }
 
@@ -852,12 +903,56 @@ function shellSurfacePhrase(shell) {
   return "a smooth, low-contrast surface";
 }
 
+function shellRolePhrase(shell) {
+  const genus = String(shell.species || "").split(" ")[0].toLowerCase();
+  if (genus === "conus") return "cone shell";
+  if (["cypraea", "cypraeaovula", "ovula", "volva", "trivia"].includes(genus)) return "cowrie-like shell";
+  if (["dentalium", "antalis", "fustiaria", "calliodentalium"].includes(genus)) return "tusk shell";
+  if (["haliotis", "padollus"].includes(genus)) return "abalone";
+  if (["pecten", "chlamys", "mimachlamys", "aequipecten"].includes(genus)) return "scallop";
+  if (["strombus", "lambis", "euprotomus"].includes(genus)) return "conch";
+  if (["murex", "chicoreus", "hexaplex"].includes(genus)) return "murex";
+  if (["terebra", "hastula", "cinguloterebra"].includes(genus)) return "auger shell";
+  if (genus === "nautilus") return "chambered spiral";
+  if (genus === "patella") return "limpet";
+  return "shell";
+}
+
+function shellVisualHook(shell) {
+  if ((shell.aspect_ratio || 1) > 3.1) return "the knife-thin outline";
+  if ((shell.aspect_ratio || 1) > 2.05) return "the tower-like silhouette";
+  if ((shell.color_pattern_strength || 0) > 0.48) return "the busy pattern";
+  if ((shell.texture_gradient_mean || 0) > 0.82) return "the raised texture";
+  if ((shell.color_chroma_mean || 0) > 0.22) return "the saturated color";
+  if ((shell.contour_concavity || 0) > 0.18) return "the notched edge";
+  return "the clean outline";
+}
+
+function shellPlacePhrase(shell) {
+  if (shell.top_countries_label) return `Seen most often around ${shell.top_countries_label}.`;
+  if (shell.region_label) return `Most sightings land in ${shell.region_label}.`;
+  return "Its usual home is not pinned down in the available data.";
+}
+
+function templateChoice(shell, count) {
+  return hashString(`${shell.species}|${shell.fingerprint_hash || shell.file}`) % count;
+}
+
 function shellDescription(shell) {
   if (!shell) return "";
-  const place = shell.top_countries_label
-    ? `GBIF records concentrated in ${shell.top_countries_label}`
-    : "no reliable GBIF locality signal";
-  return `${shell.species} is a shell species represented here by a ${shellSilhouettePhrase(shell)} ${shellColorName(shell)} shell with ${shellSurfacePhrase(shell)}, ${place}.`;
+  const role = shellRolePhrase(shell);
+  const silhouette = shellSilhouettePhrase(shell);
+  const color = shellColorName(shell);
+  const surface = shellSurfacePhrase(shell);
+  const hook = shellVisualHook(shell);
+  const place = shellPlacePhrase(shell);
+  const templates = [
+    `${shell.species} is all about ${hook}: a ${silhouette} ${color} ${role} with ${surface}. ${place}`,
+    `${shell.species} reads as a ${silhouette} ${role}, ${color} in tone and marked by ${surface}. ${place}`,
+    `${shell.species} keeps the eye on ${hook}, pairing a ${color} palette with ${surface}. ${place}`,
+    `${shell.species} has a ${silhouette} ${role} profile, dressed in ${color} and ${surface}. ${place}`,
+  ];
+  return templates[templateChoice(shell, templates.length)];
 }
 
 function effectiveGeneratedTraits() {
@@ -920,13 +1015,17 @@ function generatedFingerprintHash() {
 
 function updateHashChips() {
   if (state.selected?.fingerprint_hash && els.physicalHash) {
-    applyFingerprintStyle(els.physicalHash, state.selected.fingerprint_hash);
+    applyShellFingerprintStyle(els.physicalHash, state.selected);
   }
   if (els.projectedHash) {
     const hash = state.generatedMode === "selected" && state.selected?.fingerprint_hash
       ? state.selected.fingerprint_hash
       : generatedFingerprintHash();
-    applyFingerprintStyle(els.projectedHash, hash);
+    if (state.generatedMode === "selected" && state.selected?.fingerprint_hash) {
+      applyShellFingerprintStyle(els.projectedHash, state.selected, hash);
+    } else {
+      applyFingerprintStyle(els.projectedHash, hash);
+    }
   }
 }
 
@@ -1062,13 +1161,20 @@ function fitImageFrame(imageWidth, imageHeight, frameWidth, frameHeight) {
   };
 }
 
+function thumbnailPageForShell(shell) {
+  const atlas = state.model?.thumbnail_atlas;
+  if (!atlas || !shell || shell.id < 0) return null;
+  const perAtlas = atlas.per_atlas || 2048;
+  return Math.floor(shell.id / perAtlas);
+}
+
 function thumbnailSourceRect(shell) {
   const atlas = state.model?.thumbnail_atlas;
-  if (!atlas || shell.id < 0) return null;
+  const page = thumbnailPageForShell(shell);
+  if (!atlas || page == null) return null;
   const tile = atlas.size || 56;
   const columns = atlas.columns || 64;
   const perAtlas = atlas.per_atlas || 2048;
-  const page = Math.floor(shell.id / perAtlas);
   const local = shell.id % perAtlas;
   const tileX = (local % columns) * tile;
   const tileY = Math.floor(local / columns) * tile;
@@ -1091,7 +1197,10 @@ function loadThumbnailPage(page) {
   const promise = new Promise((resolve) => {
     const image = new Image();
     image.decoding = "async";
-    image.onload = () => resolve(image);
+    image.onload = () => {
+      state.loadedThumbnailPages.add(page);
+      resolve(image);
+    };
     image.onerror = () => resolve(null);
     image.src = asset(`data/${atlas.dir}/${atlas.files[page]}`);
   });
@@ -1099,11 +1208,85 @@ function loadThumbnailPage(page) {
   return promise;
 }
 
-async function drawThumbnailImage(ctx, shell, frameWidth, frameHeight) {
-  const source = thumbnailSourceRect(shell);
-  if (!source) return false;
-  const image = await loadThumbnailPage(source.page);
-  if (!image) return false;
+function buildThumbnailPageIndex(shells) {
+  const byPage = new Map();
+  for (const shell of shells) {
+    const page = thumbnailPageForShell(shell);
+    if (page == null) continue;
+    let pageShells = byPage.get(page);
+    if (!pageShells) {
+      pageShells = [];
+      byPage.set(page, pageShells);
+    }
+    pageShells.push(shell);
+  }
+  return byPage;
+}
+
+function randomReadyShellPool(source) {
+  if (!source.length || !state.model?.thumbnail_atlas) return source;
+  const selectedPage = thumbnailPageForShell(state.selected);
+  const readyPages = state.loadedThumbnailPages.size
+    ? state.loadedThumbnailPages
+    : new Set([selectedPage ?? 0]);
+  let pool = [];
+  if (source === state.shells) {
+    for (const page of readyPages) {
+      const pageShells = state.shellsByThumbnailPage.get(page);
+      if (pageShells) pool = pool.concat(pageShells);
+    }
+  } else {
+    pool = source.filter((shell) => readyPages.has(thumbnailPageForShell(shell)));
+  }
+  return pool.length > 1 ? pool : source;
+}
+
+function scheduleIdleWork(callback, timeout = 1200) {
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(callback, { timeout });
+    return;
+  }
+  window.setTimeout(callback, Math.min(timeout, 160));
+}
+
+function thumbnailWarmOrder() {
+  const files = state.model?.thumbnail_atlas?.files || [];
+  const selectedPage = thumbnailPageForShell(state.selected);
+  return Array.from({ length: files.length }, (_value, index) => index)
+    .sort((left, right) => {
+      const leftDistance = selectedPage == null ? left : Math.abs(left - selectedPage);
+      const rightDistance = selectedPage == null ? right : Math.abs(right - selectedPage);
+      return leftDistance - rightDistance;
+    });
+}
+
+function warmThumbnailPages({ eager = false } = {}) {
+  if (state.warmingThumbnails || !state.model?.thumbnail_atlas?.files?.length) return;
+  state.warmingThumbnails = true;
+  const order = thumbnailWarmOrder();
+  let cursor = 0;
+  let active = 0;
+  const concurrency = eager ? 4 : 2;
+  const pump = () => {
+    while (active < concurrency && cursor < order.length) {
+      const page = order[cursor];
+      cursor += 1;
+      if (state.loadedThumbnailPages.has(page)) continue;
+      active += 1;
+      loadThumbnailPage(page).finally(() => {
+        active -= 1;
+        scheduleIdleWork(pump, eager ? 200 : 1200);
+      });
+    }
+    if (cursor >= order.length && active === 0) {
+      state.warmingThumbnails = false;
+    }
+  };
+  scheduleIdleWork(pump, eager ? 100 : 1600);
+}
+
+function drawLoadedThumbnailImage(ctx, shell, source, image, frameWidth, frameHeight) {
+  if (!source || !image) return false;
   const frame = fitImageFrame(shell.image_width, shell.image_height, frameWidth, frameHeight);
   ctx.drawImage(
     image,
@@ -1119,14 +1302,35 @@ async function drawThumbnailImage(ctx, shell, frameWidth, frameHeight) {
   return frame;
 }
 
-async function drawShellThumbToCanvas(canvas, shell) {
+async function drawThumbnailImage(ctx, shell, frameWidth, frameHeight, { onlyIfReady = false } = {}) {
+  const source = thumbnailSourceRect(shell);
+  if (!source) return false;
+  if (onlyIfReady && !state.loadedThumbnailPages.has(source.page)) return false;
+  const image = await loadThumbnailPage(source.page);
+  if (!image) return false;
+  return drawLoadedThumbnailImage(ctx, shell, source, image, frameWidth, frameHeight);
+}
+
+async function drawShellThumbToCanvas(canvas, shell, { loadImage = true } = {}) {
   const ctx = canvas.getContext("2d");
   canvas.width = 96;
   canvas.height = 96;
-  ctx.fillStyle = "#050505";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  if (await drawThumbnailImage(ctx, shell, canvas.width, canvas.height)) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   const contour = normalizedContour(shell);
+  if (contour) {
+    const scale = (Math.min(canvas.width, canvas.height) * 0.39) / maxContourRadius([contour]);
+    ctx.save();
+    contourPath(ctx, contour, canvas.width / 2, canvas.height / 2, scale);
+    ctx.clip();
+    const drewImage = await drawThumbnailImage(ctx, shell, canvas.width, canvas.height, { onlyIfReady: !loadImage });
+    if (!drewImage) {
+      ctx.fillStyle = shellRgb(shell, 0.82);
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    ctx.restore();
+    return;
+  }
+  if (await drawThumbnailImage(ctx, shell, canvas.width, canvas.height, { onlyIfReady: !loadImage })) return;
   if (!contour) return;
   const scale = (Math.min(canvas.width, canvas.height) * 0.38) / maxContourRadius([contour]);
   contourPath(ctx, contour, canvas.width / 2, canvas.height / 2, scale);
@@ -1155,13 +1359,14 @@ function setSourceImageUrl(url, shell, alt = "") {
   };
   els.sourceImage.onload = () => {
     if (els.sourceSpinner) els.sourceSpinner.hidden = true;
-    renderPalette();
+    renderPalette(true);
   };
   els.sourceImage.src = url;
 }
 
 async function renderSourceShell(shell) {
   if (!shell) return;
+  const token = ++state.sourceToken;
   if (els.sourceSpinner) els.sourceSpinner.hidden = false;
   if (state.uploadImageUrl && shell.id < 0) {
     setSourceImageUrl(state.uploadImageUrl, shell, shell.species);
@@ -1172,12 +1377,14 @@ async function renderSourceShell(shell) {
   sourceThumbCtx.fillRect(0, 0, size.width, size.height);
   els.sourceImage.hidden = true;
   els.sourceThumb.hidden = false;
-  const frame = await drawThumbnailImage(sourceThumbCtx, shell, size.width, size.height);
-  if (state.selected !== shell) return;
+  const source = thumbnailSourceRect(shell);
+  const image = source ? await loadThumbnailPage(source.page) : null;
+  if (token !== state.sourceToken || state.selected !== shell) return;
+  const frame = drawLoadedThumbnailImage(sourceThumbCtx, shell, source, image, size.width, size.height);
   if (frame) {
     state.sourceFrame = frame;
     if (els.sourceSpinner) els.sourceSpinner.hidden = true;
-    renderPalette();
+    renderPalette(true);
     return;
   }
   setSourceImageUrl(datasetAsset(shell.file), shell, shell.species);
@@ -1348,35 +1555,63 @@ function generateLocalShellFromTarget() {
   renderPalette();
 }
 
-function contourPcDistance(shell, candidate) {
+function contourPcDistanceSq(shell, candidate) {
   let distance = 0;
   const count = Math.min(4, shell.contour_pc?.length || 0, candidate.contour_pc?.length || 0);
   for (let index = 0; index < count; index += 1) {
     distance += ((shell.contour_pc[index] || 0) - (candidate.contour_pc[index] || 0)) ** 2;
   }
-  return Math.sqrt(distance);
+  return distance;
 }
 
-function renderNeighbors(shell) {
-  els.neighborsList.innerHTML = "";
-  if (!shell) return;
+function nearestContourNeighbors(shell) {
+  if (!shell) return [];
+  if (state.neighborCache.has(shell.id)) return state.neighborCache.get(shell.id);
   const best = [];
+  let worstIndex = -1;
+  let worstDistance = -1;
   for (const candidate of state.shells) {
     if (candidate.id === shell.id) continue;
-    best.push({ distance: contourPcDistance(shell, candidate), shell: candidate });
-    if (best.length > 8) {
-      best.sort((a, b) => a.distance - b.distance);
-      best.pop();
+    const distance = contourPcDistanceSq(shell, candidate);
+    if (best.length < 8) {
+      best.push({ distance, shell: candidate });
+      if (distance > worstDistance) {
+        worstDistance = distance;
+        worstIndex = best.length - 1;
+      }
+      continue;
+    }
+    if (distance >= worstDistance) continue;
+    best[worstIndex] = { distance, shell: candidate };
+    worstDistance = -1;
+    for (let index = 0; index < best.length; index += 1) {
+      if (best[index].distance > worstDistance) {
+        worstDistance = best[index].distance;
+        worstIndex = index;
+      }
     }
   }
   best.sort((a, b) => a.distance - b.distance);
+  const neighbors = best.map((item) => ({
+    distance: Math.sqrt(item.distance),
+    shell: item.shell,
+  }));
+  state.neighborCache.set(shell.id, neighbors);
+  return neighbors;
+}
+
+function renderNeighbors(shell, token = state.neighborToken) {
+  els.neighborsList.innerHTML = "";
+  if (!shell || token !== state.neighborToken) return;
+  const best = nearestContourNeighbors(shell);
+  if (token !== state.neighborToken) return;
   for (const item of best) {
     const button = document.createElement("button");
     button.className = "neighbor-button";
     button.title = `${item.shell.species} (${formatNumber(item.distance, 3)})`;
     const image = document.createElement("canvas");
     image.setAttribute("aria-label", item.shell.species);
-    drawShellThumbToCanvas(image, item.shell);
+    drawShellThumbToCanvas(image, item.shell, { loadImage: false });
     const label = document.createElement("span");
     label.textContent = formatNumber(item.distance, 2);
     button.append(image, label);
@@ -1386,6 +1621,19 @@ function renderNeighbors(shell) {
     });
     els.neighborsList.append(button);
   }
+}
+
+function scheduleRenderNeighbors(shell) {
+  state.neighborToken += 1;
+  const token = state.neighborToken;
+  window.clearTimeout(state.neighborTimer);
+  if (!shell) {
+    els.neighborsList.innerHTML = "";
+    return;
+  }
+  state.neighborTimer = window.setTimeout(() => {
+    renderNeighbors(shell, token);
+  }, 90);
 }
 
 function loadStarred() {
@@ -1409,7 +1657,8 @@ function updateStarButton() {
   if (!els.starShell) return;
   const active = isStarred(state.selected);
   els.starShell.setAttribute("aria-pressed", active ? "true" : "false");
-  els.starShell.textContent = active ? "★" : "☆";
+  els.starShell.title = active ? "Unstar this shape" : "Star this shape";
+  els.starShell.setAttribute("aria-label", active ? "Unstar this shape" : "Star this shape");
 }
 
 function toggleStarredShell() {
@@ -1422,11 +1671,38 @@ function toggleStarredShell() {
     els.starShell.classList.remove("star-pop");
     void els.starShell.offsetWidth;
     els.starShell.classList.add("star-pop");
+    triggerStarBurst();
     window.setTimeout(() => els.starShell.classList.remove("star-pop"), 850);
   }
   saveStarred();
   updateStarButton();
   renderStarred();
+}
+
+function triggerStarBurst() {
+  if (!els.starBurst || !els.starShell) return;
+  const starRect = els.starShell.getBoundingClientRect();
+  const targetRect = els.starredBand?.getBoundingClientRect();
+  const startX = starRect.left + starRect.width / 2;
+  const startY = starRect.top + starRect.height / 2;
+  const endX = targetRect ? targetRect.left + Math.min(70, targetRect.width * 0.4) : startX;
+  const endY = targetRect ? targetRect.top + targetRect.height / 2 : startY - 60;
+  els.starBurst.style.setProperty("--burst-start-x", `${startX}px`);
+  els.starBurst.style.setProperty("--burst-start-y", `${startY}px`);
+  els.starBurst.style.setProperty("--burst-end-x", `${endX}px`);
+  els.starBurst.style.setProperty("--burst-end-y", `${endY}px`);
+  els.starBurst.innerHTML = "";
+  for (let index = 0; index < 9; index += 1) {
+    const spark = document.createElement("span");
+    spark.style.setProperty("--spark-angle", `${index * 40 - 20}deg`);
+    spark.style.setProperty("--spark-distance", `${24 + (index % 3) * 10}px`);
+    spark.style.setProperty("--spark-delay", `${index * 18}ms`);
+    els.starBurst.append(spark);
+  }
+  els.starBurst.classList.remove("is-active");
+  void els.starBurst.offsetWidth;
+  els.starBurst.classList.add("is-active");
+  window.setTimeout(() => els.starBurst.classList.remove("is-active"), 900);
 }
 
 function renderStarred() {
@@ -1441,7 +1717,7 @@ function renderStarred() {
     button.title = `${shell.species} ${shell.fingerprint_hash}`;
     const canvas = document.createElement("canvas");
     button.append(canvas);
-    drawShellThumbToCanvas(canvas, shell);
+    drawShellThumbToCanvas(canvas, shell, { loadImage: false });
     button.addEventListener("click", () => {
       centerViewportOnShell(shell);
       selectShell(shell);
@@ -1484,15 +1760,19 @@ function selectShell(shell) {
   updateStarButton();
   els.selectedDetails.innerHTML = "";
   const rarityText = shell.global_share_percent == null
-    ? "Unavailable GBIF share"
-    : `${formatPercent(shell.global_share_percent, 6)}% of GBIF shell records`;
+    ? "No true population estimate"
+    : "No true population estimate";
+  const recordedShareText = shell.global_share_percent == null
+    ? "Unavailable"
+    : `${formatPercent(shell.global_share_percent, 6)}% of occurrence records`;
   const occurrenceText = shell.global_occurrences
-    ? `${shell.global_occurrences.toLocaleString()} GBIF records`
-    : "No GBIF proxy records";
+    ? `${shell.global_occurrences.toLocaleString()} occurrence records`
+    : "No occurrence records";
   const details = [
     ["Fingerprint", shell.fingerprint_hash || "-"],
     ["Rarity", rarityText],
-    ["Global records", occurrenceText],
+    ["Recorded share", recordedShareText],
+    ["Occurrence records", occurrenceText],
     ["Samples", `${(shell.species_sample_count || 1).toLocaleString()} images/species`],
     ["Area", `${shell.area?.toLocaleString() || "-"} px²`],
     ["Mean radius", `${formatNumber(shell.mean_radius, 1)} px`],
@@ -1515,12 +1795,11 @@ function selectShell(shell) {
   }
   state.sourceFrame = null;
   renderSourceShell(shell);
-  renderNeighbors(shell);
+  scheduleRenderNeighbors(shell);
   updateGeneratorStatus();
   drawOutline();
-  renderPalette();
-  renderStarred();
-  scheduleDraw();
+  renderPalette(false);
+  scheduleDraw(120);
   scheduleHashUpdate();
 }
 
@@ -1749,11 +2028,17 @@ function paletteFromTraits(traits) {
   ];
 }
 
-function renderPalette() {
+function renderPalette(preferCanvas = false) {
   if (!els.paletteSwatches) return;
   els.paletteSwatches.innerHTML = "";
   const traits = effectiveGeneratedTraits();
-  const palette = paletteFromSourceCanvas() || paletteFromTraits(traits);
+  const cacheKey = state.generatedMode === "selected" && state.selected ? state.selected.id : null;
+  let palette = cacheKey == null ? null : state.paletteCache.get(cacheKey);
+  if (!palette && preferCanvas) {
+    palette = paletteFromSourceCanvas();
+    if (palette && cacheKey != null) state.paletteCache.set(cacheKey, palette);
+  }
+  if (!palette) palette = paletteFromTraits(traits);
   for (const color of palette) {
     const swatch = document.createElement("span");
     swatch.className = "palette-swatch";
@@ -2356,6 +2641,12 @@ function setupEvents() {
   });
 }
 
+window.shellspacePerf = {
+  loadedThumbnailPageCount: () => state.loadedThumbnailPages.size,
+  warmThumbnails: () => warmThumbnailPages({ eager: true }),
+  neighborCacheSize: () => state.neighborCache.size,
+};
+
 async function init() {
   setupEvents();
   setLoading("Opening shell model");
@@ -2373,6 +2664,8 @@ async function init() {
 
   state.model = model;
   state.shells = unpackShells(shellPayload);
+  state.shellById = new Map(state.shells.map((shell) => [shell.id, shell]));
+  state.shellsByThumbnailPage = buildThumbnailPageIndex(state.shells);
   buildDerivedShellData(state.shells, localityPayload);
   state.filtered = state.shells;
   state.contours = contourBuffer ? new Uint16Array(contourBuffer) : null;
