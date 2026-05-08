@@ -138,7 +138,10 @@ def verify_entrypoint() -> None:
         "xAxisSelect",
         "yAxisSelect",
         "colorModeSelect",
-        "traitFilters",
+        "filtersToggle",
+        "filtersPanel",
+        "closeFilters",
+        "filterControls",
         "resetTraitFilters",
         "starredBand",
         "physicalHash",
@@ -150,20 +153,6 @@ def verify_entrypoint() -> None:
         "shellDescription",
         "outlineCanvas",
         "pcControls",
-        "compareSearch",
-        "speciesList",
-        "compareNearest",
-        "compareRandom",
-        "hybridShell",
-        "emptyShell",
-        "playShell",
-        "traitCompare",
-        "walkStatus",
-        "geoCanvas",
-        "geoYear",
-        "geoYearLabel",
-        "geoStatus",
-        "liveLinks",
         "uploadShell",
         "uploadInput",
         "paletteSwatches",
@@ -175,9 +164,11 @@ def verify_entrypoint() -> None:
     missing = sorted(required_ids - parser.ids)
     if missing:
         raise AssertionError(f"index.html is missing required element ids: {missing}")
-    expected_color_modes = ["locality", "species", "conservation", "shell", "pattern", "lightness", "chroma", "roughness", "concavity"]
+    expected_color_modes = ["locality", "species", "conservation", "shell", "pattern", "lightness", "concavity"]
     if parser.options.get("colorModeSelect") != expected_color_modes:
         raise AssertionError(f"Unexpected color modes: {parser.options.get('colorModeSelect')}")
+    if 'placeholder="Species or Shellprint"' not in text:
+        raise AssertionError("Search placeholder should say Species or Shellprint")
     legacy_title = "Seashell " + "PCA Explorer"
     retired = [
         "Variant Lab",
@@ -197,6 +188,24 @@ def verify_entrypoint() -> None:
         "overlayCenter",
         "sourceOverlay",
         "colorMixCanvas",
+        "traitFilters",
+        "traitCompare",
+        "compareSearch",
+        "compareNearest",
+        "compareRandom",
+        "hybridShell",
+        "emptyShell",
+        "playShell",
+        "geoCanvas",
+        "geoYear",
+        "liveLinks",
+        "Spire height",
+        "Aperture ratio",
+        "Shoulder angle",
+        "Rib density",
+        "Whorl expansion",
+        "Damage score",
+        "Chroma",
     ]
     for marker in retired:
         if marker in text:
@@ -222,30 +231,19 @@ def verify_entrypoint() -> None:
             raise AssertionError("Starred shelf should render contour-cropped thumbnails")
     if "paddedContourCrop(shell, contour, 0.035)" not in app:
         raise AssertionError("Starred shelf should render contour-cropped thumbnails")
-    for marker in [
-        "traitFilters",
-        "traitCompare",
-        "geoCanvas",
-        "geoYear",
-        "compareSearch",
-        "hybridShell",
-        "emptyShell",
-        "playShell",
-    ]:
+    for marker in ["filtersToggle", "filtersPanel", "filterControls", "resetTraitFilters"]:
         if marker not in text:
             raise AssertionError(f"New feature UI is missing {marker!r}")
     for marker in [
         "deriveMorphTraits",
-        "generateHybridShell",
-        "sampleEmptyMorphospace",
-        "updateGeographyForShell",
-        "updateGeographyForBrush",
-        "startScatterBrush",
-        "playShellMotif",
+        "rangeFilterDefs",
+        "shellColorBucket",
+        "originFilterOptions",
         "conservationStatus",
         "lookupConservationStatus",
         "api.inaturalist.org/v1/taxa/autocomplete",
-        "api.gbif.org/v1/occurrence/search",
+        "dotSize = Math.max(3",
+        "loadImage = false",
     ]:
         if marker not in app:
             raise AssertionError(f"New feature implementation is missing {marker!r}")
@@ -475,10 +473,11 @@ def run_browser_check(
                 palette: document.querySelectorAll('#paletteSwatches > *').length,
                 description: document.querySelector('#shellDescription').textContent,
                 details: document.querySelector('#selectedDetails').textContent,
-                traitFilters: document.querySelectorAll('#traitFilters .trait-filter-row').length,
-                traitBars: document.querySelectorAll('#traitCompare .trait-bar-row').length,
-                liveLinks: document.querySelectorAll('#liveLinks a').length,
-                geoWidth: document.querySelector('#geoCanvas').width,
+                filterRows: document.querySelectorAll('#filterControls .filter-row').length,
+                filterPanelHidden: document.querySelector('#filtersPanel').hidden,
+                placeholder: document.querySelector('#searchBox').getAttribute('placeholder'),
+                traitLabGone: !document.querySelector('#traitCompare') && !document.querySelector('#playShell') && !document.querySelector('#hybridShell'),
+                geographyGone: !document.querySelector('#geoCanvas') && !document.querySelector('#geoYear'),
 		                loadingHidden: document.querySelector('#loadingOverlay').hidden,
 	                scatterPoints: window.shellspacePerf?.scatterPointCount?.() || 0,
 	                filteredCount: window.shellspacePerf?.filteredCount?.() || 0,
@@ -493,19 +492,25 @@ def run_browser_check(
                 restored.projectedHash !== restored.hash ||
                 restored.palette < 5 ||
                 restored.description.length < 20 ||
-                restored.traitFilters < 7 ||
-                restored.traitBars < 7 ||
-                restored.liveLinks < 3 ||
-                restored.geoWidth < 260 ||
+                restored.filterRows < 7 ||
+                !restored.filterPanelHidden ||
+                restored.placeholder !== 'Species or Shellprint' ||
+                !restored.traitLabGone ||
+                !restored.geographyGone ||
                 !restored.details.includes('Rarity') ||
-                !restored.details.includes('IUCN') ||
                 !/(Common|Uncommon|Rare|Extremely rare|Data deficient)/.test(restored.details) ||
                 restored.details.includes('No true population estimate') ||
                 restored.details.includes('Recorded share') ||
                 restored.details.includes('Occurrence records') ||
                 restored.details.includes('GBIF') ||
+                restored.details.includes('px') ||
+                restored.details.includes('Spire height') ||
+                restored.details.includes('Aperture ratio') ||
+                restored.details.includes('Damage score') ||
+                restored.details.includes('Chroma') ||
                 restored.description.includes('GBIF') ||
 	                restored.description.includes('is a shell species represented') ||
+	                restored.description.includes('reads as a') ||
 	                restored.details.includes('dataset rarity') ||
 	                !restored.loadingHidden ||
 	                restored.scatterPoints !== restored.filteredCount ||
@@ -525,103 +530,44 @@ def run_browser_check(
                   selectedStatus: window.shellspacePerf.conservationStatusForSelected?.() || '',
                 }};
               }});
-              await page.waitForFunction(
-                () => /Critically endangered/i.test(document.querySelector('#selectedDetails')?.textContent || ''),
-                null,
-                {{ timeout: 120000 }}
-              );
               if (liveConservation.id == null || !/Critically endangered/i.test(liveConservation.status)) {{
                 throw new Error(`live conservation lookup failed: ${{JSON.stringify(liveConservation)}}`);
               }}
 
-              const labProbe = await page.evaluate(async () => {{
+              await page.evaluate(() => document.querySelector('#filtersToggle').click());
+              const filterProbe = await page.evaluate(() => {{
                 const baseFiltered = window.shellspacePerf.filteredCount();
-                const firstTraitMin = document.querySelector('#traitFilters input[type="range"]');
+                const labels = Array.from(document.querySelectorAll('#filterControls .filter-row header span')).map((node) => node.textContent);
+                const firstTraitMin = document.querySelector('#filterControls input[type="range"]');
                 firstTraitMin.value = '60';
                 firstTraitMin.dispatchEvent(new Event('input', {{ bubbles: true }}));
                 const traitFiltered = window.shellspacePerf.filteredCount();
                 document.querySelector('#resetTraitFilters').click();
                 const resetFiltered = window.shellspacePerf.filteredCount();
-                const beforeHash = document.querySelector('#projectedHash').textContent;
-                document.querySelector('#compareRandom').click();
-                document.querySelector('#hybridShell').click();
-                const hybridHash = document.querySelector('#projectedHash').textContent;
-                const hybridStatus = document.querySelector('#walkStatus').textContent;
-                document.querySelector('#emptyShell').click();
-                const emptyHash = document.querySelector('#projectedHash').textContent;
-                const emptyStatus = document.querySelector('#walkStatus').textContent;
-                document.querySelector('#compareRandom').click();
-                document.querySelector('#walkPca').click();
-                return await new Promise((resolve) => {{
-                  window.setTimeout(() => {{
-                    const walkPressed = document.querySelector('#walkPca').getAttribute('aria-pressed');
-                    const walkStatus = document.querySelector('#walkStatus').textContent;
-                    document.querySelector('#walkPca').click();
-                    resolve({{
-                      baseFiltered,
-                      traitFiltered,
-                      resetFiltered,
-                      beforeHash,
-                      hybridHash,
-                      hybridStatus,
-                      emptyHash,
-                      emptyStatus,
-                      walkPressed,
-                      walkStatus,
-                    }});
-                  }}, 650);
-                }});
-              }});
-              if (
-                labProbe.traitFiltered >= labProbe.baseFiltered ||
-                labProbe.resetFiltered !== labProbe.baseFiltered ||
-                labProbe.hybridHash === labProbe.beforeHash ||
-                !/Hybrid:/i.test(labProbe.hybridStatus) ||
-                labProbe.emptyHash === labProbe.hybridHash ||
-                !/Sparse-zone/i.test(labProbe.emptyStatus) ||
-                labProbe.walkPressed !== 'true' ||
-                !/Walking/i.test(labProbe.walkStatus)
-              ) {{
-                throw new Error(`morphology lab failed: ${{JSON.stringify(labProbe)}}`);
-              }}
-
-              await page.evaluate(() => {{
-                const year = document.querySelector('#geoYear');
-                year.value = '2020';
-                year.dispatchEvent(new Event('input', {{ bubbles: true }}));
-              }});
-              await page.waitForTimeout(900);
-              const geoProbe = await page.evaluate(() => {{
-                const canvas = document.querySelector('#geoCanvas');
-                const context = canvas.getContext('2d');
-                const image = context.getImageData(0, 0, canvas.width, canvas.height).data;
-                let coloredPixels = 0;
-                for (let index = 0; index < image.length; index += 4) {{
-                  if (image[index + 3] && (image[index] !== 0 || image[index + 1] !== 0 || image[index + 2] !== 0)) coloredPixels += 1;
-                }}
                 return {{
-                  status: document.querySelector('#geoStatus').textContent,
-                  label: document.querySelector('#geoYearLabel').textContent,
-                  coloredPixels,
+                  open: !document.querySelector('#filtersPanel').hidden,
+                  rows: document.querySelectorAll('#filterControls .filter-row').length,
+                  labels,
+                  baseFiltered,
+                  traitFiltered,
+                  resetFiltered,
+                  buttonText: document.querySelector('#filtersToggle').textContent,
                 }};
               }});
-              if (geoProbe.label !== '2020' || geoProbe.coloredPixels < 1000 || !/(live GBIF|Local country|Using local|No geography)/i.test(geoProbe.status)) {{
-                throw new Error(`geography probe failed: ${{JSON.stringify(geoProbe)}}`);
+              if (
+                !filterProbe.open ||
+                filterProbe.rows < 7 ||
+                filterProbe.labels.join('|') !== 'Origin|Rarity|Color|Lightness|Area|Concavity|Asymmetry' ||
+                filterProbe.traitFiltered >= filterProbe.baseFiltered ||
+                filterProbe.resetFiltered !== filterProbe.baseFiltered ||
+                filterProbe.buttonText !== 'Filters'
+              ) {{
+                throw new Error(`filter popup failed: ${{JSON.stringify(filterProbe)}}`);
               }}
-
-              const brushBox = await page.locator('#scatterCanvas').boundingBox();
-              if (!brushBox) throw new Error('scatter canvas has no brush box');
-              await page.keyboard.down('Shift');
-              await page.mouse.move(brushBox.x + brushBox.width * 0.35, brushBox.y + brushBox.height * 0.35);
-              await page.mouse.down();
-              await page.mouse.move(brushBox.x + brushBox.width * 0.66, brushBox.y + brushBox.height * 0.66, {{ steps: 6 }});
-              await page.mouse.up();
-              await page.keyboard.up('Shift');
-              await page.waitForFunction(
-                () => /brushed morphospace/i.test(document.querySelector('#geoStatus')?.textContent || ''),
-                null,
-                {{ timeout: 120000 }}
-              );
+              await page.evaluate(() => document.querySelector('#closeFilters').click());
+              if (!(await page.evaluate(() => document.querySelector('#filtersPanel').hidden))) {{
+                throw new Error('filter popup did not close');
+              }}
 
 	              const perfClickCount = {perf_clicks};
 	              if (perfClickCount > 0) {{
@@ -671,8 +617,10 @@ def run_browser_check(
 	                }}
 	              }}
 
+	              const starStarted = await page.evaluate(() => performance.now());
 	              await page.evaluate(() => document.querySelector('#starShell').click());
-              await page.waitForTimeout(250);
+              await page.waitForFunction(() => document.querySelectorAll('#starredBand .starred-shell').length >= 1, null, {{ timeout: 120000 }});
+              const starElapsed = await page.evaluate((started) => performance.now() - started, starStarted);
               const starred = await page.evaluate(() => ({{
                 count: document.querySelectorAll('#starredBand .starred-shell').length,
                 imageOnly: document.querySelectorAll('#starredBand .starred-shell canvas').length,
@@ -680,8 +628,8 @@ def run_browser_check(
                 active: document.querySelector('#starShell').getAttribute('aria-pressed'),
                 icon: Boolean(document.querySelector('#starShell .star-icon')),
               }}));
-              if (starred.count < 1 || starred.imageOnly < 1 || starred.text || starred.active !== 'true' || !starred.icon) {{
-                throw new Error(`star failed: ${{JSON.stringify(starred)}}`);
+              if (starred.count < 1 || starred.imageOnly < 1 || starred.text || starred.active !== 'true' || !starred.icon || starElapsed > 250) {{
+                throw new Error(`star failed: ${{JSON.stringify({{...starred, starElapsed: Math.round(starElapsed)}})}}`);
               }}
 
               for (let index = 0; index < 6; index += 1) {{
