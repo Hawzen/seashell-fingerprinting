@@ -26,6 +26,10 @@ MIN_CONTOUR_POINTS = 192
 CONTOUR_SMOOTH_FIXTURES = {
     "Terebra_crenulata_4_A.jpg": 0.38,
     "Pollia_subcostata_2_A.jpg": 0.38,
+    "Cathaica_fasciola_1_A.jpg": 0.38,
+    "Faunus_ater_2_B.jpg": 0.38,
+    "Laeocathaica_prionotropis_12_A.jpg": 0.38,
+    "Lamprotula_caveata_21_A.jpg": 0.38,
 }
 
 
@@ -369,8 +373,12 @@ def verify_static(public_data: Path, image_count: int) -> None:
     for retired in ["pc", "radial_area_ratio", "radial_mismatch"]:
         if retired in sample:
             raise AssertionError(f"Retired static shell field is still exported: {retired}")
-    legacy_hashes = [record.get("legacy_hash", "") for record in records]
-    for shellprint in ["437JZ7", "2423VZ"]:
+    legacy_hashes = {
+        value
+        for record in records
+        for value in str(record.get("legacy_hash", "")).replace(",", " ").split()
+    }
+    for shellprint in ["437JZ7", "2423VZ", "U189ZB", "N49EXH", "OHXOKZ", "NAHIXO"]:
         if shellprint not in legacy_hashes:
             raise AssertionError(f"Legacy shellprint search alias is missing: {shellprint}")
     locality_path = public_data / model["locality_file"]

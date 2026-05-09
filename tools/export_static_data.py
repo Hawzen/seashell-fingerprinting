@@ -418,7 +418,14 @@ def legacy_hashes_from_payload(payload: dict[str, object] | None) -> dict[str, s
         file_name = str(record.get("file", ""))
         if not file_name or not record.get("contour_pc"):
             continue
-        hashes[file_name] = str(record.get("legacy_hash") or fingerprint_hash(record))
+        aliases: list[str] = []
+        for value in str(record.get("legacy_hash") or "").replace(",", " ").split():
+            if value and value not in aliases:
+                aliases.append(value)
+        current_hash = fingerprint_hash(record)
+        if current_hash and current_hash not in aliases:
+            aliases.append(current_hash)
+        hashes[file_name] = " ".join(aliases)
     return hashes
 
 
@@ -893,7 +900,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path("public/data"))
     parser.add_argument("--record-components", type=int, default=6)
     parser.add_argument("--contour-points", type=int, default=256)
-    parser.add_argument("--contour-scale", type=int, default=8)
+    parser.add_argument("--contour-scale", type=int, default=12)
     parser.add_argument("--contour-workers", type=int, default=0)
     parser.add_argument("--no-contours", action="store_true")
     parser.add_argument("--thumbnail-size", type=int, default=160)

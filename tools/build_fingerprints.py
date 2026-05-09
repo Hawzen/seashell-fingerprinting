@@ -19,10 +19,10 @@ cv2.setNumThreads(1)
 cv2.ocl.setUseOpenCL(False)
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
-CONTOUR_SMOOTH_WINDOW = 11
+CONTOUR_SMOOTH_WINDOW = 23
 CONTOUR_SMOOTH_PASSES = 2
-CONTOUR_SMOOTH_BLEND = 0.75
-CONTOUR_SMOOTH_OUTSET_PX = 0.35
+CONTOUR_SMOOTH_BLEND = 0.8
+CONTOUR_SMOOTH_OUTSET_PX = 0.55
 
 
 def iter_image_paths(dataset_dir: Path) -> list[Path]:
