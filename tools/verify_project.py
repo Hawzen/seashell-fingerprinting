@@ -566,6 +566,9 @@ def run_browser_check(
                 const colorInput = document.querySelector('#filterControls input[type="color"]');
                 const panelRect = document.querySelector('#filtersPanel').getBoundingClientRect();
                 const controlsRect = document.querySelector('.controls-panel').getBoundingClientRect();
+                const panelCenterX = panelRect.left + panelRect.width / 2;
+                const panelHeaderY = panelRect.top + 20;
+                const hitPanel = document.elementFromPoint(panelCenterX, panelHeaderY)?.closest('#filtersPanel');
                 firstTraitHigh.click();
                 const traitFiltered = window.shellspacePerf.filteredCount();
                 document.querySelector('#resetTraitFilters').click();
@@ -577,6 +580,7 @@ def run_browser_check(
                   hasLevelButtons: document.querySelectorAll('#filterControls .filter-levels button').length >= 12,
                   hasColorPicker: Boolean(colorInput),
                   opensRight: panelRect.left >= controlsRect.right - 1,
+                  clickable: hitPanel?.id === 'filtersPanel',
                   baseFiltered,
                   traitFiltered,
                   resetFiltered,
@@ -590,6 +594,7 @@ def run_browser_check(
                 !filterProbe.hasLevelButtons ||
                 !filterProbe.hasColorPicker ||
                 !filterProbe.opensRight ||
+                !filterProbe.clickable ||
                 filterProbe.traitFiltered >= filterProbe.baseFiltered ||
                 filterProbe.resetFiltered !== filterProbe.baseFiltered ||
                 filterProbe.buttonText !== 'Filters'

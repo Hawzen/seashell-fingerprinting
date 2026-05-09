@@ -356,13 +356,14 @@ button:hover {
 }
 
 .filters-popover {
-  position: absolute;
-  left: calc(100% + 38px);
+  position: fixed;
+  left: var(--filters-left, 340px);
   right: auto;
-  top: 0;
-  z-index: 12;
-  width: min(380px, calc(100vw - 380px));
-  min-width: 320px;
+  top: var(--filters-top, 96px);
+  z-index: 25;
+  width: var(--filters-width, min(380px, calc(100vw - 24px)));
+  max-height: calc(100vh - 24px);
+  overflow: auto;
   display: grid;
   gap: 12px;
   padding: 14px;
@@ -1331,11 +1332,10 @@ code {
   }
 
   .filters-popover {
-    left: 0;
-    right: 0;
-    top: 76px;
-    width: auto;
-    min-width: 0;
+    left: var(--filters-left, 12px);
+    right: auto;
+    top: var(--filters-top, 96px);
+    width: var(--filters-width, calc(100vw - 24px));
   }
 }
 

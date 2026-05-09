@@ -1072,10 +1072,33 @@ function resetTraitFilters() {
   updateFilter();
 }
 
+function positionFiltersPanel() {
+  if (!els.filtersPanel || !els.filtersToggle || els.filtersPanel.hidden) return;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1024;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 768;
+  const toggleRect = els.filtersToggle.getBoundingClientRect();
+  const controlsRect = document.querySelector(".controls-panel")?.getBoundingClientRect();
+  const desktopRoom = controlsRect ? viewportWidth - controlsRect.right - 24 : 0;
+  const desktop = viewportWidth > 1080 && desktopRoom >= 320;
+  const width = desktop ? Math.min(380, desktopRoom) : Math.min(380, Math.max(260, viewportWidth - 24));
+  const preferredLeft = desktop ? (controlsRect.right + 12) : toggleRect.left;
+  const left = Math.max(12, Math.min(preferredLeft, viewportWidth - width - 12));
+  const measuredHeight = els.filtersPanel.offsetHeight || 420;
+  const preferredTop = desktop ? toggleRect.top : toggleRect.bottom + 8;
+  const top = Math.max(12, Math.min(preferredTop, viewportHeight - Math.min(measuredHeight, viewportHeight - 24) - 12));
+  els.filtersPanel.style.setProperty("--filters-left", `${Math.round(left)}px`);
+  els.filtersPanel.style.setProperty("--filters-top", `${Math.round(top)}px`);
+  els.filtersPanel.style.setProperty("--filters-width", `${Math.round(width)}px`);
+}
+
 function setFiltersPanelOpen(open) {
   if (!els.filtersPanel || !els.filtersToggle) return;
   els.filtersPanel.hidden = !open;
   els.filtersToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    positionFiltersPanel();
+    window.requestAnimationFrame(positionFiltersPanel);
+  }
 }
 
 function shellById(id) {
@@ -3526,7 +3549,9 @@ function setupEvents() {
     renderSourceShell(state.selected);
     renderPalette();
     renderStarred();
+    positionFiltersPanel();
   });
+  window.addEventListener("scroll", positionFiltersPanel, true);
 }
 
 window.shellspacePerf = {
