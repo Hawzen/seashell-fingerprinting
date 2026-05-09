@@ -893,7 +893,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path("public/data"))
     parser.add_argument("--record-components", type=int, default=6)
     parser.add_argument("--contour-points", type=int, default=256)
-    parser.add_argument("--contour-scale", type=int, default=16)
+    parser.add_argument("--contour-scale", type=int, default=8)
     parser.add_argument("--contour-workers", type=int, default=0)
     parser.add_argument("--no-contours", action="store_true")
     parser.add_argument("--thumbnail-size", type=int, default=160)

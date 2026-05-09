@@ -1,15 +1,15 @@
 {
   "model.json": {
-    "bytes": 71715,
-    "sha256": "4ab6806765111d1504bea4f8bd342a51d8ffaa648472862a7cb4634f56af6ff3"
+    "bytes": 71714,
+    "sha256": "aa121219adaea378f01910ec4499beb34629528139195d60bcbdf6b24034b865"
   },
   "shells.compact.json.gz": {
     "bytes": 8878995,
     "sha256": "b14716eafad37c3eb5e5fca262e827096a058713169542cdb0dd0e177bd7f16b"
   },
   "contours.u16.gz": {
-    "bytes": 52627220,
-    "sha256": "b5012a810bf56825c7678fa45e36638c87ea6867993213a556eee1f42419783a"
+    "bytes": 49207292,
+    "sha256": "e7e4244f645ce3c229df24f2cba4f997359ae6fcaf70742e5c1f0e1914595005"
   },
   "thumbs/thumb_000.webp": {
     "bytes": 1617074,
@@ -129,10 +129,10 @@
   },
   "localities.compact.json.gz": {
     "bytes": 131157,
-    "sha256": "252bfd3f6e9c20e37c88cbc6696a3f2bb3b398af0382d9a3bb4a3df4f4ff90d2"
+    "sha256": "ff8317a5b842e2d380895575c65dd14ec21e1b1383dc76936daa8293b19fc0d1"
   },
   "species_traits.compact.json.gz": {
-    "bytes": 227734,
-    "sha256": "e90c24f2a3f1949f2821d33bdbcb8b8e1c574391c79dc881fb65ad0f7e5bb243"
+    "bytes": 227735,
+    "sha256": "1c3a04dbfdab9db613586a55b5dfce65e826fb7ea3c61cd1f1b19849f4978b6e"
   }
 }

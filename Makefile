@@ -3,6 +3,7 @@ PORT ?= 8010
 MAX_SIZE ?= 400
 SMOOTH_WINDOW ?= 5
 CONTOUR_POINTS ?= 256
+CONTOUR_SCALE ?= 8
 WORKERS ?= 8
 THUMBNAIL_SIZE ?= 160
 THUMBNAIL_QUALITY ?= 64
@@ -13,7 +14,7 @@ fingerprints:
 	$(PYTHON) tools/build_fingerprints.py --dataset dataset --output processed --max-size $(MAX_SIZE) --smooth-window $(SMOOTH_WINDOW) --center centroid --contour-points $(CONTOUR_POINTS)
 
 export-data:
-	$(PYTHON) tools/export_static_data.py --dataset dataset --processed processed --output public/data --contour-points $(CONTOUR_POINTS) --contour-workers $(WORKERS) --thumbnail-size $(THUMBNAIL_SIZE) --thumbnail-quality $(THUMBNAIL_QUALITY)
+	$(PYTHON) tools/export_static_data.py --dataset dataset --processed processed --output public/data --contour-points $(CONTOUR_POINTS) --contour-scale $(CONTOUR_SCALE) --contour-workers $(WORKERS) --thumbnail-size $(THUMBNAIL_SIZE) --thumbnail-quality $(THUMBNAIL_QUALITY)
 
 localities:
 	$(PYTHON) tools/build_localities.py --offline
