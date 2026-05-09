@@ -410,6 +410,13 @@ button:hover {
   font-size: 12px;
 }
 
+.filter-row header span,
+dt {
+  font-family: Fraunces, Georgia, "Times New Roman", serif;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
 .filter-row output {
   color: var(--ink);
   font-variant-numeric: tabular-nums;
@@ -438,57 +445,167 @@ button:hover {
 
 .origin-map-filter {
   display: grid;
-  grid-template-columns: minmax(220px, 1.25fr) minmax(180px, 1fr);
-  gap: 10px;
+  grid-template-columns: minmax(250px, 1.05fr) minmax(210px, 0.95fr);
+  gap: 12px;
   align-items: stretch;
 }
 
-.origin-map {
-  width: 100%;
-  min-height: 170px;
+.origin-region-map {
+  position: relative;
+  min-height: 220px;
   border: 1px solid rgba(31, 38, 40, 0.12);
   border-radius: 8px;
   background:
-    radial-gradient(circle at 50% 52%, rgba(31, 117, 111, 0.12), transparent 52%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(237, 243, 239, 0.82)),
+    radial-gradient(circle at 28% 32%, rgba(43, 95, 116, 0.12), transparent 32%),
+    radial-gradient(circle at 72% 58%, rgba(31, 117, 111, 0.12), transparent 36%),
     #eef3ef;
+  overflow: hidden;
 }
 
-.origin-map path {
-  fill: rgba(255, 255, 255, 0.78);
-  stroke: rgba(31, 38, 40, 0.36);
-  stroke-width: 2;
-  cursor: pointer;
-  transition: fill 140ms ease, transform 140ms ease, filter 140ms ease;
+.origin-region-map::before {
+  content: "";
+  position: absolute;
+  inset: 14px 18px;
+  border: 1px solid rgba(31, 38, 40, 0.08);
+  border-radius: 48% 52% 50% 46%;
+  pointer-events: none;
 }
 
-.origin-map path:hover,
-.origin-map path:focus-visible {
-  fill: rgba(31, 117, 111, 0.16);
+.origin-region-button {
+  position: absolute;
+  min-width: 0;
+  min-height: 46px;
+  padding: 8px 10px;
+  display: grid;
+  justify-items: start;
+  align-content: center;
+  gap: 2px;
+  border-color: rgba(31, 38, 40, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.88);
+  box-shadow: 0 8px 22px rgba(31, 38, 40, 0.07);
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.origin-region-button strong,
+.color-swatch-label {
+  font-family: Fraunces, Georgia, "Times New Roman", serif;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.origin-region-button span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.origin-region-button:hover,
+.origin-region-button:focus-visible {
+  border-color: rgba(31, 117, 111, 0.72);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 24px rgba(31, 117, 111, 0.15);
+  transform: translateY(-1px);
   outline: 0;
-  filter: drop-shadow(0 2px 4px rgba(31, 38, 40, 0.16));
 }
 
-.origin-map path.is-active {
-  fill: rgba(31, 117, 111, 0.32);
-  stroke: var(--teal);
+.origin-region-button[aria-pressed="true"] {
+  border-color: var(--teal);
+  background: rgba(31, 117, 111, 0.13);
+  color: #174e4b;
+}
+
+.origin-region-button[data-region="NORTH_AMERICA"] {
+  left: 7%;
+  top: 17%;
+  width: 34%;
+}
+
+.origin-region-button[data-region="LATIN_AMERICA"] {
+  left: 21%;
+  top: 49%;
+  width: 31%;
+}
+
+.origin-region-button[data-region="EUROPE"] {
+  left: 44%;
+  top: 13%;
+  width: 26%;
+}
+
+.origin-region-button[data-region="AFRICA"] {
+  left: 43%;
+  top: 39%;
+  width: 28%;
+}
+
+.origin-region-button[data-region="ASIA"] {
+  left: 65%;
+  top: 21%;
+  width: 30%;
+}
+
+.origin-region-button[data-region="OCEANIA"] {
+  left: 67%;
+  top: 62%;
+  width: 27%;
+}
+
+.origin-region-button[data-region="ANTARCTICA"] {
+  left: 9%;
+  right: 9%;
+  bottom: 9px;
+  width: auto;
+  min-height: 34px;
+}
+
+.origin-country-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  min-height: 220px;
+}
+
+.origin-country-search {
+  min-height: 34px;
 }
 
 .origin-country-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px;
-  max-height: 136px;
+  align-content: start;
+  gap: 6px;
+  max-height: 174px;
   overflow: auto;
 }
 
 .origin-country-grid button,
 .origin-clear {
   min-width: 0;
-  min-height: 30px;
-  padding: 5px 7px;
+  min-height: 34px;
+  padding: 6px 8px;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.origin-country-grid button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.origin-country-grid button span {
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 12px;
+  white-space: nowrap;
+}
+
+.origin-country-grid button small {
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .origin-country-grid button[aria-pressed="true"] {
@@ -502,28 +619,65 @@ button:hover {
   grid-column: 1 / -1;
 }
 
+.origin-empty {
+  grid-column: 1 / -1;
+  padding: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.color-filter-panel {
+  display: grid;
+  gap: 8px;
+}
+
 .color-swatch-filter {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
 }
 
 .color-swatch-filter button {
   min-width: 0;
-  min-height: 32px;
-  padding: 0;
+  min-height: 40px;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.82);
+}
+
+.color-swatch-dot {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(31, 38, 40, 0.18);
   border-radius: 999px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.6), transparent),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.56), transparent),
     var(--swatch);
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.5);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.36);
+}
+
+.color-swatch-label {
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .color-swatch-filter button[aria-pressed="true"] {
   border-color: #1f2628;
   box-shadow:
-    inset 0 0 0 3px rgba(255, 255, 255, 0.75),
     0 0 0 2px rgba(31, 38, 40, 0.18);
+}
+
+.color-clear {
+  justify-self: start;
+  min-height: 32px;
+  padding: 5px 9px;
+  font-size: 12px;
 }
 
 input[type="search"],
@@ -1405,7 +1559,7 @@ code {
   }
 
   .color-swatch-filter {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .pc-row {

@@ -1054,58 +1054,82 @@ function addOriginMapFilter() {
   header.append(label, output);
   const wrap = document.createElement("div");
   wrap.className = "origin-map-filter";
-  const map = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  map.setAttribute("viewBox", "0 0 360 172");
-  map.setAttribute("aria-label", "Origin map");
-  map.classList.add("origin-map");
-  const regionShapes = [
-    ["NORTH_AMERICA", "M30 52 C50 26 96 28 118 50 C101 66 92 82 99 101 C73 99 48 88 30 72 Z"],
-    ["LATIN_AMERICA", "M111 94 C132 99 145 121 133 148 C126 165 108 163 104 145 C101 127 88 116 91 101 Z"],
-    ["EUROPE", "M166 39 C188 25 214 32 223 52 C207 62 180 61 164 54 Z"],
-    ["AFRICA", "M178 66 C207 56 229 76 224 112 C220 139 196 151 180 130 C167 113 166 82 178 66 Z"],
-    ["ASIA", "M226 43 C266 25 326 42 336 75 C312 83 298 101 279 105 C247 103 227 82 226 43 Z"],
-    ["OCEANIA", "M275 118 C299 109 331 119 341 139 C314 150 288 146 275 132 Z"],
-    ["ANTARCTICA", "M34 156 C111 146 245 147 326 157 L326 169 L34 169 Z"],
-  ];
-  for (const [key, pathData] of regionShapes) {
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    const value = `region:${key}`;
-    path.setAttribute("d", pathData);
-    path.dataset.value = value;
-    path.setAttribute("tabindex", "0");
-    path.setAttribute("role", "button");
-    path.setAttribute("aria-label", originRegionLabel(key));
-    path.classList.toggle("is-active", state.categoryFilters.origin === value);
-    path.addEventListener("click", () => setOriginFilter(value));
-    path.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        setOriginFilter(value);
-      }
-    });
-    map.append(path);
-  }
-  const countries = originFilterData().countries
-    .filter((country) => !state.categoryFilters.origin.startsWith("region:") || country.region === state.categoryFilters.origin.slice("region:".length))
-    .slice(0, 14);
-  const chips = document.createElement("div");
-  chips.className = "origin-country-grid";
-  for (const country of countries) {
+  const data = originFilterData();
+  const map = document.createElement("div");
+  map.className = "origin-region-map";
+  map.setAttribute("aria-label", "Choose continent");
+  for (const region of data.regions) {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = country.label;
-    button.title = country.label;
-    button.setAttribute("aria-pressed", state.categoryFilters.origin === country.value ? "true" : "false");
-    button.addEventListener("click", () => setOriginFilter(country.value));
-    chips.append(button);
+    button.className = "origin-region-button";
+    button.dataset.region = region.key;
+    button.setAttribute("aria-pressed", state.categoryFilters.origin === region.value ? "true" : "false");
+    const name = document.createElement("strong");
+    name.textContent = region.label;
+    const count = document.createElement("span");
+    count.className = "origin-count";
+    count.textContent = `${formatNumber(region.count, 0)} shells`;
+    button.append(name, count);
+    button.addEventListener("click", () => setOriginFilter(region.value));
+    map.append(button);
   }
+  const countryPanel = document.createElement("div");
+  countryPanel.className = "origin-country-panel";
+  const countrySearch = document.createElement("input");
+  countrySearch.type = "search";
+  countrySearch.className = "origin-country-search";
+  countrySearch.placeholder = "Search country";
+  countrySearch.autocomplete = "off";
+  const chips = document.createElement("div");
+  chips.className = "origin-country-grid";
+  function visibleCountries() {
+    const query = countrySearch.value.trim().toLowerCase();
+    const activeRegion = state.categoryFilters.origin.startsWith("region:")
+      ? state.categoryFilters.origin.slice("region:".length)
+      : "";
+    const list = data.countries
+      .filter((country) => !activeRegion || country.region === activeRegion)
+      .filter((country) => !query || `${country.label} ${country.code}`.toLowerCase().includes(query))
+      .slice(0, query ? 42 : 18);
+    const selectedCountry = data.countries.find((country) => country.value === state.categoryFilters.origin);
+    if (selectedCountry && !query && !list.some((country) => country.value === selectedCountry.value)) {
+      list.unshift(selectedCountry);
+    }
+    return list;
+  }
+  function renderCountryButtons() {
+    chips.innerHTML = "";
+    const countries = visibleCountries();
+    for (const country of countries) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.title = country.label;
+      button.setAttribute("aria-pressed", state.categoryFilters.origin === country.value ? "true" : "false");
+      const name = document.createElement("span");
+      name.textContent = country.label;
+      const count = document.createElement("small");
+      count.textContent = formatNumber(country.count, 0);
+      button.append(name, count);
+      button.addEventListener("click", () => setOriginFilter(country.value));
+      chips.append(button);
+    }
+    if (!countries.length) {
+      const empty = document.createElement("p");
+      empty.className = "origin-empty";
+      empty.textContent = "No countries";
+      chips.append(empty);
+    }
+  }
+  countrySearch.addEventListener("input", renderCountryButtons);
+  renderCountryButtons();
   const clear = document.createElement("button");
   clear.type = "button";
   clear.className = "origin-clear";
   clear.textContent = "Any origin";
   clear.disabled = !state.categoryFilters.origin;
   clear.addEventListener("click", () => setOriginFilter(""));
-  wrap.append(map, chips, clear);
+  countryPanel.append(countrySearch, chips, clear);
+  wrap.append(map, countryPanel);
   row.append(header, wrap);
   els.filterControls.append(row);
 }
@@ -1167,7 +1191,11 @@ function addColorPickerFilter() {
   const header = document.createElement("header");
   const label = document.createElement("span");
   label.textContent = "Color";
-  header.append(label);
+  const output = document.createElement("output");
+  output.textContent = colorSwatches.find(([hex]) => hex === state.categoryFilters.color)?.[1] || "Any";
+  header.append(label, output);
+  const panel = document.createElement("div");
+  panel.className = "color-filter-panel";
   const controls = document.createElement("div");
   controls.className = "color-swatch-filter";
   for (const [hex, name] of colorSwatches) {
@@ -1177,6 +1205,12 @@ function addColorPickerFilter() {
     button.setAttribute("aria-label", name);
     button.setAttribute("aria-pressed", state.categoryFilters.color === hex ? "true" : "false");
     button.style.setProperty("--swatch", hex);
+    const dot = document.createElement("span");
+    dot.className = "color-swatch-dot";
+    const text = document.createElement("span");
+    text.className = "color-swatch-label";
+    text.textContent = name;
+    button.append(dot, text);
     button.addEventListener("click", () => {
       state.categoryFilters.color = state.categoryFilters.color === hex ? "" : hex;
       buildTraitFilters();
@@ -1184,7 +1218,18 @@ function addColorPickerFilter() {
     });
     controls.append(button);
   }
-  row.append(header, controls);
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.className = "color-clear";
+  clear.textContent = "Any color";
+  clear.disabled = !state.categoryFilters.color;
+  clear.addEventListener("click", () => {
+    state.categoryFilters.color = "";
+    buildTraitFilters();
+    updateFilter();
+  });
+  panel.append(controls, clear);
+  row.append(header, panel);
   els.filterControls.append(row);
 }
 
@@ -2325,6 +2370,18 @@ function nearestMapNeighbors(values, count = 14) {
   const axisCount = Math.min(axisOptionCount(), 6);
   const source = state.filtered.length ? state.filtered : state.shells;
   const best = [];
+  let worstIndex = -1;
+  let worstDistance = -Infinity;
+  const refreshWorst = () => {
+    worstIndex = -1;
+    worstDistance = -Infinity;
+    for (let index = 0; index < best.length; index += 1) {
+      if (best[index].distanceSq > worstDistance) {
+        worstDistance = best[index].distanceSq;
+        worstIndex = index;
+      }
+    }
+  };
   for (const shell of source) {
     const vector = shellMapVector(shell);
     let distanceSq = 0;
@@ -2334,10 +2391,15 @@ function nearestMapNeighbors(values, count = 14) {
       const delta = ((vector[axis] || 0) - (values[axis] || 0)) / span;
       distanceSq += delta * delta;
     }
-    best.push({ distanceSq, shell });
-    if (best.length > count) {
-      best.sort((a, b) => a.distanceSq - b.distanceSq);
-      best.pop();
+    if (best.length < count) {
+      best.push({ distanceSq, shell });
+      if (distanceSq > worstDistance) {
+        worstDistance = distanceSq;
+        worstIndex = best.length - 1;
+      }
+    } else if (distanceSq < worstDistance) {
+      best[worstIndex] = { distanceSq, shell };
+      refreshWorst();
     }
   }
   best.sort((a, b) => a.distanceSq - b.distanceSq);
@@ -2775,6 +2837,9 @@ function selectShell(shell, { renderNearest = true } = {}) {
     ["Origin", physicalLocationLabel(shell)],
     ["Area", `${formatNumber(shellAreaCm2(shell), 2)} cm²`],
     ["Mean radius", `${formatNumber(shellMeanRadiusCm(shell), 2)} cm`],
+    ["Lightness", precisePercentValue(shell.color_l_mean ?? 0)],
+    ["Concavity", precisePercentValue((shell.contour_concavity || 0) / 0.32)],
+    ["Asymmetry", precisePercentValue(shell.morph_traits?.asymmetry || 0)],
     ["Scale", `${formatNumber(scale.widthCm, 2)} x ${formatNumber(scale.heightCm, 2)} cm frame`],
   ];
   for (const [key, value] of details) {
@@ -3601,7 +3666,7 @@ function setupEvents() {
     if (shell) selectShell(shell);
     else {
       state.draggingTarget = true;
-      setTargetFromEvent(event, false);
+      setTargetFromEvent(event, true);
     }
   });
 
@@ -3612,7 +3677,8 @@ function setupEvents() {
       return;
     }
     if (state.draggingTarget) {
-      setTargetFromEvent(event, false);
+      event.preventDefault();
+      setTargetFromEvent(event, true);
       els.pointTooltip.hidden = true;
       return;
     }
@@ -3621,9 +3687,6 @@ function setupEvents() {
 
   for (const eventName of ["pointerup", "pointerleave", "pointercancel"]) {
     els.scatter.addEventListener(eventName, (event) => {
-      if (state.draggingTarget && eventName === "pointerup") {
-        setTargetFromEvent(event, true);
-      }
       state.draggingTarget = false;
       stopViewportPan();
       if (eventName !== "pointerup") els.pointTooltip.hidden = true;

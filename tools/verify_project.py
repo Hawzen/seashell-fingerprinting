@@ -497,6 +497,9 @@ def run_browser_check(
                 !restored.traitLabGone ||
                 !restored.geographyGone ||
                 !restored.details.includes('Rarity') ||
+                !restored.details.includes('Lightness') ||
+                !restored.details.includes('Concavity') ||
+                !restored.details.includes('Asymmetry') ||
                 !/(Common|Uncommon|Rare|Extremely rare|Data deficient)/.test(restored.details) ||
                 restored.details.includes('No true population estimate') ||
                 restored.details.includes('Recorded share') ||
@@ -568,7 +571,9 @@ def run_browser_check(
                 const labels = Array.from(document.querySelectorAll('#filterControls .filter-row header span')).map((node) => node.textContent);
                 const firstTraitHigh = document.querySelector('#filterControls .filter-levels button[data-level="high"]');
                 const colorSwatches = document.querySelectorAll('#filterControls .color-swatch-filter button');
-                const originMapPaths = document.querySelectorAll('#filterControls .origin-map path');
+                const colorLabels = Array.from(document.querySelectorAll('#filterControls .color-swatch-label')).map((node) => node.textContent);
+                const originRegionButtons = document.querySelectorAll('#filterControls .origin-region-button');
+                const originCountrySearch = document.querySelector('#filterControls .origin-country-search');
                 const panelRect = document.querySelector('#filtersPanel').getBoundingClientRect();
                 const controlsRect = document.querySelector('.controls-panel').getBoundingClientRect();
                 const panelCenterX = panelRect.left + panelRect.width / 2;
@@ -584,7 +589,9 @@ def run_browser_check(
                   labels,
                   hasLevelButtons: document.querySelectorAll('#filterControls .filter-levels button').length >= 12,
                   hasColorSwatches: colorSwatches.length === 12,
-                  hasOriginMap: originMapPaths.length >= 6,
+                  hasColorLabels: colorLabels.includes('Ivory') && colorLabels.includes('Coral'),
+                  hasOriginMap: originRegionButtons.length >= 6,
+                  hasCountrySearch: Boolean(originCountrySearch),
                   opensRight: panelRect.left >= controlsRect.right - 1,
                   clickable: hitPanel?.id === 'filtersPanel',
                   baseFiltered,
@@ -599,7 +606,9 @@ def run_browser_check(
                 filterProbe.labels.join('|') !== 'Origin|Rarity|Color|Lightness|Area|Concavity|Asymmetry' ||
                 !filterProbe.hasLevelButtons ||
                 !filterProbe.hasColorSwatches ||
+                !filterProbe.hasColorLabels ||
                 !filterProbe.hasOriginMap ||
+                !filterProbe.hasCountrySearch ||
                 !filterProbe.opensRight ||
                 !filterProbe.clickable ||
                 filterProbe.traitFiltered >= filterProbe.baseFiltered ||
@@ -716,6 +725,18 @@ def run_browser_check(
               await page.waitForTimeout(450);
               const afterHash = await page.textContent('#projectedHash');
               if (!afterHash || afterHash === beforeHash) throw new Error(`map generation failed: ${{beforeHash}} -> ${{afterHash}}`);
+              await page.mouse.move(scatterBox.x + scatterBox.width * 0.42, scatterBox.y + scatterBox.height * 0.38);
+              await page.mouse.down();
+              await page.waitForTimeout(90);
+              await page.mouse.move(scatterBox.x + scatterBox.width * 0.62, scatterBox.y + scatterBox.height * 0.56, {{ steps: 5 }});
+              await page.waitForTimeout(180);
+              const beforeReleaseHash = await page.textContent('#projectedHash');
+              await page.mouse.up();
+              await page.waitForTimeout(220);
+              const afterReleaseHash = await page.textContent('#projectedHash');
+              if (!beforeReleaseHash || beforeReleaseHash === afterHash || afterReleaseHash !== beforeReleaseHash) {{
+                throw new Error(`drag generation unstable: ${{JSON.stringify({{ afterHash, beforeReleaseHash, afterReleaseHash }})}}`);
+              }}
               await page.fill('#searchBox', '');
               await page.waitForTimeout(250);
 
