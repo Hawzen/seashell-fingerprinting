@@ -460,6 +460,7 @@ function unpackShells(payload) {
       ],
       contour_pc: [],
       trait_pc: [],
+      legacy_fingerprint_hash: payload.legacy_hashes?.[id] || "",
     };
     shell.name = `${shell.species} ${shell.specimen_label} ${shell.view_label}`;
     for (let pc = 0; pc < contourPcCount; pc += 1) {
@@ -935,7 +936,7 @@ function updateFilter() {
   const query = els.search.value.trim().toLowerCase();
   state.filtered = query
     ? state.shells.filter((shell) =>
-        `${shell.name} ${shell.species} ${shell.file} ${shell.fingerprint_hash || ""} ${shell.location_label || ""}`.toLowerCase().includes(query)
+        `${shell.name} ${shell.species} ${shell.file} ${shell.fingerprint_hash || ""} ${shell.legacy_fingerprint_hash || ""} ${shell.location_label || ""}`.toLowerCase().includes(query)
         && passesMorphFilters(shell),
       )
     : state.shells.filter(passesMorphFilters);

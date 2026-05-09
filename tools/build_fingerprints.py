@@ -19,6 +19,10 @@ cv2.setNumThreads(1)
 cv2.ocl.setUseOpenCL(False)
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+CONTOUR_SMOOTH_WINDOW = 11
+CONTOUR_SMOOTH_PASSES = 2
+CONTOUR_SMOOTH_BLEND = 0.75
+CONTOUR_SMOOTH_OUTSET_PX = 0.35
 
 
 def iter_image_paths(dataset_dir: Path) -> list[Path]:
@@ -421,6 +425,55 @@ def resample_closed_contour(contour: np.ndarray, point_count: int) -> np.ndarray
     return np.column_stack([x, y]).astype(np.float32)
 
 
+def smooth_closed_contour(
+    points: np.ndarray,
+    bounds: tuple[int, int] | None = None,
+    window: int = CONTOUR_SMOOTH_WINDOW,
+    passes: int = CONTOUR_SMOOTH_PASSES,
+    blend: float = CONTOUR_SMOOTH_BLEND,
+    outset_px: float = CONTOUR_SMOOTH_OUTSET_PX,
+) -> np.ndarray:
+    """Turn a pixel trace into a stable shell outline without changing the silhouette."""
+    if points.shape[0] < 8 or window <= 1 or passes <= 0 or blend <= 0:
+        return points.astype(np.float32, copy=False)
+    if window % 2 == 0:
+        window += 1
+    window = min(window, points.shape[0] - 1 if points.shape[0] % 2 == 0 else points.shape[0])
+    if window <= 1:
+        return points.astype(np.float32, copy=False)
+
+    original = points.astype(np.float32, copy=True)
+    current = original.copy()
+    kernel = np.ones(window, dtype=np.float32) / float(window)
+    pad = window // 2
+    for _pass in range(passes):
+        padded = np.vstack([current[-pad:], current, current[:pad]])
+        smoothed = np.column_stack(
+            [
+                np.convolve(padded[:, 0], kernel, mode="valid"),
+                np.convolve(padded[:, 1], kernel, mode="valid"),
+            ]
+        ).astype(np.float32)
+        current = smoothed * blend + original * (1.0 - blend)
+
+    if outset_px > 0:
+        center = current.mean(axis=0)
+        vectors = current - center
+        lengths = np.linalg.norm(vectors, axis=1, keepdims=True)
+        current = current + np.divide(
+            vectors,
+            np.maximum(lengths, 1e-6),
+            out=np.zeros_like(vectors),
+            where=lengths > 1e-6,
+        ) * float(outset_px)
+
+    if bounds is not None:
+        height, width = bounds
+        current[:, 0] = np.clip(current[:, 0], 0, max(0, width - 1))
+        current[:, 1] = np.clip(current[:, 1], 0, max(0, height - 1))
+    return current.astype(np.float32, copy=False)
+
+
 def contour_from_mask(mask: np.ndarray, point_count: int) -> np.ndarray:
     contours, _hierarchy = cv2.findContours(
         mask.astype(np.uint8) * 255,
@@ -429,7 +482,8 @@ def contour_from_mask(mask: np.ndarray, point_count: int) -> np.ndarray:
     )
     if not contours:
         return np.zeros((point_count, 2), dtype=np.float32)
-    return resample_closed_contour(max(contours, key=cv2.contourArea), point_count)
+    sampled = resample_closed_contour(max(contours, key=cv2.contourArea), point_count)
+    return smooth_closed_contour(sampled, bounds=mask.shape)
 
 
 def locate_shell_center(
@@ -776,7 +830,7 @@ def parse_args() -> argparse.Namespace:
         "--contour-points",
         type=int,
         default=256,
-        help="Number of resampled points stored for each exact outer contour.",
+        help="Number of resampled points stored for each smoothed outer contour.",
     )
     return parser.parse_args()
 

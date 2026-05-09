@@ -89,6 +89,36 @@ def quantize(value: float, digits: int = 6) -> float:
     return round(float(value), digits)
 
 
+def js_imul(left: int, right: int) -> int:
+    value = ((left & 0xFFFFFFFF) * (right & 0xFFFFFFFF)) & 0xFFFFFFFF
+    return value - 0x100000000 if value >= 0x80000000 else value
+
+
+def js_hash_string(text: str) -> int:
+    value = 2166136261
+    for character in text:
+        value ^= ord(character)
+        value = js_imul(value, 16777619)
+    return value & 0xFFFFFFFF
+
+
+def base36(value: int) -> str:
+    digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    if value == 0:
+        return "0"
+    output = ""
+    while value:
+        value, remainder = divmod(value, 36)
+        output = digits[remainder] + output
+    return output
+
+
+def fingerprint_hash(record: dict[str, object]) -> str:
+    pcs = [f"{float(value or 0.0):.4f}" for value in list(record.get("contour_pc", []))[:6]]
+    seed = f"{record.get('species', '')}|{record.get('specimen', '')}|{record.get('view', '')}|{','.join(pcs)}"
+    return base36(js_hash_string(seed)).rjust(6, "0")[-6:]
+
+
 def file_checksum(path: Path) -> dict[str, object]:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -352,14 +382,44 @@ def shell_records_from_payload(payload: dict[str, object] | None) -> list[dict[s
     metrics = payload.get("metrics", {})
     if not isinstance(metrics, dict):
         metrics = {}
+    species_names = list(payload.get("species_names", []))
+    specimen_values = list(payload.get("specimen_values", []))
+    view_values = list(payload.get("view_values", []))
+    species_indices = list(payload.get("species", []))
+    specimen_indices = list(payload.get("specimens", []))
+    view_indices = list(payload.get("views", []))
+    contour_pc_count = int(payload.get("contour_pc_count", 0) or 0)
+    contour_pc = list(payload.get("contour_pc", []))
+    legacy_hashes = list(payload.get("legacy_hashes", []))
     output: list[dict[str, object]] = []
     for index in range(count):
         record: dict[str, object] = {"file": files[index] if index < len(files) else ""}
+        species_index = species_indices[index] if index < len(species_indices) else 0
+        specimen_index = specimen_indices[index] if index < len(specimen_indices) else 0
+        view_index = view_indices[index] if index < len(view_indices) else 0
+        record["species"] = species_names[species_index] if species_index < len(species_names) else ""
+        record["specimen"] = specimen_values[specimen_index] if specimen_index < len(specimen_values) else ""
+        record["view"] = view_values[view_index] if view_index < len(view_values) else ""
+        if contour_pc_count:
+            start = index * contour_pc_count
+            record["contour_pc"] = contour_pc[start : start + contour_pc_count]
+        if index < len(legacy_hashes):
+            record["legacy_hash"] = legacy_hashes[index]
         for field, values in metrics.items():
             if isinstance(values, list) and index < len(values):
                 record[str(field)] = values[index]
         output.append(record)
     return output
+
+
+def legacy_hashes_from_payload(payload: dict[str, object] | None) -> dict[str, str]:
+    hashes: dict[str, str] = {}
+    for record in shell_records_from_payload(payload):
+        file_name = str(record.get("file", ""))
+        if not file_name or not record.get("contour_pc"):
+            continue
+        hashes[file_name] = str(record.get("legacy_hash") or fingerprint_hash(record))
+    return hashes
 
 
 def reuse_exported_appearance_features(records: list[dict], previous_shells: list[Path]) -> None:
@@ -698,7 +758,7 @@ def compact_shell_records(records: list[dict]) -> dict[str, object]:
         field: [quantize(float(record.get(field, 0.0) or 0.0)) for record in records]
         for field in fields
     }
-    return {
+    payload = {
         "encoding": "shell-pack-v1",
         "count": len(records),
         "files": [record.get("file", "") for record in records],
@@ -733,6 +793,10 @@ def compact_shell_records(records: list[dict]) -> dict[str, object]:
         "fields": fields,
         "metrics": metrics,
     }
+    legacy_hashes = [str(record.get("legacy_hash", "") or "") for record in records]
+    if any(legacy_hashes):
+        payload["legacy_hashes"] = legacy_hashes
+    return payload
 
 
 def remove_matching_files(directory: Path, pattern: str) -> None:
@@ -803,6 +867,25 @@ def export_thumbnail_atlases(
     }
 
 
+def reusable_thumbnail_atlas(output_dir: Path, previous_model: dict[str, object] | None) -> dict[str, object] | None:
+    atlas = previous_model.get("thumbnail_atlas") if isinstance(previous_model, dict) else None
+    if not isinstance(atlas, dict):
+        return None
+    directory = output_dir / str(atlas.get("dir", "thumbs"))
+    files = [name for name in atlas.get("files", []) if isinstance(name, str)]
+    if not files or not directory.exists():
+        return None
+    total_bytes = 0
+    for name in files:
+        path = directory / name
+        if not path.exists() or path.stat().st_size <= 0:
+            return None
+        total_bytes += path.stat().st_size
+    reused = dict(atlas)
+    reused["bytes"] = total_bytes
+    return reused
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, default=Path("dataset"))
@@ -819,11 +902,29 @@ def main() -> None:
     parser.add_argument("--thumbnail-columns", type=int, default=64)
     parser.add_argument("--thumbnail-budget-mib", type=float, default=50.0)
     parser.add_argument("--no-thumbnails", action="store_true")
+    parser.add_argument(
+        "--reuse-thumbnails",
+        action="store_true",
+        help="Reuse the existing thumbnail atlas metadata/files instead of regenerating them.",
+    )
+    parser.add_argument(
+        "--legacy-shell-pack",
+        type=Path,
+        default=None,
+        help="Optional previous shell pack used to keep old shellprint searches working.",
+    )
     args = parser.parse_args()
 
     manifest = json.loads((args.processed / "manifest.json").read_text(encoding="utf-8"))
     numeric = np.load(args.processed / "fingerprints.npz")
     args.output.mkdir(parents=True, exist_ok=True)
+    previous_model = load_json_maybe_gzip(args.output / "model.json")
+    legacy_shell_payload = (
+        load_json_maybe_gzip(args.legacy_shell_pack)
+        if args.legacy_shell_pack
+        else load_json_maybe_gzip(args.output / "shells.compact.json.gz")
+    )
+    legacy_hash_by_file = legacy_hashes_from_payload(legacy_shell_payload)
 
     fingerprints = numeric["fingerprints"].astype(np.float32)
     species_count = len({record["species"] for record in manifest["records"]})
@@ -922,6 +1023,9 @@ def main() -> None:
             exported[field] = quantize(record.get(field, 0.0))
         for field, value in color_pattern_features(exported).items():
             exported[field] = quantize(value)
+        legacy_hash = legacy_hash_by_file.get(str(exported["file"]), "")
+        if legacy_hash and legacy_hash != fingerprint_hash(exported):
+            exported["legacy_hash"] = legacy_hash
         records.append(exported)
 
     trait_pca = None
@@ -1041,6 +1145,11 @@ def main() -> None:
     if args.no_thumbnails:
         thumb_dir = args.output / "thumbs"
         remove_matching_files(thumb_dir, "thumb_*.webp")
+    elif args.reuse_thumbnails:
+        thumbnail_atlas = reusable_thumbnail_atlas(args.output, previous_model)
+        if thumbnail_atlas is None:
+            raise FileNotFoundError("Cannot reuse thumbnails because the existing atlas is incomplete")
+        model["thumbnail_atlas"] = thumbnail_atlas
     else:
         thumbnail_atlas = export_thumbnail_atlases(
             args.dataset.resolve(),

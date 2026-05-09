@@ -23,6 +23,10 @@ import numpy as np
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 MIN_CONTOUR_POINTS = 192
+CONTOUR_SMOOTH_FIXTURES = {
+    "Terebra_crenulata_4_A.jpg": 0.38,
+    "Pollia_subcostata_2_A.jpg": 0.38,
+}
 
 
 class QuietHandler(SimpleHTTPRequestHandler):
@@ -89,6 +93,16 @@ def count_images(dataset: Path) -> int:
     )
 
 
+def contour_artifact_score(points: np.ndarray) -> float:
+    if points.shape[0] < 8:
+        return 0.0
+    points = points.astype(np.float64, copy=False)
+    local_residual = points - (np.roll(points, 1, axis=0) + np.roll(points, -1, axis=0)) / 2.0
+    segments = np.linalg.norm(points - np.roll(points, 1, axis=0), axis=1)
+    scale = max(1.0, float(np.percentile(segments, 50)))
+    return float(np.percentile(np.linalg.norm(local_residual, axis=1), 99) / scale)
+
+
 def unpack_shell_payload(payload: dict) -> list[dict]:
     if isinstance(payload.get("records"), list):
         return payload["records"]
@@ -110,6 +124,7 @@ def unpack_shell_payload(payload: dict) -> list[dict]:
             "specimen_label": payload["specimen_labels"][specimen_index],
             "view": payload["view_values"][view_index],
             "view_label": payload["view_labels"][view_index],
+            "legacy_hash": payload.get("legacy_hashes", [""] * count)[index] if index < len(payload.get("legacy_hashes", [])) else "",
             "area": payload["area"][index],
             "center": payload["centers"][index * 2 : index * 2 + 2],
             "image_width": payload["dims"][index * 2],
@@ -354,6 +369,10 @@ def verify_static(public_data: Path, image_count: int) -> None:
     for retired in ["pc", "radial_area_ratio", "radial_mismatch"]:
         if retired in sample:
             raise AssertionError(f"Retired static shell field is still exported: {retired}")
+    legacy_hashes = [record.get("legacy_hash", "") for record in records]
+    for shellprint in ["437JZ7", "2423VZ"]:
+        if shellprint not in legacy_hashes:
+            raise AssertionError(f"Legacy shellprint search alias is missing: {shellprint}")
     locality_path = public_data / model["locality_file"]
     if not locality_path.exists():
         raise AssertionError(f"Missing {locality_path}")
@@ -397,8 +416,21 @@ def verify_static(public_data: Path, image_count: int) -> None:
     if not contour_path.exists():
         raise AssertionError(f"Missing {contour_path}")
     with gzip.open(contour_path, "rb") as handle:
-        contour_bytes = len(handle.read())
-    assert_equal(contour_bytes, image_count * model["contour_points"] * 2 * 2, "contour binary size")
+        contour_raw = handle.read()
+    assert_equal(len(contour_raw), image_count * model["contour_points"] * 2 * 2, "contour binary size")
+    contours = (
+        np.frombuffer(contour_raw, dtype="<u2")
+        .reshape(image_count, model["contour_points"], 2)
+        .astype(np.float32)
+        / float(model["contour_scale"])
+    )
+    by_file = {record["file"]: int(record["id"]) for record in records}
+    for file_name, max_score in CONTOUR_SMOOTH_FIXTURES.items():
+        if file_name not in by_file:
+            raise AssertionError(f"Contour smoothing fixture is missing from shell records: {file_name}")
+        score = contour_artifact_score(contours[by_file[file_name]])
+        if score > max_score:
+            raise AssertionError(f"Contour smoothing regression for {file_name}: score {score:.3f} > {max_score:.3f}")
     atlas = model["thumbnail_atlas"]
     thumb_total = 0
     if atlas.get("bytes", 0) > 50 * 1024 * 1024:
@@ -749,6 +781,12 @@ def run_browser_check(
               await page.fill('#searchBox', restored.hash);
               await page.waitForTimeout(250);
               const hashSearch = await page.evaluate(() => document.querySelector('#statusLine').textContent);
+              await page.fill('#searchBox', '437JZ7');
+              await page.waitForTimeout(250);
+              const legacyHashSearch = await page.evaluate(() => document.querySelector('#statusLine').textContent);
+              if (/^0\\b/.test(hashSearch) || /^0\\b/.test(legacyHashSearch)) {{
+                throw new Error(`shellprint search failed: ${{JSON.stringify({{ hashSearch, legacyHashSearch }})}}`);
+              }}
               await page.fill('#searchBox', '');
 
               await page.setInputFiles('#uploadInput', uploadPath);

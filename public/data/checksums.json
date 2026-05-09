@@ -1,15 +1,15 @@
 {
   "model.json": {
-    "bytes": 71731,
-    "sha256": "36adf93f226c2396e9aa2a9b208672a08eecc2f59835d2fc8bad426926141e9b"
+    "bytes": 71715,
+    "sha256": "4ab6806765111d1504bea4f8bd342a51d8ffaa648472862a7cb4634f56af6ff3"
   },
   "shells.compact.json.gz": {
-    "bytes": 8605692,
-    "sha256": "6c471e9229d87f576d47c36e8e1dedec719c82362c38e2313e502328e1e31cd2"
+    "bytes": 8878995,
+    "sha256": "b14716eafad37c3eb5e5fca262e827096a058713169542cdb0dd0e177bd7f16b"
   },
   "contours.u16.gz": {
-    "bytes": 45345606,
-    "sha256": "ea2010f93dcc7727adb0a9c6f75a51f47e67e5406c187941ee15a10fa474b1ce"
+    "bytes": 52627220,
+    "sha256": "b5012a810bf56825c7678fa45e36638c87ea6867993213a556eee1f42419783a"
   },
   "thumbs/thumb_000.webp": {
     "bytes": 1617074,
@@ -129,10 +129,10 @@
   },
   "localities.compact.json.gz": {
     "bytes": 131157,
-    "sha256": "8f281e5fe77d8d1b66506908ce18e773a66e125de4bfe4ef1d52a68760cab4af"
+    "sha256": "252bfd3f6e9c20e37c88cbc6696a3f2bb3b398af0382d9a3bb4a3df4f4ff90d2"
   },
   "species_traits.compact.json.gz": {
-    "bytes": 227732,
-    "sha256": "236fda97f9f18e7dc160af596fa2284b0078c829361a0b078528b4d9f1399086"
+    "bytes": 227734,
+    "sha256": "e90c24f2a3f1949f2821d33bdbcb8b8e1c574391c79dc881fb65ad0f7e5bb243"
   }
 }
