@@ -1262,7 +1262,7 @@ function positionFiltersPanel() {
   const controlsRect = document.querySelector(".controls-panel")?.getBoundingClientRect();
   const desktopRoom = controlsRect ? viewportWidth - controlsRect.right - 24 : 0;
   const desktop = viewportWidth > 1080 && desktopRoom >= 360;
-  const width = desktop ? Math.min(560, desktopRoom) : Math.min(560, Math.max(280, viewportWidth - 24));
+  const width = desktop ? Math.min(760, desktopRoom) : Math.min(720, Math.max(320, viewportWidth - 24));
   const preferredLeft = desktop ? (controlsRect.right + 12) : toggleRect.left;
   const left = Math.max(12, Math.min(preferredLeft, viewportWidth - width - 12));
   const measuredHeight = els.filtersPanel.offsetHeight || 420;

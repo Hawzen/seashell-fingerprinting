@@ -345,9 +345,11 @@ button:hover {
 }
 
 .filters-toggle {
-  min-height: 38px;
-  padding: 7px 10px;
+  min-height: 42px;
+  padding: 8px 13px;
   border-color: rgba(40, 122, 116, 0.35);
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .filters-toggle.is-active {
@@ -361,12 +363,12 @@ button:hover {
   right: auto;
   top: var(--filters-top, 96px);
   z-index: 25;
-  width: var(--filters-width, min(560px, calc(100vw - 24px)));
+  width: var(--filters-width, min(760px, calc(100vw - 24px)));
   max-height: calc(100vh - 24px);
   overflow: auto;
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 18px;
+  padding: 20px;
   border: 1px solid rgba(31, 38, 40, 0.18);
   border-radius: 8px;
   background:
@@ -382,32 +384,32 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
 }
 
 .filters-popover header button {
-  min-width: 32px;
-  min-height: 32px;
+  min-width: 38px;
+  min-height: 38px;
   padding: 0;
 }
 
 .filter-controls {
   display: grid;
-  gap: 11px;
+  gap: 16px;
 }
 
 .filter-row {
   display: grid;
-  gap: 6px;
+  gap: 10px;
 }
 
 .filter-row header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .filter-row header span,
@@ -419,21 +421,24 @@ dt {
 
 .filter-row output {
   color: var(--ink);
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 
 .filter-levels {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px;
+  gap: 8px;
 }
 
 .filter-levels button {
   min-width: 0;
-  min-height: 34px;
-  padding: 6px 8px;
+  min-height: 46px;
+  padding: 9px 12px;
   color: #39484a;
   background: rgba(248, 245, 238, 0.86);
+  font-size: 14px;
+  font-weight: 650;
 }
 
 .filter-levels button[aria-pressed="true"] {
@@ -445,14 +450,14 @@ dt {
 
 .origin-map-filter {
   display: grid;
-  grid-template-columns: minmax(250px, 1.05fr) minmax(210px, 0.95fr);
-  gap: 12px;
+  grid-template-columns: minmax(360px, 1.15fr) minmax(280px, 0.85fr);
+  gap: 16px;
   align-items: stretch;
 }
 
 .origin-region-map {
   position: relative;
-  min-height: 220px;
+  min-height: 292px;
   border: 1px solid rgba(31, 38, 40, 0.12);
   border-radius: 8px;
   background:
@@ -475,8 +480,8 @@ dt {
 .origin-region-button {
   position: absolute;
   min-width: 0;
-  min-height: 46px;
-  padding: 8px 10px;
+  min-height: 60px;
+  padding: 11px 13px;
   display: grid;
   justify-items: start;
   align-content: center;
@@ -491,14 +496,14 @@ dt {
 .origin-region-button strong,
 .color-swatch-label {
   font-family: Fraunces, Georgia, "Times New Roman", serif;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 650;
   letter-spacing: 0;
 }
 
 .origin-region-button span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .origin-region-button:hover,
@@ -557,36 +562,37 @@ dt {
   right: 9%;
   bottom: 9px;
   width: auto;
-  min-height: 34px;
+  min-height: 42px;
 }
 
 .origin-country-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 8px;
-  min-height: 220px;
+  gap: 10px;
+  min-height: 292px;
 }
 
 .origin-country-search {
-  min-height: 34px;
+  min-height: 42px;
+  font-size: 14px;
 }
 
 .origin-country-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-content: start;
-  gap: 6px;
-  max-height: 174px;
+  gap: 8px;
+  max-height: 232px;
   overflow: auto;
 }
 
 .origin-country-grid button,
 .origin-clear {
   min-width: 0;
-  min-height: 34px;
-  padding: 6px 8px;
+  min-height: 42px;
+  padding: 8px 10px;
   overflow: hidden;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .origin-country-grid button {
@@ -604,7 +610,7 @@ dt {
 
 .origin-country-grid button small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -621,37 +627,37 @@ dt {
 
 .origin-empty {
   grid-column: 1 / -1;
-  padding: 8px;
+  padding: 10px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .color-filter-panel {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .color-swatch-filter {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 7px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
 }
 
 .color-swatch-filter button {
   min-width: 0;
-  min-height: 40px;
-  padding: 6px 8px;
+  min-height: 50px;
+  padding: 9px 11px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   border-radius: 8px;
   background: rgba(255, 253, 247, 0.82);
 }
 
 .color-swatch-dot {
-  flex: 0 0 22px;
-  width: 22px;
-  height: 22px;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
   border: 1px solid rgba(31, 38, 40, 0.18);
   border-radius: 999px;
   background:
@@ -675,9 +681,10 @@ dt {
 
 .color-clear {
   justify-self: start;
-  min-height: 32px;
-  padding: 5px 9px;
-  font-size: 12px;
+  min-height: 38px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 650;
 }
 
 input[type="search"],

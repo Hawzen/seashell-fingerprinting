@@ -615,6 +615,9 @@ def run_browser_check(
                 const originRegionButtons = document.querySelectorAll('#filterControls .origin-region-button');
                 const originCountrySearch = document.querySelector('#filterControls .origin-country-search');
                 const panelRect = document.querySelector('#filtersPanel').getBoundingClientRect();
+                const levelRect = firstTraitHigh.getBoundingClientRect();
+                const originRect = document.querySelector('#filterControls .origin-region-map').getBoundingClientRect();
+                const swatchRect = colorSwatches[0].getBoundingClientRect();
                 const controlsRect = document.querySelector('.controls-panel').getBoundingClientRect();
                 const panelCenterX = panelRect.left + panelRect.width / 2;
                 const panelHeaderY = panelRect.top + 20;
@@ -633,6 +636,7 @@ def run_browser_check(
                   hasOriginMap: originRegionButtons.length >= 6,
                   hasCountrySearch: Boolean(originCountrySearch),
                   opensRight: panelRect.left >= controlsRect.right - 1,
+                  readableSize: panelRect.width >= 700 && levelRect.height >= 44 && originRect.height >= 270 && swatchRect.height >= 48,
                   clickable: hitPanel?.id === 'filtersPanel',
                   baseFiltered,
                   traitFiltered,
@@ -650,6 +654,7 @@ def run_browser_check(
                 !filterProbe.hasOriginMap ||
                 !filterProbe.hasCountrySearch ||
                 !filterProbe.opensRight ||
+                !filterProbe.readableSize ||
                 !filterProbe.clickable ||
                 filterProbe.traitFiltered >= filterProbe.baseFiltered ||
                 filterProbe.resetFiltered !== filterProbe.baseFiltered ||
