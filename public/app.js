@@ -11,16 +11,12 @@ const rangeFilterDefs = [
   { key: "concavity", label: "Concavity", format: "percent" },
   { key: "asymmetry", label: "Asymmetry", format: "percent" },
 ];
-const rarityFilterOptions = ["Common", "Uncommon", "Rare", "Extremely rare", "Data deficient"];
-const colorFilterOptions = [
-  ["", "Any color"],
-  ["pale", "Pale / ivory"],
-  ["warm", "Gold / tan"],
-  ["rose", "Rose / red"],
-  ["brown", "Brown / dark"],
-  ["cool", "Blue / gray"],
-  ["pattern", "High pattern"],
+const filterLevels = [
+  { key: "low", label: "Low", min: 0, max: 1 / 3 },
+  { key: "medium", label: "Medium", min: 1 / 3, max: 2 / 3 },
+  { key: "high", label: "High", min: 2 / 3, max: 1 },
 ];
+const rarityFilterOptions = ["Common", "Uncommon", "Rare", "Extremely rare", "Data deficient"];
 
 const state = {
   shells: [],
@@ -83,6 +79,7 @@ const state = {
   neighborToken: 0,
   pointColorCache: new Map(),
   paletteCache: new Map(),
+  originFilterOptionsCache: null,
 };
 
 const els = {
@@ -338,6 +335,7 @@ function deriveMorphMetrics(shell) {
 
 function buildDerivedShellData(shells, localityPayload = null, speciesTraitsPayload = null) {
   state.speciesCounts = new Map();
+  state.originFilterOptionsCache = null;
   for (const shell of shells) {
     state.speciesCounts.set(shell.species, (state.speciesCounts.get(shell.species) || 0) + 1);
   }
@@ -831,14 +829,48 @@ function shellOriginLabel(shell) {
   return shell?.species_traits?.region_label || shell?.region_label || shell?.location_label || "Unknown";
 }
 
-function shellColorBucket(shell) {
-  if ((shell.color_pattern_strength || 0) > 0.34) return "pattern";
-  const hsl = rgbToHsl(shell.color_r_mean ?? 0.68, shell.color_g_mean ?? 0.64, shell.color_b_mean ?? 0.56);
-  if (hsl.l > 0.7) return "pale";
-  if (hsl.l < 0.36) return "brown";
-  if (hsl.h < 24 || hsl.h > 338) return "rose";
-  if (hsl.h >= 24 && hsl.h < 82) return "warm";
-  return "cool";
+function shellOriginMatches(shell, filterValue) {
+  if (!filterValue) return true;
+  const [type, value] = filterValue.split(":");
+  if (!value) return shellOriginKey(shell) === filterValue;
+  if (type === "region") {
+    return shell?.species_traits?.region_key === value
+      || shell?.region_key === value
+      || shell?.location_key === value
+      || shellOriginKey(shell) === value;
+  }
+  if (type === "country") {
+    return shell?.location_key === value
+      || shell?.species_traits?.primary_country === value
+      || (shell?.species_traits?.known_range_countries || []).some((country) => country.code === value);
+  }
+  return shellOriginKey(shell) === filterValue;
+}
+
+function hexToRgb(hex) {
+  const value = String(hex || "").replace("#", "");
+  if (!/^[0-9a-f]{6}$/i.test(value)) return null;
+  return {
+    r: parseInt(value.slice(0, 2), 16),
+    g: parseInt(value.slice(2, 4), 16),
+    b: parseInt(value.slice(4, 6), 16),
+  };
+}
+
+function shellColorDistance(shell, hex) {
+  const target = hexToRgb(hex);
+  if (!target) return Infinity;
+  const shellColor = shellRgba(shell);
+  const dr = shellColor[0] - target.r;
+  const dg = shellColor[1] - target.g;
+  const db = shellColor[2] - target.b;
+  const patternBonus = Math.min(24, Math.max(0, shell.color_pattern_strength || 0) * 80);
+  return Math.sqrt(dr * dr + dg * dg + db * db) - patternBonus;
+}
+
+function shellMatchesColor(shell, hex) {
+  if (!hex) return true;
+  return shellColorDistance(shell, hex) <= 105;
 }
 
 function filterValue(shell, key) {
@@ -857,8 +889,8 @@ function passesMorphFilters(shell) {
     if (value < filter.min || value > filter.max) return false;
   }
   if (state.categoryFilters.rarity && shell.rarity_label !== state.categoryFilters.rarity) return false;
-  if (state.categoryFilters.origin && shellOriginKey(shell) !== state.categoryFilters.origin) return false;
-  if (state.categoryFilters.color && shellColorBucket(shell) !== state.categoryFilters.color) return false;
+  if (!shellOriginMatches(shell, state.categoryFilters.origin)) return false;
+  if (!shellMatchesColor(shell, state.categoryFilters.color)) return false;
   return true;
 }
 
@@ -898,13 +930,32 @@ function updateFilterButton() {
 }
 
 function originFilterOptions() {
-  const options = new Map();
+  if (state.originFilterOptionsCache) return state.originFilterOptionsCache;
+  const regions = new Map();
+  const countries = new Map();
   for (const shell of state.shells) {
-    const key = shellOriginKey(shell);
-    if (!key || key === "unknown" || options.has(key)) continue;
-    options.set(key, shellOriginLabel(shell));
+    const regionKey = shell.species_traits?.region_key || shell.region_key || "";
+    const regionName = shell.species_traits?.region_label || shell.region_label || "";
+    if (regionKey && regionKey !== "unknown") {
+      regions.set(`region:${regionKey}`, regionName || shellOriginLabel(shell));
+    }
+    for (const country of shell.species_traits?.known_range_countries || []) {
+      if (!country.code || !country.label) continue;
+      countries.set(`country:${country.code}`, country.label);
+    }
+    const localityKey = shell.location_key || "";
+    if (localityKey && localityKey !== "unknown" && localityKey.length <= 3) {
+      countries.set(`country:${localityKey}`, shell.location_label?.split(",")[0] || localityKey);
+    }
   }
-  return [...options.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const regionOptions = [...regions.entries()]
+    .sort((a, b) => a[1].localeCompare(b[1]))
+    .map(([value, label]) => [value, `Continent: ${label}`]);
+  const countryOptions = [...countries.entries()]
+    .sort((a, b) => a[1].localeCompare(b[1]))
+    .map(([value, label]) => [value, `Country: ${label}`]);
+  state.originFilterOptionsCache = [...regionOptions, ...countryOptions];
+  return state.originFilterOptionsCache;
 }
 
 function addFilterSelect(labelText, key, options) {
@@ -939,38 +990,65 @@ function addRangeFilter(def) {
   label.textContent = def.label;
   const output = document.createElement("output");
   const current = state.morphFilters.get(def.key);
-  output.textContent = `${percentValue(current.min)}-${percentValue(current.max)}`;
+  const activeLevel = filterLevels.find((level) => Math.abs(current.min - level.min) < 0.01 && Math.abs(current.max - level.max) < 0.01);
+  output.textContent = activeLevel?.label || "Any";
   header.append(label, output);
-  const pair = document.createElement("div");
-  pair.className = "range-pair";
-  const min = document.createElement("input");
-  min.type = "range";
-  min.min = "0";
-  min.max = "100";
-  min.value = String(Math.round(current.min * 100));
-  min.title = `${def.label} minimum`;
-  const max = document.createElement("input");
-  max.type = "range";
-  max.min = "0";
-  max.max = "100";
-  max.value = String(Math.round(current.max * 100));
-  max.title = `${def.label} maximum`;
-  const update = () => {
-    let minValue = Number(min.value) / 100;
-    let maxValue = Number(max.value) / 100;
-    if (minValue > maxValue) {
-      [minValue, maxValue] = [maxValue, minValue];
-      min.value = String(Math.round(minValue * 100));
-      max.value = String(Math.round(maxValue * 100));
-    }
-    state.morphFilters.set(def.key, { min: minValue, max: maxValue });
-    output.textContent = `${percentValue(minValue)}-${percentValue(maxValue)}`;
+  const levels = document.createElement("div");
+  levels.className = "filter-levels";
+  for (const level of filterLevels) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.level = level.key;
+    button.textContent = level.label;
+    button.title = `${def.label}: ${level.label}`;
+    const pressed = activeLevel?.key === level.key;
+    button.setAttribute("aria-pressed", pressed ? "true" : "false");
+    button.addEventListener("click", () => {
+      const isActive = button.getAttribute("aria-pressed") === "true";
+      state.morphFilters.set(def.key, isActive ? { min: 0, max: 1 } : { min: level.min, max: level.max });
+      buildTraitFilters();
+      updateFilter();
+    });
+    levels.append(button);
+  }
+  row.append(header, levels);
+  els.filterControls.append(row);
+}
+
+function addColorPickerFilter() {
+  const row = document.createElement("div");
+  row.className = "filter-row";
+  const header = document.createElement("header");
+  const label = document.createElement("span");
+  label.textContent = "Color";
+  header.append(label);
+  const controls = document.createElement("div");
+  controls.className = "color-filter";
+  const input = document.createElement("input");
+  input.type = "color";
+  input.value = state.categoryFilters.color || "#b99166";
+  input.title = "Choose a shell color";
+  const status = document.createElement("span");
+  status.className = "color-filter-status";
+  status.textContent = state.categoryFilters.color ? state.categoryFilters.color.toUpperCase() : "Any color";
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.textContent = "Clear";
+  clear.disabled = !state.categoryFilters.color;
+  input.addEventListener("input", () => {
+    state.categoryFilters.color = input.value;
+    status.textContent = input.value.toUpperCase();
+    clear.disabled = false;
     updateFilter();
-  };
-  min.addEventListener("input", update);
-  max.addEventListener("input", update);
-  pair.append(min, max);
-  row.append(header, pair);
+  });
+  clear.addEventListener("click", () => {
+    state.categoryFilters.color = "";
+    status.textContent = "Any color";
+    clear.disabled = true;
+    updateFilter();
+  });
+  controls.append(input, status, clear);
+  row.append(header, controls);
   els.filterControls.append(row);
 }
 
@@ -979,9 +1057,9 @@ function buildTraitFilters() {
   els.filterControls.innerHTML = "";
   addFilterSelect("Origin", "origin", [["", "Any origin"], ...originFilterOptions()]);
   addFilterSelect("Rarity", "rarity", [["", "Any rarity"], ...rarityFilterOptions.map((value) => [value, value])]);
-  addFilterSelect("Color", "color", colorFilterOptions);
+  addColorPickerFilter();
   for (const def of rangeFilterDefs) {
-    state.morphFilters.set(def.key, { min: 0, max: 1 });
+    if (!state.morphFilters.has(def.key)) state.morphFilters.set(def.key, { min: 0, max: 1 });
     addRangeFilter(def);
   }
   updateFilterButton();
@@ -1932,6 +2010,38 @@ function drawCroppedContourFallback(ctx, shell, contour, crop, frame, frameWidth
   return true;
 }
 
+function drawCroppedLoadedShellImage(ctx, shell, source, image, frameWidth, frameHeight) {
+  if (!source || !image) return null;
+  const contour = contourForShell(shell);
+  const crop = paddedContourCrop(shell, contour, 0.045);
+  if (!contour?.length || !crop) return null;
+  const frame = fitCropFrame(crop, frameWidth, frameHeight, 8);
+  const scaleX = source.width / Math.max(1, shell.image_width || crop.width);
+  const scaleY = source.height / Math.max(1, shell.image_height || crop.height);
+  ctx.save();
+  croppedContourPath(ctx, contour, crop, frame);
+  ctx.clip();
+  ctx.drawImage(
+    image,
+    source.x + crop.x * scaleX,
+    source.y + crop.y * scaleY,
+    crop.width * scaleX,
+    crop.height * scaleY,
+    frame.x,
+    frame.y,
+    frame.width,
+    frame.height,
+  );
+  ctx.restore();
+  if (croppedContourPath(ctx, contour, crop, frame)) {
+    const hsl = rgbToHsl(shell.color_r_mean ?? 0.68, shell.color_g_mean ?? 0.64, shell.color_b_mean ?? 0.56);
+    ctx.strokeStyle = hslCss(hsl.h, Math.max(0.18, hsl.s * 0.76), Math.max(0.16, hsl.l - 0.26));
+    ctx.lineWidth = Math.max(1.15, Math.min(frameWidth, frameHeight) * 0.008);
+    ctx.stroke();
+  }
+  return frame;
+}
+
 function starredThumbSize(crop) {
   const cssHeight = 44;
   if (!crop?.width || !crop?.height) {
@@ -2043,8 +2153,12 @@ function setSourceImageUrl(url, shell, alt = "") {
 
 function drawSourceFallback(shell, size) {
   sourceThumbCtx.clearRect(0, 0, size.width, size.height);
-  const frame = fitImageFrame(shell.image_width || size.width, shell.image_height || size.height, size.width, size.height);
-  if (!drawContourFallbackThumb(sourceThumbCtx, shell, frame, size.width, size.height)) {
+  const contour = contourForShell(shell);
+  const crop = paddedContourCrop(shell, contour, 0.045);
+  const frame = crop
+    ? fitCropFrame(crop, size.width, size.height, 8)
+    : fitImageFrame(shell.image_width || size.width, shell.image_height || size.height, size.width, size.height);
+  if (!crop || !drawCroppedContourFallback(sourceThumbCtx, shell, contour, crop, frame, size.width, size.height)) {
     sourceThumbCtx.fillStyle = shellRgb(shell, 0.84);
     sourceThumbCtx.beginPath();
     sourceThumbCtx.ellipse(size.width / 2, size.height / 2, size.width * 0.28, size.height * 0.36, 0, 0, Math.PI * 2);
@@ -2074,7 +2188,8 @@ async function renderSourceShell(shell) {
     const image = await loadThumbnailPage(source.page);
     if (token !== state.sourceToken || state.selected !== shell) return;
     sourceThumbCtx.clearRect(0, 0, size.width, size.height);
-    const frame = drawLoadedThumbnailImage(sourceThumbCtx, shell, source, image, size.width, size.height);
+    const frame = drawCroppedLoadedShellImage(sourceThumbCtx, shell, source, image, size.width, size.height)
+      || drawLoadedThumbnailImage(sourceThumbCtx, shell, source, image, size.width, size.height);
     if (frame) {
       state.sourceFrame = frame;
       if (els.sourceSpinner) els.sourceSpinner.hidden = true;
@@ -2082,7 +2197,7 @@ async function renderSourceShell(shell) {
       return;
     }
     drawSourceFallback(shell, size);
-  }, 450);
+  }, 320);
 }
 
 function shellMapVector(shell) {
@@ -2452,17 +2567,44 @@ function triggerStarBurst() {
   window.setTimeout(() => els.starBurst.classList.remove("is-active"), 900);
 }
 
+function starredShelfSelection() {
+  if (state.showAllStars) {
+    const items = [];
+    for (const id of state.starredIds) {
+      const shell = shellById(id);
+      if (shell) items.push({ shell, geometry: starredThumbGeometry(shell) });
+    }
+    return { items, hidden: 0 };
+  }
+  const available = Math.max(44, els.starredBand?.clientWidth || 0);
+  const items = [];
+  let used = 0;
+  let hidden = 0;
+  for (let index = 0; index < state.starredIds.length; index += 1) {
+    const shell = shellById(state.starredIds[index]);
+    if (!shell) continue;
+    const item = { shell, geometry: starredThumbGeometry(shell) };
+    const itemWidth = item.geometry.size.cssWidth + 1;
+    const remainingAfter = state.starredIds.length - index - 1;
+    const reserveMoreButton = remainingAfter > 0 ? 54 : 0;
+    if (items.length > 0 && used + itemWidth + reserveMoreButton > available) {
+      hidden = remainingAfter + 1;
+      break;
+    }
+    items.push(item);
+    used += itemWidth;
+  }
+  return { items, hidden };
+}
+
 function renderStarred() {
   if (!els.starredBand) return;
   els.starredBand.innerHTML = "";
-  const ids = state.showAllStars ? state.starredIds : state.starredIds.slice(0, 8);
-  for (const id of ids) {
-    const shell = shellById(id);
-    if (!shell) continue;
+  const { items, hidden } = starredShelfSelection();
+  for (const { shell, geometry } of items) {
     const button = document.createElement("button");
     button.className = "starred-shell";
     button.title = `${shell.species} ${shell.fingerprint_hash}`;
-    const geometry = starredThumbGeometry(shell);
     button.style.setProperty("--starred-thumb-width", `${geometry.size.cssWidth}px`);
     const canvas = document.createElement("canvas");
     canvas.width = geometry.size.pixelWidth;
@@ -2475,10 +2617,10 @@ function renderStarred() {
     });
     els.starredBand.append(button);
   }
-  if (state.starredIds.length > 8) {
+  if (hidden > 0 || state.showAllStars) {
     const more = document.createElement("button");
     more.className = "starred-more";
-    more.textContent = state.showAllStars ? "Less" : `+${state.starredIds.length - 8}`;
+    more.textContent = state.showAllStars ? "Less" : `+${hidden}`;
     more.title = state.showAllStars ? "Show fewer starred shells" : "Show all starred shells";
     more.addEventListener("click", () => {
       state.showAllStars = !state.showAllStars;
@@ -3383,6 +3525,7 @@ function setupEvents() {
     scheduleDraw();
     renderSourceShell(state.selected);
     renderPalette();
+    renderStarred();
   });
 }
 

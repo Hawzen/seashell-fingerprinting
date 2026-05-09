@@ -1,14 +1,17 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Inter:wght@400;500;600;700;800&display=swap");
+
 :root {
   color-scheme: light;
-  --ink: #20242a;
-  --muted: #68707a;
-  --line: #d8dbd4;
-  --paper: #fbfaf6;
+  --ink: #1f2628;
+  --muted: #687170;
+  --line: #d9d8ce;
+  --paper: #f8f5ee;
   --panel: #ffffff;
-  --wash: #edf2ee;
-  --teal: #287a74;
-  --coral: #c65d4b;
-  --shadow: 0 10px 30px rgba(31, 36, 42, 0.08);
+  --wash: #eaf0ed;
+  --teal: #1f756f;
+  --coral: #b8624e;
+  --museum-blue: #2b5f74;
+  --shadow: 0 18px 44px rgba(31, 36, 42, 0.1);
 }
 
 * {
@@ -41,17 +44,19 @@ p {
 }
 
 h1 {
+  font-family: Fraunces, Georgia, "Times New Roman", serif;
   font-size: clamp(22px, 3vw, 34px);
   line-height: 1;
   letter-spacing: 0;
+  color: #172325;
 }
 
 h2 {
+  font-family: Fraunces, Georgia, "Times New Roman", serif;
   font-size: 13px;
   line-height: 1.2;
-  text-transform: uppercase;
-  color: var(--muted);
-  letter-spacing: 0.08em;
+  color: #304044;
+  letter-spacing: 0;
 }
 
 h3 {
@@ -84,14 +89,17 @@ button:hover {
   padding: 14px 20px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 16px;
   border-bottom: 1px solid var(--line);
-  background: rgba(251, 250, 246, 0.96);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(248, 245, 238, 0.94)),
+    var(--paper);
 }
 
 .brand-block {
-  flex: 0 0 auto;
+  flex: 0 1 330px;
+  min-width: 230px;
 }
 
 .topbar p {
@@ -100,14 +108,26 @@ button:hover {
   font-size: 14px;
 }
 
+.brand-block .tagline {
+  color: #365c62;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.brand-block #statusLine {
+  font-size: 12px;
+}
+
 .starred-band {
   flex: 1 1 auto;
   min-width: 0;
+  max-width: none;
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 1px;
   overflow-x: auto;
+  padding: 1px 0;
 }
 
 .star-burst {
@@ -195,6 +215,10 @@ button:hover {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.top-actions {
+  flex: 0 0 auto;
 }
 
 .workspace {
@@ -333,17 +357,23 @@ button:hover {
 
 .filters-popover {
   position: absolute;
-  left: 18px;
-  right: 18px;
-  top: 76px;
+  left: calc(100% + 38px);
+  right: auto;
+  top: 0;
   z-index: 12;
+  width: min(380px, calc(100vw - 380px));
+  min-width: 320px;
   display: grid;
   gap: 12px;
   padding: 14px;
-  border: 1px solid rgba(32, 36, 42, 0.18);
+  border: 1px solid rgba(31, 38, 40, 0.18);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.98);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 248, 242, 0.98)),
+    var(--panel);
   box-shadow: var(--shadow);
+  transform-origin: left top;
+  animation: filter-pop 170ms cubic-bezier(0.2, 0.8, 0.22, 1) both;
 }
 
 .filters-popover header,
@@ -384,10 +414,62 @@ button:hover {
   font-variant-numeric: tabular-nums;
 }
 
-.filter-row .range-pair {
+.filter-levels {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.filter-levels button {
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 8px;
+  color: #39484a;
+  background: rgba(248, 245, 238, 0.86);
+}
+
+.filter-levels button[aria-pressed="true"] {
+  border-color: rgba(31, 117, 111, 0.8);
+  background: rgba(31, 117, 111, 0.12);
+  color: #174e4b;
+  font-weight: 700;
+}
+
+.color-filter {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+}
+
+.color-filter input[type="color"] {
+  width: 46px;
+  height: 34px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+}
+
+.color-filter input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-filter input[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: 5px;
+}
+
+.color-filter .color-filter-status {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.color-filter button {
+  min-height: 34px;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 12px;
 }
 
 input[type="search"],
@@ -430,13 +512,15 @@ select:focus {
 .source-frame {
   position: relative;
   width: 100%;
-  min-height: 210px;
-  max-height: 300px;
+  min-height: 260px;
+  max-height: 340px;
   display: grid;
   place-items: center;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #f7f7f2;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(246, 242, 233, 0.82)),
+    #f7f4ec;
   overflow: hidden;
 }
 
@@ -452,11 +536,14 @@ select:focus {
 }
 
 .image-preview img,
-#sourceThumb {
+#sourceThumb,
+#sourceImage {
   width: 100%;
-  max-height: 300px;
+  height: min(340px, 38vh);
+  max-height: 340px;
   object-fit: contain;
   display: block;
+  background: transparent;
 }
 
 .upload-shell {
@@ -557,7 +644,7 @@ select:focus {
   font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
   font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
 .fingerprint-chip::before {
@@ -579,8 +666,9 @@ select:focus {
 .selected-name {
   min-height: 0;
   padding-top: 2px;
+  font-family: Fraunces, Georgia, "Times New Roman", serif;
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 650;
   word-break: break-word;
 }
 
@@ -942,9 +1030,19 @@ input[type="range"] {
   color: #3d3f50;
   font-size: 13px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   text-shadow: 0 2px 0 rgba(255, 255, 255, 0.78);
+}
+
+@keyframes filter-pop {
+  0% {
+    opacity: 0;
+    transform: translateX(-8px) translateY(6px) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) translateY(0) scale(1);
+  }
 }
 
 @keyframes loader-bob {
@@ -1204,6 +1302,15 @@ code {
 }
 
 @media (max-width: 1080px) {
+  .topbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .brand-block {
+    flex-basis: 100%;
+  }
+
   .workspace {
     height: auto;
     min-height: 0;
@@ -1221,6 +1328,14 @@ code {
     height: min(72vh, 680px);
     min-height: 420px;
     order: -1;
+  }
+
+  .filters-popover {
+    left: 0;
+    right: 0;
+    top: 76px;
+    width: auto;
+    min-width: 0;
   }
 }
 

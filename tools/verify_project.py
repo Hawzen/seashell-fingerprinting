@@ -237,7 +237,7 @@ def verify_entrypoint() -> None:
     for marker in [
         "deriveMorphMetrics",
         "rangeFilterDefs",
-        "shellColorBucket",
+        "shellMatchesColor",
         "originFilterOptions",
         "conservationStatus",
         "lookupConservationStatus",
@@ -520,6 +520,30 @@ def run_browser_check(
 	                throw new Error(`initial UI failed: ${{JSON.stringify(restored)}}`);
 	              }}
 
+              await page.waitForFunction(() => document.querySelector('#sourceSpinner')?.hidden === true, null, {{ timeout: 120000 }});
+              const sourceCanvasProbe = await page.evaluate(() => {{
+                const canvas = document.querySelector('#sourceThumb');
+                const rect = canvas.getBoundingClientRect();
+                const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+                let opaque = 0;
+                let opaqueBlack = 0;
+                for (let offset = 0; offset < data.length; offset += 4) {{
+                  const alpha = data[offset + 3];
+                  if (alpha < 220) continue;
+                  opaque += 1;
+                  if (data[offset] < 28 && data[offset + 1] < 28 && data[offset + 2] < 28) opaqueBlack += 1;
+                }}
+                return {{
+                  cssHeight: Math.round(rect.height),
+                  opaque,
+                  opaqueBlack,
+                  blackRatio: opaque ? opaqueBlack / opaque : 0,
+                }};
+              }});
+              if (sourceCanvasProbe.cssHeight < 320 || sourceCanvasProbe.opaque < 500 || sourceCanvasProbe.blackRatio > 0.18) {{
+                throw new Error(`physical shell canvas failed: ${{JSON.stringify(sourceCanvasProbe)}}`);
+              }}
+
               await page.selectOption('#colorModeSelect', 'conservation');
               const liveConservation = await page.evaluate(async () => {{
                 const lookup = await window.shellspacePerf.lookupConservationStatus('Haliotis rufescens');
@@ -538,9 +562,11 @@ def run_browser_check(
               const filterProbe = await page.evaluate(() => {{
                 const baseFiltered = window.shellspacePerf.filteredCount();
                 const labels = Array.from(document.querySelectorAll('#filterControls .filter-row header span')).map((node) => node.textContent);
-                const firstTraitMin = document.querySelector('#filterControls input[type="range"]');
-                firstTraitMin.value = '60';
-                firstTraitMin.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                const firstTraitHigh = document.querySelector('#filterControls .filter-levels button[data-level="high"]');
+                const colorInput = document.querySelector('#filterControls input[type="color"]');
+                const panelRect = document.querySelector('#filtersPanel').getBoundingClientRect();
+                const controlsRect = document.querySelector('.controls-panel').getBoundingClientRect();
+                firstTraitHigh.click();
                 const traitFiltered = window.shellspacePerf.filteredCount();
                 document.querySelector('#resetTraitFilters').click();
                 const resetFiltered = window.shellspacePerf.filteredCount();
@@ -548,6 +574,9 @@ def run_browser_check(
                   open: !document.querySelector('#filtersPanel').hidden,
                   rows: document.querySelectorAll('#filterControls .filter-row').length,
                   labels,
+                  hasLevelButtons: document.querySelectorAll('#filterControls .filter-levels button').length >= 12,
+                  hasColorPicker: Boolean(colorInput),
+                  opensRight: panelRect.left >= controlsRect.right - 1,
                   baseFiltered,
                   traitFiltered,
                   resetFiltered,
@@ -558,6 +587,9 @@ def run_browser_check(
                 !filterProbe.open ||
                 filterProbe.rows < 7 ||
                 filterProbe.labels.join('|') !== 'Origin|Rarity|Color|Lightness|Area|Concavity|Asymmetry' ||
+                !filterProbe.hasLevelButtons ||
+                !filterProbe.hasColorPicker ||
+                !filterProbe.opensRight ||
                 filterProbe.traitFiltered >= filterProbe.baseFiltered ||
                 filterProbe.resetFiltered !== filterProbe.baseFiltered ||
                 filterProbe.buttonText !== 'Filters'
