@@ -150,7 +150,6 @@ def verify_entrypoint() -> None:
         "sourceThumb",
         "sourceImage",
         "sourceSpinner",
-        "shellDescription",
         "outlineCanvas",
         "pcControls",
         "uploadShell",
@@ -471,7 +470,7 @@ def run_browser_check(
 	                hash: document.querySelector('#physicalHash').textContent,
 	                projectedHash: document.querySelector('#projectedHash').textContent,
                 palette: document.querySelectorAll('#paletteSwatches > *').length,
-                description: document.querySelector('#shellDescription').textContent,
+                descriptionGone: !document.querySelector('#shellDescription'),
                 details: document.querySelector('#selectedDetails').textContent,
                 filterRows: document.querySelectorAll('#filterControls .filter-row').length,
                 filterPanelHidden: document.querySelector('#filtersPanel').hidden,
@@ -491,7 +490,7 @@ def run_browser_check(
 	                !/^[0-9A-Z]{{6}}$/.test(restored.hash) ||
                 restored.projectedHash !== restored.hash ||
                 restored.palette < 5 ||
-                restored.description.length < 20 ||
+                !restored.descriptionGone ||
                 restored.filterRows < 7 ||
                 !restored.filterPanelHidden ||
                 restored.placeholder !== 'Species or Shellprint' ||
@@ -504,13 +503,16 @@ def run_browser_check(
                 restored.details.includes('Occurrence records') ||
                 restored.details.includes('GBIF') ||
                 restored.details.includes('px') ||
+                !restored.details.includes('cm') ||
+                restored.details.includes('Samples') ||
+                restored.details.includes('View') ||
+                restored.details.includes('Specimen') ||
+                restored.details.includes('File') ||
+                restored.details.includes('Color') ||
                 restored.details.includes('Spire height') ||
                 restored.details.includes('Aperture ratio') ||
                 restored.details.includes('Damage score') ||
                 restored.details.includes('Chroma') ||
-                restored.description.includes('GBIF') ||
-	                restored.description.includes('is a shell species represented') ||
-	                restored.description.includes('reads as a') ||
 	                restored.details.includes('dataset rarity') ||
 	                !restored.loadingHidden ||
 	                restored.scatterPoints !== restored.filteredCount ||
@@ -521,6 +523,7 @@ def run_browser_check(
 	              }}
 
               await page.waitForFunction(() => document.querySelector('#sourceSpinner')?.hidden === true, null, {{ timeout: 120000 }});
+              await page.waitForFunction(() => window.shellspacePerf?.sourceMode?.() === 'original', null, {{ timeout: 120000 }});
               const sourceCanvasProbe = await page.evaluate(() => {{
                 const canvas = document.querySelector('#sourceThumb');
                 const rect = canvas.getBoundingClientRect();
@@ -538,9 +541,10 @@ def run_browser_check(
                   opaque,
                   opaqueBlack,
                   blackRatio: opaque ? opaqueBlack / opaque : 0,
+                  sourceMode: window.shellspacePerf?.sourceMode?.() || '',
                 }};
               }});
-              if (sourceCanvasProbe.cssHeight < 320 || sourceCanvasProbe.opaque < 500 || sourceCanvasProbe.blackRatio > 0.18) {{
+              if (sourceCanvasProbe.cssHeight < 320 || sourceCanvasProbe.opaque < 500 || sourceCanvasProbe.blackRatio > 0.18 || sourceCanvasProbe.sourceMode !== 'original') {{
                 throw new Error(`physical shell canvas failed: ${{JSON.stringify(sourceCanvasProbe)}}`);
               }}
 
@@ -563,7 +567,8 @@ def run_browser_check(
                 const baseFiltered = window.shellspacePerf.filteredCount();
                 const labels = Array.from(document.querySelectorAll('#filterControls .filter-row header span')).map((node) => node.textContent);
                 const firstTraitHigh = document.querySelector('#filterControls .filter-levels button[data-level="high"]');
-                const colorInput = document.querySelector('#filterControls input[type="color"]');
+                const colorSwatches = document.querySelectorAll('#filterControls .color-swatch-filter button');
+                const originMapPaths = document.querySelectorAll('#filterControls .origin-map path');
                 const panelRect = document.querySelector('#filtersPanel').getBoundingClientRect();
                 const controlsRect = document.querySelector('.controls-panel').getBoundingClientRect();
                 const panelCenterX = panelRect.left + panelRect.width / 2;
@@ -578,7 +583,8 @@ def run_browser_check(
                   rows: document.querySelectorAll('#filterControls .filter-row').length,
                   labels,
                   hasLevelButtons: document.querySelectorAll('#filterControls .filter-levels button').length >= 12,
-                  hasColorPicker: Boolean(colorInput),
+                  hasColorSwatches: colorSwatches.length === 12,
+                  hasOriginMap: originMapPaths.length >= 6,
                   opensRight: panelRect.left >= controlsRect.right - 1,
                   clickable: hitPanel?.id === 'filtersPanel',
                   baseFiltered,
@@ -592,7 +598,8 @@ def run_browser_check(
                 filterProbe.rows < 7 ||
                 filterProbe.labels.join('|') !== 'Origin|Rarity|Color|Lightness|Area|Concavity|Asymmetry' ||
                 !filterProbe.hasLevelButtons ||
-                !filterProbe.hasColorPicker ||
+                !filterProbe.hasColorSwatches ||
+                !filterProbe.hasOriginMap ||
                 !filterProbe.opensRight ||
                 !filterProbe.clickable ||
                 filterProbe.traitFiltered >= filterProbe.baseFiltered ||
@@ -732,8 +739,8 @@ def run_browser_check(
               }}));
               if (
                 !uploaded.selected.includes('Uploaded shell') ||
-                !uploaded.details.includes('Bring your own shell') ||
                 !uploaded.details.includes('Uploaded image') ||
+                !uploaded.details.includes('cm') ||
                 !/^[0-9A-Z]{{6}}$/.test(uploaded.hash)
               ) {{
                 throw new Error(`upload failed: ${{JSON.stringify(uploaded)}}`);

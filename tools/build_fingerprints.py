@@ -205,7 +205,14 @@ def isolate_shell(rgb: np.ndarray, fill_holes: bool = False) -> tuple[np.ndarray
         mask = binary_fill_holes(candidate) if fill_holes else candidate
     mask = binary_closing(mask, 5 if background_level < 30.0 else 3)
     mask, component_count = primary_component(mask)
-    mask = binary_fill_holes(mask)
+    if background_level < 30.0:
+        visible = diff > max(6.0, threshold * 0.55)
+        supported = mask & dilate(binary_closing(visible, 3), 5)
+        if int(supported.sum()) >= max(16, int(mask.sum() * 0.45)):
+            mask = supported
+            mask, component_count = primary_component(mask)
+    else:
+        mask = binary_fill_holes(mask)
     mask = binary_closing(mask, 3)
 
     info = {

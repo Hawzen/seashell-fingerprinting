@@ -361,7 +361,7 @@ button:hover {
   right: auto;
   top: var(--filters-top, 96px);
   z-index: 25;
-  width: var(--filters-width, min(380px, calc(100vw - 24px)));
+  width: var(--filters-width, min(560px, calc(100vw - 24px)));
   max-height: calc(100vh - 24px);
   overflow: auto;
   display: grid;
@@ -436,41 +436,94 @@ button:hover {
   font-weight: 700;
 }
 
-.color-filter {
+.origin-map-filter {
   display: grid;
-  grid-template-columns: 46px minmax(0, 1fr) auto;
-  gap: 7px;
-  align-items: center;
+  grid-template-columns: minmax(220px, 1.25fr) minmax(180px, 1fr);
+  gap: 10px;
+  align-items: stretch;
 }
 
-.color-filter input[type="color"] {
-  width: 46px;
-  height: 34px;
-  padding: 2px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: #fff;
+.origin-map {
+  width: 100%;
+  min-height: 170px;
+  border: 1px solid rgba(31, 38, 40, 0.12);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 50% 52%, rgba(31, 117, 111, 0.12), transparent 52%),
+    #eef3ef;
 }
 
-.color-filter input[type="color"]::-webkit-color-swatch-wrapper {
-  padding: 0;
+.origin-map path {
+  fill: rgba(255, 255, 255, 0.78);
+  stroke: rgba(31, 38, 40, 0.36);
+  stroke-width: 2;
+  cursor: pointer;
+  transition: fill 140ms ease, transform 140ms ease, filter 140ms ease;
 }
 
-.color-filter input[type="color"]::-webkit-color-swatch {
-  border: 0;
-  border-radius: 5px;
+.origin-map path:hover,
+.origin-map path:focus-visible {
+  fill: rgba(31, 117, 111, 0.16);
+  outline: 0;
+  filter: drop-shadow(0 2px 4px rgba(31, 38, 40, 0.16));
 }
 
-.color-filter .color-filter-status {
-  color: var(--muted);
-  font-size: 12px;
+.origin-map path.is-active {
+  fill: rgba(31, 117, 111, 0.32);
+  stroke: var(--teal);
 }
 
-.color-filter button {
-  min-height: 34px;
+.origin-country-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  max-height: 136px;
+  overflow: auto;
+}
+
+.origin-country-grid button,
+.origin-clear {
   min-width: 0;
-  padding: 6px 8px;
+  min-height: 30px;
+  padding: 5px 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 12px;
+}
+
+.origin-country-grid button[aria-pressed="true"] {
+  border-color: var(--teal);
+  background: rgba(31, 117, 111, 0.12);
+  color: #174e4b;
+  font-weight: 700;
+}
+
+.origin-clear {
+  grid-column: 1 / -1;
+}
+
+.color-swatch-filter {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.color-swatch-filter button {
+  min-width: 0;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.6), transparent),
+    var(--swatch);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.5);
+}
+
+.color-swatch-filter button[aria-pressed="true"] {
+  border-color: #1f2628;
+  box-shadow:
+    inset 0 0 0 3px rgba(255, 255, 255, 0.75),
+    0 0 0 2px rgba(31, 38, 40, 0.18);
 }
 
 input[type="search"],
@@ -673,12 +726,6 @@ select:focus {
   word-break: break-word;
 }
 
-.shell-description {
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.35;
-}
-
 dl {
   display: grid;
   grid-template-columns: max-content 1fr;
@@ -835,9 +882,9 @@ input[type="range"] {
 
 .rpg-loader {
   position: relative;
-  width: 172px;
-  height: 138px;
-  perspective: 520px;
+  width: 190px;
+  height: 160px;
+  perspective: 680px;
   transform-style: preserve-3d;
   image-rendering: pixelated;
   animation: loader-bob 2.6s cubic-bezier(0.3, 0.02, 0.25, 1) infinite;
@@ -871,7 +918,7 @@ input[type="range"] {
 
 .loader-shell {
   position: absolute;
-  left: 18px;
+  left: 27px;
   width: 136px;
   height: 72px;
   overflow: hidden;
@@ -910,14 +957,14 @@ input[type="range"] {
 }
 
 .loader-shell-top {
-  top: 14px;
+  top: 20px;
   border-radius: 78px 78px 18px 18px;
   transform-origin: 50% 100%;
   animation: loader-shell-top 2.6s cubic-bezier(0.42, 0, 0.2, 1) infinite;
 }
 
 .loader-shell-bottom {
-  bottom: 18px;
+  bottom: 22px;
   border-radius: 18px 18px 78px 78px;
   transform-origin: 50% 0;
   animation: loader-shell-bottom 2.6s cubic-bezier(0.42, 0, 0.2, 1) infinite;
@@ -977,8 +1024,8 @@ input[type="range"] {
 
 .loader-pearl {
   position: absolute;
-  left: 63px;
-  top: 59px;
+  left: 72px;
+  top: 68px;
   z-index: 2;
   width: 46px;
   height: 46px;
@@ -1069,10 +1116,10 @@ input[type="range"] {
   }
   38%,
   66% {
-    transform: rotateX(-68deg) translateZ(18px) translateY(-9px);
+    transform: rotateX(-52deg) translateZ(20px) translateY(-7px);
   }
   50% {
-    transform: rotateX(-78deg) translateZ(22px) translateY(-12px);
+    transform: rotateX(-60deg) translateZ(24px) translateY(-9px);
   }
 }
 
@@ -1085,10 +1132,10 @@ input[type="range"] {
   }
   38%,
   66% {
-    transform: rotateX(28deg) translateZ(8px) translateY(8px);
+    transform: rotateX(7deg) translateZ(4px) translateY(2px);
   }
   50% {
-    transform: rotateX(34deg) translateZ(10px) translateY(10px);
+    transform: rotateX(9deg) translateZ(5px) translateY(3px);
   }
 }
 
@@ -1337,6 +1384,10 @@ code {
     top: var(--filters-top, 96px);
     width: var(--filters-width, calc(100vw - 24px));
   }
+
+  .origin-map-filter {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 620px) {
@@ -1351,6 +1402,10 @@ code {
 
   .top-actions button {
     flex: 1 1 auto;
+  }
+
+  .color-swatch-filter {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .pc-row {

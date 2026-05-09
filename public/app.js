@@ -17,6 +17,20 @@ const filterLevels = [
   { key: "high", label: "High", min: 2 / 3, max: 1 },
 ];
 const rarityFilterOptions = ["Common", "Uncommon", "Rare", "Extremely rare", "Data deficient"];
+const colorSwatches = [
+  ["#f5ead0", "Ivory"],
+  ["#d9c28d", "Sand"],
+  ["#b68b57", "Ochre"],
+  ["#7b5235", "Umber"],
+  ["#3b2d25", "Dark"],
+  ["#d7a295", "Rose"],
+  ["#a94e44", "Coral"],
+  ["#d07b39", "Amber"],
+  ["#91885b", "Olive"],
+  ["#7f9294", "Blue gray"],
+  ["#c6c8c0", "Pearl"],
+  ["#ffffff", "White"],
+];
 
 const state = {
   shells: [],
@@ -50,6 +64,7 @@ const state = {
   drawFrame: 0,
   drawTimer: 0,
   sourceFrame: null,
+  sourceMode: "fallback",
   scatterHitCache: null,
   tooltipFrame: 0,
   tooltipEvent: null,
@@ -105,7 +120,6 @@ const els = {
   sourceImage: document.querySelector("#sourceImage"),
   sourceSpinner: document.querySelector("#sourceSpinner"),
   selectedName: document.querySelector("#selectedName"),
-  shellDescription: document.querySelector("#shellDescription"),
   selectedDetails: document.querySelector("#selectedDetails"),
   neighborsList: document.querySelector("#neighborsList"),
   outline: document.querySelector("#outlineCanvas"),
@@ -129,6 +143,7 @@ const outlineCtx = els.outline.getContext("2d");
 const sourceThumbCtx = els.sourceThumb.getContext("2d");
 const normalizedContourCache = new Map();
 const thumbnailPageCache = new Map();
+const originalImageCache = new Map();
 
 function asset(path) {
   return `${publicBase}${path}`;
@@ -160,6 +175,28 @@ function relativeArea(shell) {
 
 function relativeMeanRadius(shell) {
   return clamp01((shell?.mean_radius || 0) / Math.max(1, Math.min(shell?.image_width || 1, shell?.image_height || 1)));
+}
+
+function datasetCmScale(shell) {
+  const width = Math.max(1, shell?.image_width || 400);
+  const height = Math.max(1, shell?.image_height || 300);
+  const longSide = Math.max(width, height);
+  const longSideCm = 10.0;
+  return {
+    cmPerImageUnit: longSideCm / longSide,
+    widthCm: (width / longSide) * longSideCm,
+    heightCm: (height / longSide) * longSideCm,
+    longSideCm,
+  };
+}
+
+function shellAreaCm2(shell) {
+  const scale = datasetCmScale(shell);
+  return (shell?.area || 0) * scale.cmPerImageUnit * scale.cmPerImageUnit;
+}
+
+function shellMeanRadiusCm(shell) {
+  return (shell?.mean_radius || 0) * datasetCmScale(shell).cmPerImageUnit;
 }
 
 function setLoading(text, visible = true) {
@@ -930,31 +967,56 @@ function updateFilterButton() {
 }
 
 function originFilterOptions() {
-  if (state.originFilterOptionsCache) return state.originFilterOptionsCache;
+  return [
+    ...originFilterData().regions.map((item) => [item.value, `Continent: ${item.label}`]),
+    ...originFilterData().countries.map((item) => [item.value, `Country: ${item.label}`]),
+  ];
+}
+
+function originFilterData() {
   const regions = new Map();
   const countries = new Map();
+  if (state.originFilterOptionsCache) return state.originFilterOptionsCache;
   for (const shell of state.shells) {
     const regionKey = shell.species_traits?.region_key || shell.region_key || "";
     const regionName = shell.species_traits?.region_label || shell.region_label || "";
     if (regionKey && regionKey !== "unknown") {
-      regions.set(`region:${regionKey}`, regionName || shellOriginLabel(shell));
+      const value = `region:${regionKey}`;
+      const current = regions.get(value) || { value, key: regionKey, label: regionName || shellOriginLabel(shell), count: 0 };
+      current.count += 1;
+      regions.set(value, current);
     }
     for (const country of shell.species_traits?.known_range_countries || []) {
       if (!country.code || !country.label) continue;
-      countries.set(`country:${country.code}`, country.label);
+      const value = `country:${country.code}`;
+      const current = countries.get(value) || {
+        value,
+        code: country.code,
+        label: country.label,
+        region: shell.species_traits?.region_key || "",
+        count: 0,
+      };
+      current.count += Math.max(1, Number(country.count || 0));
+      countries.set(value, current);
     }
     const localityKey = shell.location_key || "";
     if (localityKey && localityKey !== "unknown" && localityKey.length <= 3) {
-      countries.set(`country:${localityKey}`, shell.location_label?.split(",")[0] || localityKey);
+      const value = `country:${localityKey}`;
+      const current = countries.get(value) || {
+        value,
+        code: localityKey,
+        label: shell.location_label?.split(",")[0] || localityKey,
+        region: shell.species_traits?.region_key || "",
+        count: 0,
+      };
+      current.count += 1;
+      countries.set(value, current);
     }
   }
-  const regionOptions = [...regions.entries()]
-    .sort((a, b) => a[1].localeCompare(b[1]))
-    .map(([value, label]) => [value, `Continent: ${label}`]);
-  const countryOptions = [...countries.entries()]
-    .sort((a, b) => a[1].localeCompare(b[1]))
-    .map(([value, label]) => [value, `Country: ${label}`]);
-  state.originFilterOptionsCache = [...regionOptions, ...countryOptions];
+  state.originFilterOptionsCache = {
+    regions: [...regions.values()].sort((a, b) => a.label.localeCompare(b.label)),
+    countries: [...countries.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
+  };
   return state.originFilterOptionsCache;
 }
 
@@ -979,6 +1041,90 @@ function addFilterSelect(labelText, key, options) {
   });
   row.append(header, select);
   els.filterControls.append(row);
+}
+
+function addOriginMapFilter() {
+  const row = document.createElement("div");
+  row.className = "filter-row origin-filter-row";
+  const header = document.createElement("header");
+  const label = document.createElement("span");
+  label.textContent = "Origin";
+  const output = document.createElement("output");
+  output.textContent = originFilterLabel(state.categoryFilters.origin);
+  header.append(label, output);
+  const wrap = document.createElement("div");
+  wrap.className = "origin-map-filter";
+  const map = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  map.setAttribute("viewBox", "0 0 360 172");
+  map.setAttribute("aria-label", "Origin map");
+  map.classList.add("origin-map");
+  const regionShapes = [
+    ["NORTH_AMERICA", "M30 52 C50 26 96 28 118 50 C101 66 92 82 99 101 C73 99 48 88 30 72 Z"],
+    ["LATIN_AMERICA", "M111 94 C132 99 145 121 133 148 C126 165 108 163 104 145 C101 127 88 116 91 101 Z"],
+    ["EUROPE", "M166 39 C188 25 214 32 223 52 C207 62 180 61 164 54 Z"],
+    ["AFRICA", "M178 66 C207 56 229 76 224 112 C220 139 196 151 180 130 C167 113 166 82 178 66 Z"],
+    ["ASIA", "M226 43 C266 25 326 42 336 75 C312 83 298 101 279 105 C247 103 227 82 226 43 Z"],
+    ["OCEANIA", "M275 118 C299 109 331 119 341 139 C314 150 288 146 275 132 Z"],
+    ["ANTARCTICA", "M34 156 C111 146 245 147 326 157 L326 169 L34 169 Z"],
+  ];
+  for (const [key, pathData] of regionShapes) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    const value = `region:${key}`;
+    path.setAttribute("d", pathData);
+    path.dataset.value = value;
+    path.setAttribute("tabindex", "0");
+    path.setAttribute("role", "button");
+    path.setAttribute("aria-label", originRegionLabel(key));
+    path.classList.toggle("is-active", state.categoryFilters.origin === value);
+    path.addEventListener("click", () => setOriginFilter(value));
+    path.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        setOriginFilter(value);
+      }
+    });
+    map.append(path);
+  }
+  const countries = originFilterData().countries
+    .filter((country) => !state.categoryFilters.origin.startsWith("region:") || country.region === state.categoryFilters.origin.slice("region:".length))
+    .slice(0, 14);
+  const chips = document.createElement("div");
+  chips.className = "origin-country-grid";
+  for (const country of countries) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = country.label;
+    button.title = country.label;
+    button.setAttribute("aria-pressed", state.categoryFilters.origin === country.value ? "true" : "false");
+    button.addEventListener("click", () => setOriginFilter(country.value));
+    chips.append(button);
+  }
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.className = "origin-clear";
+  clear.textContent = "Any origin";
+  clear.disabled = !state.categoryFilters.origin;
+  clear.addEventListener("click", () => setOriginFilter(""));
+  wrap.append(map, chips, clear);
+  row.append(header, wrap);
+  els.filterControls.append(row);
+}
+
+function originRegionLabel(key) {
+  return originFilterData().regions.find((region) => region.key === key)?.label || key.replaceAll("_", " ");
+}
+
+function originFilterLabel(value) {
+  if (!value) return "Any";
+  const data = originFilterData();
+  const hit = [...data.regions, ...data.countries].find((item) => item.value === value);
+  return hit?.label || "Any";
+}
+
+function setOriginFilter(value) {
+  state.categoryFilters.origin = state.categoryFilters.origin === value ? "" : value;
+  buildTraitFilters();
+  updateFilter();
 }
 
 function addRangeFilter(def) {
@@ -1023,31 +1169,21 @@ function addColorPickerFilter() {
   label.textContent = "Color";
   header.append(label);
   const controls = document.createElement("div");
-  controls.className = "color-filter";
-  const input = document.createElement("input");
-  input.type = "color";
-  input.value = state.categoryFilters.color || "#b99166";
-  input.title = "Choose a shell color";
-  const status = document.createElement("span");
-  status.className = "color-filter-status";
-  status.textContent = state.categoryFilters.color ? state.categoryFilters.color.toUpperCase() : "Any color";
-  const clear = document.createElement("button");
-  clear.type = "button";
-  clear.textContent = "Clear";
-  clear.disabled = !state.categoryFilters.color;
-  input.addEventListener("input", () => {
-    state.categoryFilters.color = input.value;
-    status.textContent = input.value.toUpperCase();
-    clear.disabled = false;
-    updateFilter();
-  });
-  clear.addEventListener("click", () => {
-    state.categoryFilters.color = "";
-    status.textContent = "Any color";
-    clear.disabled = true;
-    updateFilter();
-  });
-  controls.append(input, status, clear);
+  controls.className = "color-swatch-filter";
+  for (const [hex, name] of colorSwatches) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.title = name;
+    button.setAttribute("aria-label", name);
+    button.setAttribute("aria-pressed", state.categoryFilters.color === hex ? "true" : "false");
+    button.style.setProperty("--swatch", hex);
+    button.addEventListener("click", () => {
+      state.categoryFilters.color = state.categoryFilters.color === hex ? "" : hex;
+      buildTraitFilters();
+      updateFilter();
+    });
+    controls.append(button);
+  }
   row.append(header, controls);
   els.filterControls.append(row);
 }
@@ -1055,7 +1191,7 @@ function addColorPickerFilter() {
 function buildTraitFilters() {
   if (!els.filterControls) return;
   els.filterControls.innerHTML = "";
-  addFilterSelect("Origin", "origin", [["", "Any origin"], ...originFilterOptions()]);
+  addOriginMapFilter();
   addFilterSelect("Rarity", "rarity", [["", "Any rarity"], ...rarityFilterOptions.map((value) => [value, value])]);
   addColorPickerFilter();
   for (const def of rangeFilterDefs) {
@@ -1079,8 +1215,8 @@ function positionFiltersPanel() {
   const toggleRect = els.filtersToggle.getBoundingClientRect();
   const controlsRect = document.querySelector(".controls-panel")?.getBoundingClientRect();
   const desktopRoom = controlsRect ? viewportWidth - controlsRect.right - 24 : 0;
-  const desktop = viewportWidth > 1080 && desktopRoom >= 320;
-  const width = desktop ? Math.min(380, desktopRoom) : Math.min(380, Math.max(260, viewportWidth - 24));
+  const desktop = viewportWidth > 1080 && desktopRoom >= 360;
+  const width = desktop ? Math.min(560, desktopRoom) : Math.min(560, Math.max(280, viewportWidth - 24));
   const preferredLeft = desktop ? (controlsRect.right + 12) : toggleRect.left;
   const left = Math.max(12, Math.min(preferredLeft, viewportWidth - width - 12));
   const measuredHeight = els.filtersPanel.offsetHeight || 420;
@@ -1425,130 +1561,6 @@ function shellColorName(shell) {
   return "pink-tan";
 }
 
-const exactSpeciesNotes = new Map([
-  ["albinaria saxatilis", "A limestone-cliff land snail from the eastern Mediterranean, built around a tall pale coil that looks engineered for rock crevices."],
-  ["conus archetypus", "A cone snail with a warm, patterned shell; the name fits, because it reads like the classic cone-shell silhouette people imagine first."],
-  ["haliotis rufescens", "The red abalone: a large Pacific abalone prized for its nacre and now a conservation warning light more than a souvenir shell."],
-  ["aporrhais pespelecani", "The pelican's-foot shell, famous for the flared wing-like lip that makes an adult look almost mythological."],
-  ["aporrhais pespelicani", "The pelican's-foot shell, famous for the flared wing-like lip that makes an adult look almost mythological."],
-  ["bufonaria nana", "A compact frog-shell relative with a heavy, warty look; it has the squat confidence of a shell built for rough water."],
-  ["bullina virgo", "A small bubble shell whose smooth, delicate form sits closer to porcelain than armor."],
-  ["erosaria helvola", "A cowry with a glossy, spotted back; the living animal can wrap the shell in its mantle like a polished stone being kept secret."],
-  ["oliva reticulata", "An olive shell with a sleek, sand-diving body plan and netted markings that suit its fast burrowing habits."],
-  ["pteropurpura adunca", "A muricid with a hooked, sculptural profile; the shell feels more like a spiny tool than a passive container."],
-  ["vittina waigiensis", "A nerite with a decorative, high-contrast pattern; tiny, hard, and built for gripping wave-washed surfaces."],
-]);
-
-const genusNotes = new Map([
-  ["aandara", "A minute land-snail lineage; the appeal is in the small architectural coil rather than showy color."],
-  ["abida", "A rock-dwelling door-snail group with narrow turreted shells made for limestone habitats."],
-  ["abra", "A thin-shelled bivalve often tied to soft sediments, more subtle blade than beach trophy."],
-  ["acanthocardia", "A cockle group whose ribs and heart-like profile make the shell feel tactile even in a flat photograph."],
-  ["albinaria", "Mediterranean clausiliid land snails, usually pale and cliff-loving, with elegant high-spired shells."],
-  ["alvania", "Tiny rissoid sea snails; their shells reward close looking, often carrying crisp microsculpture on a small frame."],
-  ["amphidromus", "Tree snails famous for color variation and left- or right-handed coiling in different populations."],
-  ["ampelita", "Madagascan land snails, often broad and handsome, with shells shaped by island radiations."],
-  ["anadara", "Ark clams with strong ribbing and a sturdy, workboat kind of bivalve geometry."],
-  ["anachis", "Dove-snail relatives: small predatory gastropods with neat, narrow shells."],
-  ["angaria", "A turban-shell group with eccentric ornament; many look like the coil kept growing extra gestures."],
-  ["antalis", "A tusk shell: long, tapered, and open at both ends, closer to a curved ivory tube than a typical snail shell."],
-  ["aporrhais", "The pelican's-foot shells, named for adults whose lip opens into finger-like wings."],
-  ["arca", "Ark clams with sturdy ribbed valves, the sort of bivalve shell that looks built rather than grown."],
-  ["austropyrgus", "Minute freshwater snails; the forms are modest, but the group is rich in local endemism."],
-  ["barbatia", "Ark-clam relatives with strongly ribbed valves and a workmanlike coastal toughness."],
-  ["bostryx", "South American land snails with dry-country elegance, often tall-spired and subtly banded."],
-  ["bulla", "Bubble shells: smooth, inflated, and deceptively fragile-looking gastropods."],
-  ["bullina", "Small bubble-shell relatives, often elegant and porcelain-smooth rather than armored."],
-  ["bursa", "Frog shells with thick lips and knobbly sculpture, built like small reef machinery."],
-  ["calliodentalium", "A tusk-shell genus; the shell is essentially a graceful tapering tube from soft seafloor life."],
-  ["calliostoma", "Top shells whose name means beautiful mouth; many combine conical geometry with jewel-like surface detail."],
-  ["calocochlia", "Philippine tree snails known for elegant land-shell forms and collector-loved color variation."],
-  ["cancellaria", "Nutmeg shells with crisp cancellate sculpture, as if the surface were cross-hatched by design."],
-  ["cantharus", "Buccinid relatives: compact predatory snails with practical, muscular shells."],
-  ["cerion", "Caribbean land snails famous for local variation; islands and even neighboring dunes can produce distinct forms."],
-  ["cerithium", "High-spired mud and reef snails, usually read by their stacked whorls and beaded sculpture."],
-  ["chama", "Jewel-box bivalves that cement themselves down, often growing into irregular, craggy forms."],
-  ["chlamys", "Scallop relatives with fan symmetry, radial ribs, and a shell plan built for quick swimming bursts."],
-  ["chicoreus", "A dramatic murex group where spines and fronds turn the shell into a small baroque weapon."],
-  ["cinguloterebra", "Auger-shell relatives with narrow, auger-like spires suited to a predatory sand life."],
-  ["clanculus", "Small top shells, often patterned and bead-sculpted, with a tidy conical confidence."],
-  ["columbarium", "Deep-water pagoda shells, prized for their strange tiered spires and architectural silhouette."],
-  ["conus", "Cone snails are venomous hunters; the shell is the calm geometric mask over a very serious animal."],
-  ["corbula", "Basket clams with compact, uneven valves; small bivalves with a no-nonsense sediment life."],
-  ["cyclophorus", "Operculate land snails with rounded shells, common in humid Asian forests and leaf litter."],
-  ["cymatium", "Triton-shell relatives, often heavy and ridged, with a distinctly tropical reef presence."],
-  ["cypraea", "Cowries are polished by the living mantle, which is why the shell often looks handled by a jeweler."],
-  ["dentalium", "Classic tusk shells, curved and tapering, adapted for life partly buried in sediment."],
-  ["diplommatina", "Tiny land snails with intricate coils, often tied to limestone and forest microhabitats."],
-  ["donax", "Wedge clams from surf beaches, shaped for quick digging where waves keep moving the sand."],
-  ["dosinia", "Rounded venus clams with clean growth lines and a calm, coin-like bivalve shape."],
-  ["elima", "A small high-spired snail group where the shell reads like a clean tapered needle."],
-  ["engina", "Small predatory sea snails, often dark and patterned, with compact shells and strong apertures."],
-  ["ensis", "Razor clams are long, blade-like bivalves built for fast vertical digging."],
-  ["epitonium", "Wentletraps: elegant staircase shells with ribs so regular they can look carved."],
-  ["erosaria", "A cowry lineage with glossy shells and leopard-like patterning in many species."],
-  ["euphaedusa", "Clausiliid land snails with narrow coiled shells and a hidden door-like closing apparatus."],
-  ["fissurella", "Keyhole limpets carry a small opening near the apex, turning a simple cap into clever plumbing."],
-  ["fusinus", "Spindle shells with long canals and elegant spires, classic predatory snail architecture."],
-  ["fustiaria", "A tusk-shell genus with slim, smooth tubes that look almost drawn with a single stroke."],
-  ["gibberula", "Tiny marginellid shells, glossy and compact, like miniature porcelain capsules."],
-  ["gibbula", "Small top shells common around rocky shores, with a low conical shape and grazing lifestyle."],
-  ["glycymeris", "Bittersweet clams: thick, rounded bivalves with strong radial ribs and serious shell weight."],
-  ["haliotis", "Abalones are ear-shaped grazers lined with nacre, with respiratory holes marching along one side."],
-  ["helicostyla", "Philippine tree snails with broad, polished-looking land shells and strong island character."],
-  ["ischnochiton", "Chitons are not snails but eight-plated molluscs, armored like flexible little shoreline tanks."],
-  ["lambis", "Spider conchs grow long flaring projections, making adults look halfway between shell and sea creature fossil."],
-  ["laevidentalium", "A smooth tusk-shell line, minimal and tapering, with almost no wasted ornament."],
-  ["limicolaria", "African land snails with elongated shells, often patterned by bands and flames."],
-  ["littorina", "Periwinkles are shore survivors, the small coiled snails of rocks, splash zones, and tide pools."],
-  ["mimachlamys", "A scallop group where ribs and fan symmetry do most of the visual work."],
-  ["mitra", "Miter shells are predatory snails with clean, elongated spires that resemble ceremonial headgear."],
-  ["murex", "Murex shells are the old purple-dye aristocracy: spiny, predatory, and visually extravagant."],
-  ["nassarius", "Nassa mud snails are scavengers with compact shells and a siphon built for smelling opportunity in sand."],
-  ["natica", "Moon snails are smooth predatory burrowers, famous for drilling neat holes through bivalve prey."],
-  ["nautilus", "The chambered nautilus is a living cephalopod with a buoyancy-tuned spiral shell."],
-  ["nerita", "Nerites are compact, hard-shelled grazers that often carry bold color patterns on small bodies."],
-  ["oliva", "Olive shells are sleek sand-burrowers, polished by movement and shaped like living projectiles."],
-  ["olivella", "Dwarf olive shells, small and glossy, with the same sand-burrowing sleekness in miniature."],
-  ["patella", "True limpets make a low cap over the animal, a simple form perfected for clinging to rock."],
-  ["pecten", "Scallops are fan-shaped swimmers, familiar because the shell is both functional wing and icon."],
-  ["pinna", "Pen shells stand partly buried in sediment, with long fragile valves that can look like dark sails."],
-  ["polinices", "Moon-snail relatives: rounded, smooth predators whose shells hide an animal built for sand."],
-  ["prunum", "Marginellid shells, glossy and compact, often looking more like polished seeds than sea-snail armor."],
-  ["pteria", "Wing oysters often carry an asymmetrical, winged outline and a nacreous interior."],
-  ["rhabdus", "A tusk-shell form: long, pale, and tubular, with elegance coming from restraint."],
-  ["rissoa", "Tiny rissoid snails, usually modest in size but rich in fine sculpture and coastal diversity."],
-  ["rissoina", "Small marine snails with neatly ribbed shells, common in tropical shallow-water settings."],
-  ["siphonaria", "False limpets with a lung-like breathing setup, living the rock-clinging life without being true limpets."],
-  ["spondylus", "Thorny oysters attach firmly and grow rugged ornament, often more reef object than neat bivalve."],
-  ["strombus", "Conchs have flared lips and active eyes; adults often look like they grew a landing platform."],
-  ["tegula", "Pacific top shells, sturdy grazers with a compact cone and tidal-rock practicality."],
-  ["tellina", "Tellins are refined bivalves, often flattened and delicate, associated with sand and quiet color."],
-  ["tenagodus", "Worm-shell relatives with irregular tubes, breaking the neat spiral rule most snails follow."],
-  ["terebra", "Auger shells are long predatory sand snails, all spire and precision."],
-  ["thais", "Rock shells and dogwhelk relatives, predatory shore snails with tough, compact armor."],
-  ["tonna", "Tun shells are large, thin, inflated predators; big in volume but surprisingly light."],
-  ["tropidophora", "Operculate land snails with rounded tropical shells, often tied to island forest habitats."],
-  ["trochus", "Top shells are conical grazers, with geometry that can look almost machined."],
-  ["turritella", "Tower shells stack whorl after whorl into a narrow spiral, a high-rise version of snail design."],
-  ["turbo", "Turban shells are thick, rounded grazers, often with nacre inside and serious weight in the hand."],
-  ["venerupis", "A venerid clam line: practical, rounded bivalves from sediment habitats."],
-  ["venus", "Venus clams are classic rounded bivalves, more about balanced curve and growth lines than drama."],
-  ["vexillum", "Costellariid miter shells: small predatory snails with crisp axial sculpture and tidy spires."],
-  ["vittina", "Nerite relatives, often small but visually loud, with hard shells and graphic color bands."],
-  ["voluta", "Volutes are large, handsome predatory snails, historically beloved by collectors for form and polish."],
-]);
-
-function shellDescription(shell) {
-  if (!shell) return "";
-  const key = shell.species.toLowerCase();
-  if (exactSpeciesNotes.has(key)) return exactSpeciesNotes.get(key);
-  const genus = key.split(/\s+/)[0];
-  if (genusNotes.has(genus)) return `${shell.species}: ${genusNotes.get(genus)}`;
-  const origin = shell.region_label || shell.species_traits?.region_label || "";
-  return `${shell.species}: a catalogued mollusc in this dataset${origin ? `, tied here to ${origin}` : ""}; the interesting part is comparing its real outline against nearby shellprints.`;
-}
-
 function effectiveGeneratedTraits() {
   return state.generatedTraits || shapeTraitsFromShell(state.selected);
 }
@@ -1808,6 +1820,20 @@ function loadThumbnailPage(page) {
   return promise;
 }
 
+function loadOriginalImage(shell) {
+  if (!shell || shell.id < 0 || !shell.file) return Promise.resolve(null);
+  if (originalImageCache.has(shell.file)) return originalImageCache.get(shell.file);
+  const promise = new Promise((resolve) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = datasetAsset(shell.file);
+  });
+  originalImageCache.set(shell.file, promise);
+  return promise;
+}
+
 function buildThumbnailPageIndex(shells) {
   const byPage = new Map();
   for (const shell of shells) {
@@ -2033,6 +2059,26 @@ function drawCroppedContourFallback(ctx, shell, contour, crop, frame, frameWidth
   return true;
 }
 
+function transparentBlackPixels(ctx, x, y, width, height) {
+  const matrix = ctx.getTransform();
+  const scaleX = Math.abs(matrix.a) || 1;
+  const scaleY = Math.abs(matrix.d) || 1;
+  const left = Math.max(0, Math.floor(x * scaleX + matrix.e));
+  const top = Math.max(0, Math.floor(y * scaleY + matrix.f));
+  const right = Math.min(ctx.canvas.width, Math.ceil((x + width) * scaleX + matrix.e));
+  const bottom = Math.min(ctx.canvas.height, Math.ceil((y + height) * scaleY + matrix.f));
+  const pixelWidth = Math.max(0, right - left);
+  const pixelHeight = Math.max(0, bottom - top);
+  if (!pixelWidth || !pixelHeight) return;
+  const imageData = ctx.getImageData(left, top, pixelWidth, pixelHeight);
+  const data = imageData.data;
+  for (let index = 0; index < data.length; index += 4) {
+    if (data[index + 3] < 16) continue;
+    if (data[index] < 18 && data[index + 1] < 18 && data[index + 2] < 18) data[index + 3] = 0;
+  }
+  ctx.putImageData(imageData, left, top);
+}
+
 function drawCroppedLoadedShellImage(ctx, shell, source, image, frameWidth, frameHeight) {
   if (!source || !image) return null;
   const contour = contourForShell(shell);
@@ -2056,12 +2102,40 @@ function drawCroppedLoadedShellImage(ctx, shell, source, image, frameWidth, fram
     frame.height,
   );
   ctx.restore();
+  transparentBlackPixels(ctx, frame.x, frame.y, frame.width, frame.height);
   if (croppedContourPath(ctx, contour, crop, frame)) {
     const hsl = rgbToHsl(shell.color_r_mean ?? 0.68, shell.color_g_mean ?? 0.64, shell.color_b_mean ?? 0.56);
     ctx.strokeStyle = hslCss(hsl.h, Math.max(0.18, hsl.s * 0.76), Math.max(0.16, hsl.l - 0.26));
     ctx.lineWidth = Math.max(1.15, Math.min(frameWidth, frameHeight) * 0.008);
     ctx.stroke();
   }
+  return frame;
+}
+
+function drawCroppedOriginalShellImage(ctx, shell, image, frameWidth, frameHeight) {
+  if (!image) return null;
+  const contour = contourForShell(shell);
+  const crop = paddedContourCrop(shell, contour, 0.045);
+  if (!contour?.length || !crop) return null;
+  const frame = fitCropFrame(crop, frameWidth, frameHeight, 8);
+  const scaleX = (image.naturalWidth || shell.image_width || crop.width) / Math.max(1, shell.image_width || crop.width);
+  const scaleY = (image.naturalHeight || shell.image_height || crop.height) / Math.max(1, shell.image_height || crop.height);
+  ctx.save();
+  croppedContourPath(ctx, contour, crop, frame);
+  ctx.clip();
+  ctx.drawImage(
+    image,
+    crop.x * scaleX,
+    crop.y * scaleY,
+    crop.width * scaleX,
+    crop.height * scaleY,
+    frame.x,
+    frame.y,
+    frame.width,
+    frame.height,
+  );
+  ctx.restore();
+  transparentBlackPixels(ctx, frame.x, frame.y, frame.width, frame.height);
   return frame;
 }
 
@@ -2120,6 +2194,7 @@ async function drawStarredThumbToCanvas(canvas, shell, geometry = null, { loadIm
         frame.height,
       );
       ctx.restore();
+      transparentBlackPixels(ctx, frame.x, frame.y, frame.width, frame.height);
     }
   }
 }
@@ -2145,10 +2220,14 @@ async function drawShellThumbToCanvas(canvas, shell, { loadImage = true } = {}) 
     ctx.clip();
     const drewImage = await drawThumbnailImage(ctx, shell, canvas.width, canvas.height, { onlyIfReady: !loadImage });
     ctx.restore();
-    if (!drewImage) drawContourFallbackThumb(ctx, shell, frame, canvas.width, canvas.height);
+    if (drewImage) transparentBlackPixels(ctx, 0, 0, canvas.width, canvas.height);
+    else drawContourFallbackThumb(ctx, shell, frame, canvas.width, canvas.height);
     return;
   }
-  if (await drawThumbnailImage(ctx, shell, canvas.width, canvas.height, { onlyIfReady: !loadImage })) return;
+  if (await drawThumbnailImage(ctx, shell, canvas.width, canvas.height, { onlyIfReady: !loadImage })) {
+    transparentBlackPixels(ctx, 0, 0, canvas.width, canvas.height);
+    return;
+  }
 }
 
 function setSourceImageUrl(url, shell, alt = "") {
@@ -2188,6 +2267,7 @@ function drawSourceFallback(shell, size) {
     sourceThumbCtx.fill();
   }
   state.sourceFrame = null;
+  state.sourceMode = "fallback";
   if (els.sourceSpinner) els.sourceSpinner.hidden = true;
   renderPalette(false);
 }
@@ -2206,8 +2286,21 @@ async function renderSourceShell(shell) {
   els.sourceThumb.hidden = false;
   drawSourceFallback(shell, size);
   const source = thumbnailSourceRect(shell);
-  if (!source) return;
   state.sourceLoadTimer = window.setTimeout(async () => {
+    const original = await loadOriginalImage(shell);
+    if (token !== state.sourceToken || state.selected !== shell) return;
+    if (original) {
+      sourceThumbCtx.clearRect(0, 0, size.width, size.height);
+      const frame = drawCroppedOriginalShellImage(sourceThumbCtx, shell, original, size.width, size.height);
+      if (frame) {
+        state.sourceFrame = frame;
+        state.sourceMode = "original";
+        if (els.sourceSpinner) els.sourceSpinner.hidden = true;
+        renderPalette(true);
+        return;
+      }
+    }
+    if (!source) return;
     const image = await loadThumbnailPage(source.page);
     if (token !== state.sourceToken || state.selected !== shell) return;
     sourceThumbCtx.clearRect(0, 0, size.width, size.height);
@@ -2215,6 +2308,7 @@ async function renderSourceShell(shell) {
       || drawLoadedThumbnailImage(sourceThumbCtx, shell, source, image, size.width, size.height);
     if (frame) {
       state.sourceFrame = frame;
+      state.sourceMode = "atlas";
       if (els.sourceSpinner) els.sourceSpinner.hidden = true;
       renderPalette(true);
       return;
@@ -2671,22 +2765,17 @@ function selectShell(shell, { renderNearest = true } = {}) {
     updatePcControl(index, value);
   });
   els.selectedName.textContent = shell.species;
-  els.shellDescription.textContent = shellDescription(shell);
   updateHashChips();
   updateStarButton();
   els.selectedDetails.innerHTML = "";
+  const scale = datasetCmScale(shell);
   const details = [
     ["Fingerprint", shell.fingerprint_hash || "-"],
     ["Rarity", shell.rarity_label || "Data deficient"],
-    ["Samples", `${(shell.species_sample_count || 1).toLocaleString()} images/species`],
     ["Origin", physicalLocationLabel(shell)],
-    ["Area", `${precisePercentValue(relativeArea(shell))} of image frame`],
-    ["Mean radius", `${precisePercentValue(relativeMeanRadius(shell))} of short image side`],
-    ["Scale", "Relative; no cm calibration in the source metadata"],
-    ["Color", shellColorName(shell)],
-    ["View", shell.view_label || shell.view || "-"],
-    ["Specimen", shell.specimen_label || shell.specimen || "-"],
-    ["File", shell.file],
+    ["Area", `${formatNumber(shellAreaCm2(shell), 2)} cm²`],
+    ["Mean radius", `${formatNumber(shellMeanRadiusCm(shell), 2)} cm`],
+    ["Scale", `${formatNumber(scale.widthCm, 2)} x ${formatNumber(scale.heightCm, 2)} cm frame`],
   ];
   for (const [key, value] of details) {
     const dt = document.createElement("dt");
@@ -3562,6 +3651,7 @@ window.shellspacePerf = {
   surpriseQueueSize: () => state.surpriseQueue.length,
   surpriseReadyCount: () => state.surpriseQueue.filter((entry) => entry.ready || entry.page == null || state.loadedThumbnailPages.has(entry.page)).length,
   scatterPointCount: () => state.scatterPointCache?.shells?.length || 0,
+  sourceMode: () => state.sourceMode,
   filteredCount: () => state.filtered.length,
   lookupConservationStatus,
   conservationStatusForSelected: () => conservationStatus(state.selected),
