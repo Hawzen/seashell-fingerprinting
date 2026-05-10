@@ -280,6 +280,9 @@ def verify_entrypoint() -> None:
         "loadImage = false",
         "ignoreRealShells",
         "screenNeighborScanCount",
+        "queueStarredImageHydration",
+        "hydrateVisibleStarredImages",
+        "starredHydratedCount",
     ]:
         if marker not in app:
             raise AssertionError(f"New feature implementation is missing {marker!r}")

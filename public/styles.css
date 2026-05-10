@@ -46,7 +46,8 @@ p {
 h1 {
   font-family: Fraunces, Georgia, "Times New Roman", serif;
   font-size: clamp(22px, 3vw, 34px);
-  line-height: 1.16;
+  line-height: 1.22;
+  padding-top: 2px;
   letter-spacing: 0;
   color: #172325;
 }
@@ -89,7 +90,7 @@ button:hover {
   position: relative;
   z-index: 40;
   min-height: 92px;
-  padding: 32px 20px 12px;
+  padding: 44px 20px 14px;
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
@@ -124,11 +125,12 @@ button:hover {
 
 .starred-band {
   position: relative;
+  align-self: stretch;
   flex: 1 1 auto;
   min-width: 0;
   max-width: none;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: flex-start;
   gap: 1px;
   overflow: visible;

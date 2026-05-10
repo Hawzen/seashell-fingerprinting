@@ -64,6 +64,9 @@ const state = {
   sourceMode: "fallback",
   scatterHitCache: null,
   screenNeighborScanCount: 0,
+  starredHydrationTimer: 0,
+  starredHydrationRun: 0,
+  starredHydratedCount: 0,
   tooltipFrame: 0,
   tooltipEvent: null,
   tooltipLastAt: 0,
@@ -2653,26 +2656,25 @@ function starredShelfSelection() {
 function renderStarred() {
   if (!els.starredBand) return;
   els.starredBand.innerHTML = "";
+  state.starredHydratedCount = 0;
   const { items, hidden } = starredShelfSelection();
-  items.forEach(({ shell, geometry }, index) => {
+  for (const { shell, geometry } of items) {
     const button = document.createElement("button");
     button.className = "starred-shell";
     button.title = `${shell.species} ${shell.fingerprint_hash}`;
+    button.dataset.shellId = String(shell.id);
     button.style.setProperty("--starred-thumb-width", `${geometry.size.cssWidth}px`);
     const canvas = document.createElement("canvas");
     canvas.width = geometry.size.pixelWidth;
     canvas.height = geometry.size.pixelHeight;
     button.append(canvas);
     window.requestAnimationFrame(() => drawStarredThumbToCanvas(canvas, shell, geometry));
-    window.setTimeout(() => {
-      if (canvas.isConnected) drawStarredThumbToCanvas(canvas, shell, geometry, { loadImage: true });
-    }, 80 + index * 28);
     button.addEventListener("click", () => {
       centerViewportOnShell(shell);
       selectShell(shell);
     });
     els.starredBand.append(button);
-  });
+  }
   if (hidden > 0 || state.showAllStars) {
     const more = document.createElement("button");
     more.className = "starred-more";
@@ -2684,6 +2686,47 @@ function renderStarred() {
     });
     els.starredBand.append(more);
   }
+  queueStarredImageHydration();
+}
+
+function queueStarredImageHydration(delay = 3000) {
+  if (!els.starredBand) return;
+  state.starredHydrationRun += 1;
+  const run = state.starredHydrationRun;
+  window.clearTimeout(state.starredHydrationTimer);
+  state.starredHydrationTimer = window.setTimeout(() => hydrateVisibleStarredImages(run), delay);
+}
+
+async function hydrateVisibleStarredImages(run) {
+  if (!els.starredBand || run !== state.starredHydrationRun) return;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const buttons = Array.from(els.starredBand.querySelectorAll(".starred-shell"))
+    .filter((button) => {
+      const rect = button.getBoundingClientRect();
+      return rect.right >= 0 && rect.left <= viewportWidth && rect.bottom >= 0 && rect.top <= viewportHeight;
+    })
+    .slice(0, 18);
+  for (const button of buttons) {
+    if (run !== state.starredHydrationRun) return;
+    const canvas = button.querySelector("canvas");
+    const shell = shellById(Number(button.dataset.shellId));
+    if (!canvas || !shell) continue;
+    await waitForIdle();
+    if (run !== state.starredHydrationRun || !canvas.isConnected) return;
+    await drawStarredThumbToCanvas(canvas, shell, starredThumbGeometry(shell), { loadImage: true });
+    state.starredHydratedCount += 1;
+  }
+}
+
+function waitForIdle() {
+  return new Promise((resolve) => {
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(resolve, { timeout: 300 });
+    } else {
+      window.setTimeout(resolve, 80);
+    }
+  });
 }
 
 function updateStarredDock(event) {
@@ -3705,7 +3748,10 @@ function setupEvents() {
   els.uploadInput.addEventListener("change", handleUploadShell);
   els.exportSvg.addEventListener("click", exportGeneratedSvg);
   els.starredBand?.addEventListener("pointermove", updateStarredDock);
-  els.starredBand?.addEventListener("pointerleave", resetStarredDock);
+  els.starredBand?.addEventListener("pointerleave", () => {
+    resetStarredDock();
+    queueStarredImageHydration(1200);
+  });
   els.starredBand?.addEventListener("pointercancel", resetStarredDock);
   els.zoomIn.addEventListener("click", () => zoom(0.72));
   els.zoomOut.addEventListener("click", () => zoom(1.38));
@@ -3716,6 +3762,7 @@ function setupEvents() {
 
   els.scatter.addEventListener("wheel", (event) => {
     event.preventDefault();
+    queueStarredImageHydration(1800);
     const rect = els.scatter.getBoundingClientRect();
     zoom(event.deltaY > 0 ? 1.12 : 0.88, {
       x: event.clientX - rect.left,
@@ -3808,7 +3855,11 @@ function setupEvents() {
     renderStarred();
     positionFiltersPanel();
   });
-  window.addEventListener("scroll", positionFiltersPanel, true);
+  window.addEventListener("scroll", () => {
+    positionFiltersPanel();
+    queueStarredImageHydration(1800);
+  }, true);
+  window.addEventListener("wheel", () => queueStarredImageHydration(1800), { passive: true, capture: true });
 }
 
 window.shellspacePerf = {
@@ -3819,6 +3870,7 @@ window.shellspacePerf = {
   surpriseQueueSize: () => state.surpriseQueue.length,
   surpriseReadyCount: () => state.surpriseQueue.filter((entry) => entry.ready || entry.page == null || state.loadedThumbnailPages.has(entry.page)).length,
   scatterPointCount: () => state.scatterPointCache?.shells?.length || 0,
+  starredHydratedCount: () => state.starredHydratedCount,
   screenNeighborScanCount: () => state.screenNeighborScanCount,
   resetScreenNeighborScanCount: () => {
     state.screenNeighborScanCount = 0;
