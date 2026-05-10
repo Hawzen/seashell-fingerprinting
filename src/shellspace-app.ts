@@ -999,7 +999,7 @@ function originFilterData() {
 
 function addFilterSelect(labelText, key, options) {
   const row = document.createElement("label");
-  row.className = `filter-row filter-select-row filter-${key}-row`;
+  row.className = `filter-row filter-panel-card filter-select-row filter-${key}-row`;
   const header = document.createElement("header");
   const label = document.createElement("span");
   label.textContent = labelText;
@@ -1022,7 +1022,7 @@ function addFilterSelect(labelText, key, options) {
 
 function addOriginMapFilter() {
   const row = document.createElement("div");
-  row.className = "filter-row origin-filter-row";
+  row.className = "filter-row filter-panel-card origin-filter-row";
   const header = document.createElement("header");
   const label = document.createElement("span");
   label.textContent = "Origin";
@@ -1030,11 +1030,11 @@ function addOriginMapFilter() {
   output.textContent = originFilterLabel(state.categoryFilters.origin);
   header.append(label, output);
   const wrap = document.createElement("div");
-  wrap.className = "origin-map-filter";
+  wrap.className = "origin-filter-card";
   const data = originFilterData();
   const map = document.createElement("div");
   map.className = "origin-region-map";
-  map.setAttribute("aria-label", "Choose continent");
+  map.setAttribute("aria-label", "Continents");
   for (const region of data.regions) {
     const button = document.createElement("button");
     button.type = "button";
@@ -1045,7 +1045,7 @@ function addOriginMapFilter() {
     name.textContent = region.label;
     const count = document.createElement("span");
     count.className = "origin-count";
-    count.textContent = `${formatNumber(region.count, 0)} shells`;
+    count.textContent = formatNumber(region.count, 0);
     button.append(name, count);
     button.addEventListener("click", () => setOriginFilter(region.value));
     map.append(button);
@@ -1067,7 +1067,7 @@ function addOriginMapFilter() {
     const list = data.countries
       .filter((country) => !activeRegion || country.region === activeRegion)
       .filter((country) => !query || `${country.label} ${country.code}`.toLowerCase().includes(query))
-      .slice(0, query ? 42 : 18);
+      .slice(0, query ? 36 : 6);
     const selectedCountry = data.countries.find((country) => country.value === state.categoryFilters.origin);
     if (selectedCountry && !query && !list.some((country) => country.value === selectedCountry.value)) {
       list.unshift(selectedCountry);
@@ -1111,6 +1111,33 @@ function addOriginMapFilter() {
   els.filterControls.append(row);
 }
 
+function addRarityFilter() {
+  const row = document.createElement("div");
+  row.className = "filter-row filter-panel-card rarity-filter-row";
+  const header = document.createElement("header");
+  const label = document.createElement("span");
+  label.textContent = "Rarity";
+  const output = document.createElement("output");
+  output.textContent = state.categoryFilters.rarity || "Any";
+  header.append(label, output);
+  const levels = document.createElement("div");
+  levels.className = "rarity-filter-options";
+  for (const value of ["", ...rarityFilterOptions]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = value || "Any";
+    button.setAttribute("aria-pressed", (state.categoryFilters.rarity || "") === value ? "true" : "false");
+    button.addEventListener("click", () => {
+      state.categoryFilters.rarity = state.categoryFilters.rarity === value ? "" : value;
+      buildTraitFilters();
+      updateFilter();
+    });
+    levels.append(button);
+  }
+  row.append(header, levels);
+  els.filterControls.append(row);
+}
+
 function originRegionLabel(key) {
   return originFilterData().regions.find((region) => region.key === key)?.label || key.replaceAll("_", " ");
 }
@@ -1131,7 +1158,7 @@ function setOriginFilter(value) {
 function addRangeFilter(def) {
   state.morphFilters.set(def.key, state.morphFilters.get(def.key) || { min: 0, max: 1 });
   const row = document.createElement("div");
-  row.className = `filter-row filter-range-row filter-${def.key}-row`;
+  row.className = `filter-row filter-panel-card filter-range-row filter-${def.key}-row`;
   const header = document.createElement("header");
   const label = document.createElement("span");
   label.textContent = def.label;
@@ -1164,7 +1191,7 @@ function addRangeFilter(def) {
 
 function addColorPickerFilter() {
   const row = document.createElement("div");
-  row.className = "filter-row color-filter-row";
+  row.className = "filter-row filter-panel-card color-filter-row";
   const header = document.createElement("header");
   const label = document.createElement("span");
   label.textContent = "Color";
@@ -1184,10 +1211,7 @@ function addColorPickerFilter() {
     button.style.setProperty("--swatch", hex);
     const dot = document.createElement("span");
     dot.className = "color-swatch-dot";
-    const text = document.createElement("span");
-    text.className = "color-swatch-label";
-    text.textContent = name;
-    button.append(dot, text);
+    button.append(dot);
     button.addEventListener("click", () => {
       state.categoryFilters.color = state.categoryFilters.color === hex ? "" : hex;
       buildTraitFilters();
@@ -1214,7 +1238,7 @@ function buildTraitFilters() {
   if (!els.filterControls) return;
   els.filterControls.innerHTML = "";
   addOriginMapFilter();
-  addFilterSelect("Rarity", "rarity", [["", "Any rarity"], ...rarityFilterOptions.map((value) => [value, value])]);
+  addRarityFilter();
   addColorPickerFilter();
   for (const def of rangeFilterDefs) {
     if (!state.morphFilters.has(def.key)) state.morphFilters.set(def.key, { min: 0, max: 1 });
@@ -1238,7 +1262,7 @@ function positionFiltersPanel() {
   const controlsRect = document.querySelector(".controls-panel")?.getBoundingClientRect();
   const desktopRoom = controlsRect ? viewportWidth - controlsRect.right - 24 : 0;
   const desktop = viewportWidth > 1080 && desktopRoom >= 520;
-  const width = desktop ? Math.min(940, desktopRoom) : Math.min(860, Math.max(340, viewportWidth - 24));
+  const width = desktop ? Math.min(860, desktopRoom) : Math.min(820, Math.max(340, viewportWidth - 24));
   const preferredLeft = desktop ? (controlsRect.right + 12) : toggleRect.left;
   const left = Math.max(12, Math.min(preferredLeft, viewportWidth - width - 12));
   const measuredHeight = els.filtersPanel.offsetHeight || 420;

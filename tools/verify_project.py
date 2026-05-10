@@ -630,12 +630,13 @@ def run_browser_check(
               }}
 
               await page.evaluate(() => document.querySelector('#filtersToggle').click());
+              await page.waitForTimeout(220);
               const filterProbe = await page.evaluate(() => {{
                 const baseFiltered = window.shellspacePerf.filteredCount();
                 const labels = Array.from(document.querySelectorAll('#filterControls .filter-row header span')).map((node) => node.textContent);
                 const firstTraitHigh = document.querySelector('#filterControls .filter-levels button[data-level="high"]');
                 const colorSwatches = document.querySelectorAll('#filterControls .color-swatch-filter button');
-                const colorLabels = Array.from(document.querySelectorAll('#filterControls .color-swatch-label')).map((node) => node.textContent);
+                const colorLabels = Array.from(colorSwatches).map((node) => node.getAttribute('aria-label'));
                 const originRegionButtons = document.querySelectorAll('#filterControls .origin-region-button');
                 const originCountrySearch = document.querySelector('#filterControls .origin-country-search');
                 const panelRect = document.querySelector('#filtersPanel').getBoundingClientRect();
@@ -660,7 +661,13 @@ def run_browser_check(
                   hasOriginMap: originRegionButtons.length >= 6,
                   hasCountrySearch: Boolean(originCountrySearch),
                   opensRight: panelRect.left >= controlsRect.right - 1,
-                  readableSize: panelRect.width >= 700 && levelRect.height >= 44 && originRect.height >= 270 && swatchRect.height >= 48,
+                  readableSize: panelRect.width >= 780 && levelRect.height >= 44 && originRect.height >= 120 && swatchRect.height >= 44,
+                  sizes: {{
+                    panelWidth: Math.round(panelRect.width),
+                    levelHeight: Math.round(levelRect.height),
+                    originHeight: Math.round(originRect.height),
+                    swatchHeight: Math.round(swatchRect.height),
+                  }},
                   clickable: hitPanel?.id === 'filtersPanel',
                   baseFiltered,
                   traitFiltered,
