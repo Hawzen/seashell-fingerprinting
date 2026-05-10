@@ -581,6 +581,9 @@ const state = {
   tooltipFrame: 0,
   tooltipEvent: null,
   tooltipLastAt: 0,
+  holdingNearest: false,
+  targetFrame: 0,
+  targetEvent: null,
   draggingTarget: false,
   targetDragStart: null,
   panningViewport: null,
@@ -1798,6 +1801,9 @@ function updatePcControl(index, value) {
   row.querySelector("input[type='range']").value = String(value);
   row.querySelector("input[type='number']").value = Number(value).toFixed(3);
 }
+function syncPcControls(values = state.pcValues) {
+  values.forEach((value, index) => updatePcControl(index, value));
+}
 function setPcValue(index, value) {
   state.pcValues[index] = value;
   updatePcControl(index, value);
@@ -2512,13 +2518,13 @@ function drawCroppedOriginalShellImage(ctx, shell, image, frameWidth, frameHeigh
   return frame;
 }
 function starredThumbSize(crop) {
-  const cssHeight = 44;
+  const cssHeight = 58;
   if (!(crop == null ? void 0 : crop.width) || !(crop == null ? void 0 : crop.height)) {
-    return { cssWidth: 44, pixelWidth: 96, pixelHeight: 96 };
+    return { cssWidth: 58, pixelWidth: 136, pixelHeight: 136 };
   }
   const ratio = crop.width / Math.max(1, crop.height);
-  const cssWidth = Math.round(Math.max(20, Math.min(60, cssHeight * ratio)));
-  const pixelHeight = 104;
+  const cssWidth = Math.round(Math.max(26, Math.min(82, cssHeight * ratio)));
+  const pixelHeight = 144;
   return {
     cssWidth,
     pixelWidth: Math.round(cssWidth / cssHeight * pixelHeight),
@@ -2556,6 +2562,31 @@ async function drawStarredThumbToCanvas(canvas, shell, geometry = null, { loadIm
         image,
         source.x + crop.x * scaleX,
         source.y + crop.y * scaleY,
+        crop.width * scaleX,
+        crop.height * scaleY,
+        frame.x,
+        frame.y,
+        frame.width,
+        frame.height
+      );
+      ctx.restore();
+      transparentBlackPixels(ctx, frame.x, frame.y, frame.width, frame.height);
+      return;
+    }
+  }
+  if (loadImage) {
+    const image = await loadOriginalImage(shell);
+    const scaleX = ((image == null ? void 0 : image.naturalWidth) || shell.image_width || crop.width) / Math.max(1, shell.image_width || crop.width);
+    const scaleY = ((image == null ? void 0 : image.naturalHeight) || shell.image_height || crop.height) / Math.max(1, shell.image_height || crop.height);
+    if (image && croppedContourPath(ctx, contour, crop, frame)) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      croppedContourPath(ctx, contour, crop, frame);
+      ctx.save();
+      ctx.clip();
+      ctx.drawImage(
+        image,
+        crop.x * scaleX,
+        crop.y * scaleY,
         crop.width * scaleX,
         crop.height * scaleY,
         frame.x,
@@ -2773,7 +2804,7 @@ function nearestContourNeighbors(shell) {
   return neighbors;
 }
 function renderNeighborItems(items) {
-  const key = items.map((item) => `${item.shell.id}:${item.distance.toFixed(3)}`).join("|");
+  const key = items.map((item) => item.shell.id).join("|");
   if (state.neighborRenderKey === key) return;
   state.neighborRenderKey = key;
   els.neighborsList.innerHTML = "";
@@ -2922,7 +2953,7 @@ function renderStarred() {
   if (!els.starredBand) return;
   els.starredBand.innerHTML = "";
   const { items, hidden } = starredShelfSelection();
-  for (const { shell, geometry } of items) {
+  items.forEach(({ shell, geometry }, index) => {
     const button = document.createElement("button");
     button.className = "starred-shell";
     button.title = `${shell.species} ${shell.fingerprint_hash}`;
@@ -2932,12 +2963,15 @@ function renderStarred() {
     canvas.height = geometry.size.pixelHeight;
     button.append(canvas);
     window.requestAnimationFrame(() => drawStarredThumbToCanvas(canvas, shell, geometry));
+    window.setTimeout(() => {
+      if (canvas.isConnected) drawStarredThumbToCanvas(canvas, shell, geometry, { loadImage: true });
+    }, 80 + index * 28);
     button.addEventListener("click", () => {
       centerViewportOnShell(shell);
       selectShell(shell);
     });
     els.starredBand.append(button);
-  }
+  });
   if (hidden > 0 || state.showAllStars) {
     const more = document.createElement("button");
     more.className = "starred-more";
@@ -2948,6 +2982,28 @@ function renderStarred() {
       renderStarred();
     });
     els.starredBand.append(more);
+  }
+}
+function updateStarredDock(event) {
+  if (!els.starredBand) return;
+  const buttons = Array.from(els.starredBand.querySelectorAll(".starred-shell"));
+  if (!buttons.length) return;
+  const bandRect = els.starredBand.getBoundingClientRect();
+  for (const button of buttons) {
+    const centerX = bandRect.left + button.offsetLeft + button.offsetWidth / 2;
+    const influence = Math.max(0, 1 - Math.abs(event.clientX - centerX) / 118);
+    const eased = influence * influence * (3 - 2 * influence);
+    button.style.setProperty("--dock-scale", (1 + eased * 1.08).toFixed(3));
+    button.style.setProperty("--dock-lift", `${(18 * eased).toFixed(2)}px`);
+    button.style.setProperty("--dock-z", `${Math.round(eased * 100)}`);
+  }
+}
+function resetStarredDock() {
+  if (!els.starredBand) return;
+  for (const button of els.starredBand.querySelectorAll(".starred-shell")) {
+    button.style.setProperty("--dock-scale", "1");
+    button.style.setProperty("--dock-lift", "0px");
+    button.style.setProperty("--dock-z", "0");
   }
 }
 function selectShell(shell, { renderNearest = true } = {}) {
@@ -3083,7 +3139,10 @@ function nearestScatterNeighborItems(screenX, screenY, values, limit = 8) {
 function clampPcValue(axisIndex, value) {
   const range = axisRange(axisIndex);
   if (!range) return value;
-  return Math.max(range.p01, Math.min(range.p99, value));
+  const span = Math.max(1e-3, range.p99 - range.p01);
+  const lower = Math.max(Number.isFinite(range.min) ? range.min : range.p01, range.p01 - span * 0.75);
+  const upper = Math.min(Number.isFinite(range.max) ? range.max : range.p99, range.p99 + span * 0.75);
+  return Math.max(lower, Math.min(upper, value));
 }
 function assignPointAxes(values, point) {
   if (state.xAxis >= 0 && state.xAxis < values.length) values[state.xAxis] = clampPcValue(state.xAxis, point.x);
@@ -3105,14 +3164,14 @@ function pcPreviewFromPoint(point, neighborItems = null) {
   assignPointAxes(values, point);
   return { values, neighbors };
 }
-function applyPcValues(values) {
+function applyPcValues(values, { updateControls = true } = {}) {
   values.forEach((value, index) => {
     state.pcValues[index] = value;
-    updatePcControl(index, value);
+    if (updateControls) updatePcControl(index, value);
   });
   reconstructFromPc();
 }
-function setTargetFromEvent(event) {
+function setTargetFromEvent(event, { updateControls = false } = {}) {
   var _a;
   const rect = els.scatter.getBoundingClientRect();
   const size = resizeCanvas(els.scatter, scatterCtx);
@@ -3123,10 +3182,34 @@ function setTargetFromEvent(event) {
   assignPointAxes(provisional, point);
   const fastNeighbors = nearestScatterNeighborItems(screenX, screenY, provisional);
   const preview = pcPreviewFromPoint(point, fastNeighbors);
-  applyPcValues(preview.values);
+  applyPcValues(preview.values, { updateControls });
   renderNeighborsForPc(preview.values, preview.neighbors);
   scheduleDraw();
   scheduleHashUpdate();
+}
+function queueTargetFromEvent(event) {
+  state.targetEvent = {
+    clientX: event.clientX,
+    clientY: event.clientY
+  };
+  if (state.targetFrame) return;
+  state.targetFrame = window.requestAnimationFrame(() => {
+    state.targetFrame = 0;
+    const next = state.targetEvent;
+    if (!next) return;
+    setTargetFromEvent(next);
+  });
+}
+function flushTargetDragPreview() {
+  var _a;
+  if (state.targetFrame) {
+    window.cancelAnimationFrame(state.targetFrame);
+    state.targetFrame = 0;
+  }
+  const next = state.targetEvent;
+  state.targetEvent = null;
+  if (next && ((_a = state.targetDragStart) == null ? void 0 : _a.active)) setTargetFromEvent(next);
+  syncPcControls();
 }
 function renderNearestFromMouseEvent(event) {
   var _a;
@@ -3166,6 +3249,12 @@ function startViewportPan(event) {
   };
   state.draggingTarget = false;
   state.targetDragStart = null;
+  state.targetEvent = null;
+  if (state.targetFrame) {
+    window.cancelAnimationFrame(state.targetFrame);
+    state.targetFrame = 0;
+  }
+  state.holdingNearest = false;
   els.scatter.classList.add("is-panning");
   els.pointTooltip.hidden = true;
 }
@@ -3825,7 +3914,7 @@ function resetToMeanShape() {
   setPcValues(Array.from({ length: state.model.contour_component_count || contourAxisCount() }, () => 0));
 }
 function setupEvents() {
-  var _a, _b, _c;
+  var _a, _b, _c, _d, _e, _f;
   els.search.addEventListener("input", updateFilter);
   (_a = els.filtersToggle) == null ? void 0 : _a.addEventListener("click", () => {
     var _a2;
@@ -3850,6 +3939,9 @@ function setupEvents() {
   els.uploadShell.addEventListener("click", () => els.uploadInput.click());
   els.uploadInput.addEventListener("change", handleUploadShell);
   els.exportSvg.addEventListener("click", exportGeneratedSvg);
+  (_d = els.starredBand) == null ? void 0 : _d.addEventListener("pointermove", updateStarredDock);
+  (_e = els.starredBand) == null ? void 0 : _e.addEventListener("pointerleave", resetStarredDock);
+  (_f = els.starredBand) == null ? void 0 : _f.addEventListener("pointercancel", resetStarredDock);
   els.zoomIn.addEventListener("click", () => zoom(0.72));
   els.zoomOut.addEventListener("click", () => zoom(1.38));
   els.resetView.addEventListener("click", () => {
@@ -3871,6 +3963,8 @@ function setupEvents() {
       startViewportPan(event);
       return;
     }
+    if (event.button !== 0) return;
+    state.holdingNearest = true;
     els.scatter.setPointerCapture(event.pointerId);
     const rect = els.scatter.getBoundingClientRect();
     const shell = nearestShell(event.clientX - rect.left, event.clientY - rect.top);
@@ -3900,24 +3994,39 @@ function setupEvents() {
         if (distance < 4) return;
         start.active = true;
       }
-      setTargetFromEvent(event);
+      queueTargetFromEvent(event);
       els.pointTooltip.hidden = true;
       return;
     }
-    queueMouseNeighbors(event);
+    if (state.holdingNearest) {
+      queueMouseNeighbors(event);
+      els.pointTooltip.hidden = true;
+      return;
+    }
     queuePointTooltip(event);
   });
-  for (const eventName of ["pointerup", "pointerleave", "pointercancel"]) {
+  for (const eventName of ["pointerup", "pointercancel"]) {
     els.scatter.addEventListener(eventName, (event) => {
+      var _a2, _b2;
+      flushTargetDragPreview();
+      state.holdingNearest = false;
       state.draggingTarget = false;
       state.targetDragStart = null;
+      state.targetEvent = null;
       stopViewportPan();
-      if (eventName !== "pointerup") {
-        state.previewEvent = null;
-        els.pointTooltip.hidden = true;
+      state.previewEvent = null;
+      try {
+        if ((_b2 = (_a2 = els.scatter).hasPointerCapture) == null ? void 0 : _b2.call(_a2, event.pointerId)) els.scatter.releasePointerCapture(event.pointerId);
+      } catch (error) {
       }
+      if (eventName !== "pointerup") els.pointTooltip.hidden = true;
     });
   }
+  els.scatter.addEventListener("pointerleave", () => {
+    if (state.draggingTarget || state.panningViewport) return;
+    state.previewEvent = null;
+    els.pointTooltip.hidden = true;
+  });
   els.scatter.addEventListener("auxclick", (event) => {
     if (event.button === 1) event.preventDefault();
   });

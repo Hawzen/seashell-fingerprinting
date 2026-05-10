@@ -252,7 +252,7 @@ def verify_entrypoint() -> None:
     ]:
         if marker not in styles:
             raise AssertionError(f"Loading animation styles are missing {marker!r}")
-    for marker in ["gap: 1px;", "var(--starred-thumb-width, 44px)", "min-width: 0;"]:
+    for marker in ["gap: 1px;", "var(--starred-thumb-width, 58px)", "min-width: 0;", "--dock-scale", "--dock-lift"]:
         if marker not in styles:
             raise AssertionError("Starred shelf spacing should stay tight and uniform")
     app = Path("public/app.js").read_text(encoding="utf-8")
@@ -261,6 +261,10 @@ def verify_entrypoint() -> None:
             raise AssertionError("Starred shelf should render contour-cropped thumbnails")
     if "paddedContourCrop(shell, contour, 0.035)" not in app:
         raise AssertionError("Starred shelf should render contour-cropped thumbnails")
+    if "updateStarredDock" not in app or "--dock-scale" not in app:
+        raise AssertionError("Starred shelf should have dock magnification")
+    if "loadImage: true" not in app and "loadImage:!0" not in app:
+        raise AssertionError("Starred shelf should fetch shell images")
     for marker in ["filtersToggle", "filtersPanel", "filterControls", "resetTraitFilters"]:
         if marker not in combined_text:
             raise AssertionError(f"New feature UI is missing {marker!r}")
@@ -792,6 +796,45 @@ def run_browser_check(
                 throw new Error(`starred shelf spacing failed: ${{JSON.stringify(shelf)}}`);
               }}
 
+              const dockTarget = await page.evaluate(() => {{
+                const shells = Array.from(document.querySelectorAll('#starredBand .starred-shell'));
+                const rect = shells[0]?.getBoundingClientRect();
+                return {{
+                  count: shells.length,
+                  x: rect ? rect.left + rect.width / 2 : 0,
+                  y: rect ? rect.top + rect.height / 2 : 0,
+                }};
+              }});
+              if (dockTarget.count < 2) throw new Error(`star dock needs at least two shells: ${{JSON.stringify(dockTarget)}}`);
+              await page.mouse.move(dockTarget.x, dockTarget.y);
+              await page.waitForFunction(
+                () => Number(getComputedStyle(document.querySelector('#starredBand .starred-shell')).getPropertyValue('--dock-scale')) > 1.2,
+                null,
+                {{ timeout: 3000 }}
+              );
+              const dockProbe = await page.evaluate(() => {{
+                const scales = Array.from(document.querySelectorAll('#starredBand .starred-shell'))
+                  .slice(0, 3)
+                  .map((element) => Number(getComputedStyle(element).getPropertyValue('--dock-scale')) || 1);
+                const lifts = Array.from(document.querySelectorAll('#starredBand .starred-shell'))
+                  .slice(0, 3)
+                  .map((element) => Number.parseFloat(getComputedStyle(element).getPropertyValue('--dock-lift')) || 0);
+                const canvas = document.querySelector('#starredBand .starred-shell canvas');
+                const ctx = canvas.getContext('2d');
+                const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+                const colors = new Set();
+                let opaque = 0;
+                for (let index = 0; index < data.length; index += 16) {{
+                  if (data[index + 3] < 16) continue;
+                  opaque += 1;
+                  colors.add(`${{data[index] >> 4}},${{data[index + 1] >> 4}},${{data[index + 2] >> 4}}`);
+                }}
+                return {{ scales, lifts, opaque, colorBins: colors.size }};
+              }});
+              if (Math.max(...dockProbe.scales) < 1.25 || dockProbe.scales[1] < 1.02 || Math.max(...dockProbe.lifts) < 4 || dockProbe.opaque < 20 || dockProbe.colorBins < 7) {{
+                throw new Error(`starred dock/image failed: ${{JSON.stringify(dockProbe)}}`);
+              }}
+
               const scatterBox = await page.locator('#scatterCanvas').boundingBox();
               if (!scatterBox) throw new Error('scatter canvas has no box');
               const beforeHash = await page.textContent('#projectedHash');
@@ -800,6 +843,16 @@ def run_browser_check(
                 neighbors: Array.from(document.querySelectorAll('#neighborsList .neighbor-button')).map((button) => button.getAttribute('title') || '').join('|'),
               }}));
               await page.mouse.move(scatterBox.x + scatterBox.width * 0.42, scatterBox.y + scatterBox.height * 0.38);
+              await page.waitForTimeout(250);
+              const hoverProbe = await page.evaluate(() => ({{
+                hash: document.querySelector('#projectedHash')?.textContent || '',
+                neighbors: Array.from(document.querySelectorAll('#neighborsList .neighbor-button')).map((button) => button.getAttribute('title') || '').join('|'),
+              }}));
+              if (hoverProbe.hash !== beforeHash || hoverProbe.neighbors !== hoverBefore.neighbors) {{
+                throw new Error(`passive hover changed shell state: ${{JSON.stringify({{ beforeHash, hoverBefore, hoverProbe }})}}`);
+              }}
+              await page.mouse.down();
+              await page.mouse.move(scatterBox.x + scatterBox.width * 0.62, scatterBox.y + scatterBox.height * 0.56, {{ steps: 5 }});
               await page.waitForFunction(
                 (previous) => {{
                   const neighbors = Array.from(document.querySelectorAll('#neighborsList .neighbor-button')).map((button) => button.getAttribute('title') || '').join('|');
@@ -808,17 +861,16 @@ def run_browser_check(
                 hoverBefore,
                 {{ timeout: 3000 }}
               );
-              const hoverHash = await page.textContent('#projectedHash');
-              if (hoverHash !== beforeHash) {{
-                throw new Error(`hover generated a shell: ${{beforeHash}} -> ${{hoverHash}}`);
-              }}
+              await page.mouse.up();
+              await page.waitForTimeout(180);
+              const heldHash = await page.textContent('#projectedHash');
               await page.fill('#searchBox', 'no-such-shell-filter-value');
               await page.waitForTimeout(200);
               await page.mouse.click(scatterBox.x + scatterBox.width * 0.35, scatterBox.y + scatterBox.height * 0.45);
               await page.waitForTimeout(250);
               const afterClickHash = await page.textContent('#projectedHash');
-              if (afterClickHash !== hoverHash) {{
-                throw new Error(`empty click generated a shell: ${{hoverHash}} -> ${{afterClickHash}}`);
+              if (afterClickHash !== heldHash) {{
+                throw new Error(`empty click generated a shell: ${{heldHash}} -> ${{afterClickHash}}`);
               }}
               await page.mouse.down();
               await page.waitForTimeout(90);
