@@ -63,12 +63,16 @@ const state = {
   sourceFrame: null,
   sourceMode: "fallback",
   scatterHitCache: null,
+  screenNeighborScanCount: 0,
   tooltipFrame: 0,
   tooltipEvent: null,
   tooltipLastAt: 0,
   holdingNearest: false,
   targetFrame: 0,
   targetEvent: null,
+  targetNeighborTimer: 0,
+  targetNeighborValues: null,
+  targetNeighborLastAt: 0,
   draggingTarget: false,
   targetDragStart: null,
   panningViewport: null,
@@ -1400,6 +1404,13 @@ function syncPcControls(values = state.pcValues) {
   values.forEach((value, index) => updatePcControl(index, value));
 }
 
+function syncActivePcControls(values = state.pcValues) {
+  const axes = new Set([state.xAxis, state.yAxis]);
+  for (const axis of axes) {
+    if (axis >= 0 && axis < values.length) updatePcControl(axis, values[axis]);
+  }
+}
+
 function setPcValue(index, value) {
   state.pcValues[index] = value;
   updatePcControl(index, value);
@@ -2502,6 +2513,26 @@ function renderNeighborsForPc(values, items = null) {
   renderNeighborItems(items || nearestContourNeighborsForPc(values, { axes: activePcaNeighborAxes() }));
 }
 
+function queueTargetNearestNeighbors(values) {
+  state.targetNeighborValues = values.slice();
+  if (state.targetNeighborTimer) return;
+  const elapsed = performance.now() - state.targetNeighborLastAt;
+  const delay = Math.max(0, 160 - elapsed);
+  state.targetNeighborTimer = window.setTimeout(() => {
+    state.targetNeighborTimer = 0;
+    state.targetNeighborLastAt = performance.now();
+    const next = state.targetNeighborValues;
+    state.targetNeighborValues = null;
+    if (next) renderNeighborsForPc(next);
+  }, delay);
+}
+
+function clearTargetNearestNeighbors() {
+  window.clearTimeout(state.targetNeighborTimer);
+  state.targetNeighborTimer = 0;
+  state.targetNeighborValues = null;
+}
+
 function scheduleRenderNeighbors(shell, delay = 0) {
   state.neighborToken += 1;
   const token = state.neighborToken;
@@ -2761,6 +2792,7 @@ function nearestShell(screenX, screenY) {
 }
 
 function nearestScatterNeighborItems(screenX, screenY, values, limit = 8) {
+  state.screenNeighborScanCount += 1;
   const size = resizeCanvas(els.scatter, scatterCtx);
   const hitCache = scatterHitPoints(size);
   if (!hitCache.shells.length) return [];
@@ -2855,7 +2887,18 @@ function setTargetFromEvent(event, { updateControls = false } = {}) {
   const screenX = event.clientX - rect.left;
   const screenY = event.clientY - rect.top;
   const point = screenToWorld(screenX, screenY, size);
-  const provisional = Array.from({ length: Math.max(state.model?.contour_component_count || 0, state.pcValues.length, contourAxisCount()) }, () => 0);
+  const count = Math.max(state.model?.contour_component_count || 0, state.pcValues.length, contourAxisCount());
+  if (state.targetDragStart?.ignoreRealShells) {
+    const values = Array.from({ length: count }, (_, index) => clampPcValue(index, state.pcValues[index] || 0));
+    assignPointAxes(values, point);
+    applyPcValues(values, { updateControls });
+    if (!updateControls) syncActivePcControls(values);
+    queueTargetNearestNeighbors(values);
+    scheduleDraw();
+    scheduleHashUpdate();
+    return;
+  }
+  const provisional = Array.from({ length: count }, () => 0);
   assignPointAxes(provisional, point);
   const fastNeighbors = nearestScatterNeighborItems(screenX, screenY, provisional);
   const preview = pcPreviewFromPoint(point, fastNeighbors);
@@ -2932,6 +2975,7 @@ function startViewportPan(event) {
   state.draggingTarget = false;
   state.targetDragStart = null;
   state.targetEvent = null;
+  clearTargetNearestNeighbors();
   if (state.targetFrame) {
     window.cancelAnimationFrame(state.targetFrame);
     state.targetFrame = 0;
@@ -3699,6 +3743,7 @@ function setupEvents() {
         clientX: event.clientX,
         clientY: event.clientY,
         active: false,
+        ignoreRealShells: true,
       };
       els.pointTooltip.hidden = true;
     }
@@ -3774,6 +3819,10 @@ window.shellspacePerf = {
   surpriseQueueSize: () => state.surpriseQueue.length,
   surpriseReadyCount: () => state.surpriseQueue.filter((entry) => entry.ready || entry.page == null || state.loadedThumbnailPages.has(entry.page)).length,
   scatterPointCount: () => state.scatterPointCache?.shells?.length || 0,
+  screenNeighborScanCount: () => state.screenNeighborScanCount,
+  resetScreenNeighborScanCount: () => {
+    state.screenNeighborScanCount = 0;
+  },
   sourceMode: () => state.sourceMode,
   filteredCount: () => state.filtered.length,
   lookupConservationStatus,

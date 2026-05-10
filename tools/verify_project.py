@@ -278,6 +278,8 @@ def verify_entrypoint() -> None:
         "api.inaturalist.org/v1/taxa/autocomplete",
         "dotSize = Math.max(3",
         "loadImage = false",
+        "ignoreRealShells",
+        "screenNeighborScanCount",
     ]:
         if marker not in app:
             raise AssertionError(f"New feature implementation is missing {marker!r}")
@@ -872,6 +874,7 @@ def run_browser_check(
               if (afterClickHash !== heldHash) {{
                 throw new Error(`empty click generated a shell: ${{heldHash}} -> ${{afterClickHash}}`);
               }}
+              await page.evaluate(() => window.shellspacePerf?.resetScreenNeighborScanCount?.());
               await page.mouse.down();
               await page.waitForTimeout(90);
               await page.mouse.move(scatterBox.x + scatterBox.width * 0.62, scatterBox.y + scatterBox.height * 0.56, {{ steps: 5 }});
@@ -880,8 +883,10 @@ def run_browser_check(
               await page.mouse.up();
               await page.waitForTimeout(220);
               const afterReleaseHash = await page.textContent('#projectedHash');
-              if (!beforeReleaseHash || beforeReleaseHash === afterClickHash || afterReleaseHash !== beforeReleaseHash) {{
-                throw new Error(`drag generation unstable: ${{JSON.stringify({{ afterClickHash, beforeReleaseHash, afterReleaseHash }})}}`);
+              const emptyDragScans = await page.evaluate(() => window.shellspacePerf?.screenNeighborScanCount?.() ?? -1);
+              const emptyDragNeighbors = await page.evaluate(() => document.querySelectorAll('#neighborsList .neighbor-button').length);
+              if (!beforeReleaseHash || beforeReleaseHash === afterClickHash || afterReleaseHash !== beforeReleaseHash || emptyDragScans !== 0 || emptyDragNeighbors < 4) {{
+                throw new Error(`drag generation unstable: ${{JSON.stringify({{ afterClickHash, beforeReleaseHash, afterReleaseHash, emptyDragScans, emptyDragNeighbors }})}}`);
               }}
               await page.fill('#searchBox', '');
               await page.waitForTimeout(250);
