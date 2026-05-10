@@ -13,16 +13,17 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter, ImageOps
+from PIL import Image, ImageOps
 
 cv2.setNumThreads(1)
 cv2.ocl.setUseOpenCL(False)
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
-CONTOUR_SMOOTH_WINDOW = 23
-CONTOUR_SMOOTH_PASSES = 2
-CONTOUR_SMOOTH_BLEND = 0.8
-CONTOUR_SMOOTH_OUTSET_PX = 0.55
+CONTOUR_APPROX_EPSILON = 2.0
+CONTOUR_SMOOTH_WINDOW = 11
+CONTOUR_SMOOTH_PASSES = 1
+CONTOUR_SMOOTH_BLEND = 0.65
+CONTOUR_SMOOTH_OUTSET_PX = 0.3
 
 
 def iter_image_paths(dataset_dir: Path) -> list[Path]:
@@ -88,44 +89,37 @@ def estimate_dark_background_threshold(border_diff: np.ndarray) -> tuple[float, 
     return threshold, background_noise
 
 
-def mask_to_image(mask: np.ndarray) -> Image.Image:
-    return Image.fromarray(mask.astype(np.uint8) * 255)
-
-
 def erode(mask: np.ndarray, size: int = 3) -> np.ndarray:
-    return np.asarray(mask_to_image(mask).filter(ImageFilter.MinFilter(size))) > 0
+    return cv2.erode(mask.astype(np.uint8), np.ones((size, size), dtype=np.uint8), iterations=1) > 0
 
 
 def dilate(mask: np.ndarray, size: int = 3) -> np.ndarray:
-    return np.asarray(mask_to_image(mask).filter(ImageFilter.MaxFilter(size))) > 0
+    return cv2.dilate(mask.astype(np.uint8), np.ones((size, size), dtype=np.uint8), iterations=1) > 0
 
 
 def binary_opening(mask: np.ndarray, size: int = 3) -> np.ndarray:
-    return dilate(erode(mask, size), size)
+    return cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_OPEN, np.ones((size, size), dtype=np.uint8)) > 0
 
 
 def binary_closing(mask: np.ndarray, size: int = 3) -> np.ndarray:
-    return erode(dilate(mask, size), size)
+    return cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((size, size), dtype=np.uint8)) > 0
 
 
 def binary_fill_holes(mask: np.ndarray) -> np.ndarray:
-    inverse = Image.fromarray((~mask).astype(np.uint8) * 255).copy()
-    pixels = inverse.load()
-    width, height = inverse.size
-
+    inverse = (~mask).astype(np.uint8)
+    flood = inverse.copy()
+    height, width = flood.shape
     for x in range(width):
-        if pixels[x, 0] == 255:
-            ImageDraw.floodfill(inverse, (x, 0), 128, thresh=0)
-        if pixels[x, height - 1] == 255:
-            ImageDraw.floodfill(inverse, (x, height - 1), 128, thresh=0)
+        if flood[0, x] == 1:
+            cv2.floodFill(flood, None, (x, 0), 2)
+        if flood[height - 1, x] == 1:
+            cv2.floodFill(flood, None, (x, height - 1), 2)
     for y in range(height):
-        if pixels[0, y] == 255:
-            ImageDraw.floodfill(inverse, (0, y), 128, thresh=0)
-        if pixels[width - 1, y] == 255:
-            ImageDraw.floodfill(inverse, (width - 1, y), 128, thresh=0)
-
-    inverse_array = np.asarray(inverse)
-    holes = inverse_array == 255
+        if flood[y, 0] == 1:
+            cv2.floodFill(flood, None, (0, y), 2)
+        if flood[y, width - 1] == 1:
+            cv2.floodFill(flood, None, (width - 1, y), 2)
+    holes = flood == 1
     return mask | holes
 
 
@@ -145,9 +139,8 @@ def primary_component(mask: np.ndarray) -> tuple[np.ndarray, int]:
 
 def external_background(candidate: np.ndarray) -> np.ndarray:
     """Return background pixels connected to the image border."""
-    image = Image.fromarray((~candidate).astype(np.uint8) * 255).copy()
-    pixels = image.load()
-    width, height = image.size
+    flood = (~candidate).astype(np.uint8)
+    height, width = flood.shape
     step = max(1, min(width, height) // 20)
     seeds = []
 
@@ -170,10 +163,11 @@ def external_background(candidate: np.ndarray) -> np.ndarray:
     )
 
     for seed in seeds:
-        if pixels[seed] == 255:
-            ImageDraw.floodfill(image, seed, 128, thresh=0)
+        x, y = seed
+        if flood[y, x] == 1:
+            cv2.floodFill(flood, None, seed, 2)
 
-    return np.asarray(image) == 128
+    return flood == 2
 
 
 def isolate_shell(rgb: np.ndarray, fill_holes: bool = False) -> tuple[np.ndarray, dict[str, float]]:
@@ -482,7 +476,11 @@ def contour_from_mask(mask: np.ndarray, point_count: int) -> np.ndarray:
     )
     if not contours:
         return np.zeros((point_count, 2), dtype=np.float32)
-    sampled = resample_closed_contour(max(contours, key=cv2.contourArea), point_count)
+    contour = max(contours, key=cv2.contourArea)
+    simplified = cv2.approxPolyDP(contour, CONTOUR_APPROX_EPSILON, True)
+    if simplified.shape[0] < 4:
+        simplified = contour
+    sampled = resample_closed_contour(simplified, point_count)
     return smooth_closed_contour(sampled, bounds=mask.shape)
 
 

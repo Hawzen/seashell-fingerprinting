@@ -1023,7 +1023,7 @@ function originFilterData() {
 
 function addFilterSelect(labelText, key, options) {
   const row = document.createElement("label");
-  row.className = "filter-row";
+  row.className = `filter-row filter-select-row filter-${key}-row`;
   const header = document.createElement("header");
   const label = document.createElement("span");
   label.textContent = labelText;
@@ -1155,7 +1155,7 @@ function setOriginFilter(value) {
 function addRangeFilter(def) {
   state.morphFilters.set(def.key, state.morphFilters.get(def.key) || { min: 0, max: 1 });
   const row = document.createElement("div");
-  row.className = "filter-row";
+  row.className = `filter-row filter-range-row filter-${def.key}-row`;
   const header = document.createElement("header");
   const label = document.createElement("span");
   label.textContent = def.label;
@@ -1188,7 +1188,7 @@ function addRangeFilter(def) {
 
 function addColorPickerFilter() {
   const row = document.createElement("div");
-  row.className = "filter-row";
+  row.className = "filter-row color-filter-row";
   const header = document.createElement("header");
   const label = document.createElement("span");
   label.textContent = "Color";
@@ -1261,8 +1261,8 @@ function positionFiltersPanel() {
   const toggleRect = els.filtersToggle.getBoundingClientRect();
   const controlsRect = document.querySelector(".controls-panel")?.getBoundingClientRect();
   const desktopRoom = controlsRect ? viewportWidth - controlsRect.right - 24 : 0;
-  const desktop = viewportWidth > 1080 && desktopRoom >= 360;
-  const width = desktop ? Math.min(760, desktopRoom) : Math.min(720, Math.max(320, viewportWidth - 24));
+  const desktop = viewportWidth > 1080 && desktopRoom >= 520;
+  const width = desktop ? Math.min(940, desktopRoom) : Math.min(860, Math.max(340, viewportWidth - 24));
   const preferredLeft = desktop ? (controlsRect.right + 12) : toggleRect.left;
   const left = Math.max(12, Math.min(preferredLeft, viewportWidth - width - 12));
   const measuredHeight = els.filtersPanel.offsetHeight || 420;
@@ -2118,9 +2118,36 @@ function transparentBlackPixels(ctx, x, y, width, height) {
   if (!pixelWidth || !pixelHeight) return;
   const imageData = ctx.getImageData(left, top, pixelWidth, pixelHeight);
   const data = imageData.data;
-  for (let index = 0; index < data.length; index += 4) {
-    if (data[index + 3] < 16) continue;
-    if (data[index] < 18 && data[index + 1] < 18 && data[index + 2] < 18) data[index + 3] = 0;
+  const black = new Uint8Array(pixelWidth * pixelHeight);
+  for (let pixel = 0, index = 0; index < data.length; pixel += 1, index += 4) {
+    black[pixel] = data[index + 3] >= 16 && data[index] < 18 && data[index + 1] < 18 && data[index + 2] < 18 ? 1 : 0;
+  }
+  const queue = [];
+  const push = (pixel) => {
+    if (!black[pixel] || black[pixel] === 2) return;
+    black[pixel] = 2;
+    queue.push(pixel);
+  };
+  for (let px = 0; px < pixelWidth; px += 1) {
+    push(px);
+    push((pixelHeight - 1) * pixelWidth + px);
+  }
+  for (let py = 1; py < pixelHeight - 1; py += 1) {
+    push(py * pixelWidth);
+    push(py * pixelWidth + pixelWidth - 1);
+  }
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const pixel = queue[cursor];
+    const px = pixel % pixelWidth;
+    const py = Math.floor(pixel / pixelWidth);
+    if (px > 0) push(pixel - 1);
+    if (px + 1 < pixelWidth) push(pixel + 1);
+    if (py > 0) push(pixel - pixelWidth);
+    if (py + 1 < pixelHeight) push(pixel + pixelWidth);
+  }
+  for (const pixel of queue) {
+    const index = pixel * 4;
+    data[index + 3] = 0;
   }
   ctx.putImageData(imageData, left, top);
 }

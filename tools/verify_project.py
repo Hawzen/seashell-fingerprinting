@@ -24,6 +24,8 @@ import numpy as np
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 MIN_CONTOUR_POINTS = 192
 CONTOUR_SMOOTH_FIXTURES = {
+    "Strombina_angularis_2_B.jpg": 0.38,
+    "Lepidodesma_languilati_11_B.jpg": 0.38,
     "Terebra_crenulata_4_A.jpg": 0.38,
     "Pollia_subcostata_2_A.jpg": 0.38,
     "Cathaica_fasciola_1_A.jpg": 0.38,
@@ -378,7 +380,7 @@ def verify_static(public_data: Path, image_count: int) -> None:
         for record in records
         for value in str(record.get("legacy_hash", "")).replace(",", " ").split()
     }
-    for shellprint in ["437JZ7", "2423VZ", "U189ZB", "N49EXH", "OHXOKZ", "NAHIXO"]:
+    for shellprint in ["437JZ7", "2423VZ", "U189ZB", "N49EXH", "OHXOKZ", "NAHIXO", "S38CN1", "KNSHEO"]:
         if shellprint not in legacy_hashes:
             raise AssertionError(f"Legacy shellprint search alias is missing: {shellprint}")
     locality_path = public_data / model["locality_file"]

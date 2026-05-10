@@ -363,12 +363,12 @@ button:hover {
   right: auto;
   top: var(--filters-top, 96px);
   z-index: 25;
-  width: var(--filters-width, min(760px, calc(100vw - 24px)));
+  width: var(--filters-width, min(940px, calc(100vw - 24px)));
   max-height: calc(100vh - 24px);
   overflow: auto;
   display: grid;
-  gap: 18px;
-  padding: 20px;
+  gap: 16px;
+  padding: 20px 22px 22px;
   border: 1px solid rgba(31, 38, 40, 0.18);
   border-radius: 8px;
   background:
@@ -395,12 +395,28 @@ button:hover {
 
 .filter-controls {
   display: grid;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.92fr);
+  gap: 18px 20px;
+  align-items: start;
 }
 
 .filter-row {
   display: grid;
   gap: 10px;
+}
+
+.origin-filter-row {
+  grid-column: 1 / -1;
+}
+
+.filter-select-row,
+.filter-range-row {
+  grid-column: 1;
+}
+
+.color-filter-row {
+  grid-column: 2;
+  grid-row: 2 / span 5;
 }
 
 .filter-row header {
@@ -409,7 +425,7 @@ button:hover {
   justify-content: space-between;
   gap: 12px;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .filter-row header span,
@@ -421,7 +437,7 @@ dt {
 
 .filter-row output {
   color: var(--ink);
-  font-size: 13px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -433,11 +449,11 @@ dt {
 
 .filter-levels button {
   min-width: 0;
-  min-height: 46px;
-  padding: 9px 12px;
+  min-height: 52px;
+  padding: 10px 14px;
   color: #39484a;
   background: rgba(248, 245, 238, 0.86);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 650;
 }
 
@@ -450,14 +466,14 @@ dt {
 
 .origin-map-filter {
   display: grid;
-  grid-template-columns: minmax(360px, 1.15fr) minmax(280px, 0.85fr);
+  grid-template-columns: minmax(460px, 1.12fr) minmax(320px, 0.88fr);
   gap: 16px;
   align-items: stretch;
 }
 
 .origin-region-map {
   position: relative;
-  min-height: 292px;
+  min-height: 270px;
   border: 1px solid rgba(31, 38, 40, 0.12);
   border-radius: 8px;
   background:
@@ -480,8 +496,8 @@ dt {
 .origin-region-button {
   position: absolute;
   min-width: 0;
-  min-height: 60px;
-  padding: 11px 13px;
+  min-height: 62px;
+  padding: 11px 14px;
   display: grid;
   justify-items: start;
   align-content: center;
@@ -496,14 +512,14 @@ dt {
 .origin-region-button strong,
 .color-swatch-label {
   font-family: Fraunces, Georgia, "Times New Roman", serif;
-  font-size: 15px;
+  font-size: 15.5px;
   font-weight: 650;
   letter-spacing: 0;
 }
 
 .origin-region-button span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 12.5px;
 }
 
 .origin-region-button:hover,
@@ -569,12 +585,12 @@ dt {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 10px;
-  min-height: 292px;
+  min-height: 270px;
 }
 
 .origin-country-search {
-  min-height: 42px;
-  font-size: 14px;
+  min-height: 48px;
+  font-size: 15px;
 }
 
 .origin-country-grid {
@@ -582,17 +598,17 @@ dt {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-content: start;
   gap: 8px;
-  max-height: 232px;
+  max-height: 210px;
   overflow: auto;
 }
 
 .origin-country-grid button,
 .origin-clear {
   min-width: 0;
-  min-height: 42px;
-  padding: 8px 10px;
+  min-height: 44px;
+  padding: 8px 11px;
   overflow: hidden;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .origin-country-grid button {
@@ -639,14 +655,14 @@ dt {
 
 .color-swatch-filter {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 9px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .color-swatch-filter button {
   min-width: 0;
-  min-height: 50px;
-  padding: 9px 11px;
+  min-height: 54px;
+  padding: 10px 12px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -655,9 +671,9 @@ dt {
 }
 
 .color-swatch-dot {
-  flex: 0 0 28px;
-  width: 28px;
-  height: 28px;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
   border: 1px solid rgba(31, 38, 40, 0.18);
   border-radius: 999px;
   background:
@@ -681,10 +697,16 @@ dt {
 
 .color-clear {
   justify-self: start;
-  min-height: 38px;
-  padding: 7px 12px;
-  font-size: 13px;
+  min-height: 42px;
+  padding: 8px 14px;
+  font-size: 14px;
   font-weight: 650;
+}
+
+.filters-popover select,
+.filters-popover input[type="search"] {
+  min-height: 50px;
+  font-size: 15px;
 }
 
 input[type="search"],
@@ -1544,6 +1566,18 @@ code {
     right: auto;
     top: var(--filters-top, 96px);
     width: var(--filters-width, calc(100vw - 24px));
+  }
+
+  .filter-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .origin-filter-row,
+  .filter-select-row,
+  .filter-range-row,
+  .color-filter-row {
+    grid-column: auto;
+    grid-row: auto;
   }
 
   .origin-map-filter {

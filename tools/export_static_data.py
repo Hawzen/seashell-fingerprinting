@@ -820,6 +820,7 @@ def export_thumbnail_atlases(
     records: list[dict],
     size: int,
     quality: int,
+    image_format: str,
     per_atlas: int,
     columns: int,
     budget_mib: float,
@@ -829,7 +830,12 @@ def export_thumbnail_atlases(
     thumb_dir = output_dir / "thumbs"
     thumb_dir.mkdir(parents=True, exist_ok=True)
     remove_matching_files(thumb_dir, "thumb_*.webp")
+    remove_matching_files(thumb_dir, "thumb_*.avif")
 
+    image_format = image_format.lower()
+    if image_format not in {"webp", "avif"}:
+        raise ValueError(f"Unsupported thumbnail format: {image_format}")
+    extension = "avif" if image_format == "avif" else "webp"
     columns = max(1, min(columns, per_atlas))
     per_atlas = max(1, per_atlas)
     page_files: list[str] = []
@@ -849,9 +855,12 @@ def export_thumbnail_atlases(
                     atlas.paste(image, (x, y))
             except OSError:
                 continue
-        file_name = f"thumb_{page:03d}.webp"
+        file_name = f"thumb_{page:03d}.{extension}"
         path = thumb_dir / file_name
-        atlas.save(path, "WEBP", quality=quality, method=6)
+        if image_format == "avif":
+            atlas.save(path, "AVIF", quality=quality, speed=6)
+        else:
+            atlas.save(path, "WEBP", quality=quality, method=6)
         page_files.append(file_name)
         total_bytes += path.stat().st_size
         if (page + 1) % 5 == 0 or start + len(page_records) == len(records):
@@ -867,6 +876,7 @@ def export_thumbnail_atlases(
         "files": page_files,
         "size": size,
         "quality": quality,
+        "format": image_format,
         "columns": columns,
         "per_atlas": per_atlas,
         "count": len(records),
@@ -900,11 +910,12 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path("public/data"))
     parser.add_argument("--record-components", type=int, default=6)
     parser.add_argument("--contour-points", type=int, default=256)
-    parser.add_argument("--contour-scale", type=int, default=12)
+    parser.add_argument("--contour-scale", type=int, default=16)
     parser.add_argument("--contour-workers", type=int, default=0)
     parser.add_argument("--no-contours", action="store_true")
-    parser.add_argument("--thumbnail-size", type=int, default=160)
-    parser.add_argument("--thumbnail-quality", type=int, default=64)
+    parser.add_argument("--thumbnail-size", type=int, default=224)
+    parser.add_argument("--thumbnail-quality", type=int, default=45)
+    parser.add_argument("--thumbnail-format", choices=("webp", "avif"), default="avif")
     parser.add_argument("--thumbnail-per-atlas", type=int, default=2048)
     parser.add_argument("--thumbnail-columns", type=int, default=64)
     parser.add_argument("--thumbnail-budget-mib", type=float, default=50.0)
@@ -1164,6 +1175,7 @@ def main() -> None:
             records,
             args.thumbnail_size,
             args.thumbnail_quality,
+            args.thumbnail_format,
             args.thumbnail_per_atlas,
             args.thumbnail_columns,
             args.thumbnail_budget_mib,
