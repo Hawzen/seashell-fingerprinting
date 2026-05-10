@@ -267,8 +267,20 @@ def verify_entrypoint() -> None:
     ]:
         if marker not in app:
             raise AssertionError(f"New feature implementation is missing {marker!r}")
-    if not Path("public/shell-generator.wasm").exists():
-        raise AssertionError("Missing public/shell-generator.wasm")
+    for retired in [
+        "shell-generator.wasm",
+        "initGeneratorKernel",
+        "blendContoursWithWasm",
+        "blendContoursWithJs",
+        "generateLocalShellFromTarget",
+        "nearestMapNeighbors",
+        "setTargetFromEvent(event, true)",
+    ]:
+        if retired in app:
+            raise AssertionError(f"Projected shell should use direct PCA reconstruction, found {retired!r}")
+    for marker in ["contourFromPcValues", "state.generatedMode = \"pca\"", "reconstructFromPc();"]:
+        if marker not in app:
+            raise AssertionError(f"Projected shell PCA reconstruction is missing {marker!r}")
 
 
 def verify_processed(dataset: Path, processed: Path) -> int:

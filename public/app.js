@@ -44,11 +44,8 @@ const state = {
   selectedContour: null,
   generatedContour: null,
   generatedTraits: null,
-  generatedNeighbors: [],
   generatedMode: "selected",
   uploadImageUrl: "",
-  generatorKernel: null,
-  generatorKernelReady: false,
   xAxis: 0,
   yAxis: 1,
   colorMode: "locality",
@@ -74,7 +71,6 @@ const state = {
   walkingPca: false,
   walkFrame: 0,
   walkStartedAt: 0,
-  lastWalkNeighborTick: -1,
   hashReady: false,
   suppressHash: false,
   hashTimer: 0,
@@ -475,26 +471,6 @@ function unpackShells(payload) {
     shells.push(shell);
   }
   return shells;
-}
-
-async function initGeneratorKernel() {
-  if (!("WebAssembly" in window)) return;
-  try {
-    const response = await fetch(asset("shell-generator.wasm"), { cache: "no-store" });
-    if (!response.ok) throw new Error(`shell-generator.wasm returned ${response.status}`);
-    let compiled;
-    try {
-      compiled = await WebAssembly.instantiateStreaming(response.clone(), {});
-    } catch (_mimeError) {
-      compiled = await WebAssembly.instantiate(await response.arrayBuffer(), {});
-    }
-    state.generatorKernel = compiled.instance.exports;
-    state.generatorKernelReady = Boolean(
-      state.generatorKernel?.memory && state.generatorKernel?.blend_contours,
-    );
-  } catch (_error) {
-    state.generatorKernelReady = false;
-  }
 }
 
 function parseHashState() {
@@ -1616,7 +1592,6 @@ function reconstructFromPc() {
   if (!out) return;
   state.generatedContour = out;
   state.generatedTraits = null;
-  state.generatedNeighbors = [];
   state.generatedMode = "pca";
   updateGeneratorStatus();
   drawOutline();
@@ -2390,215 +2365,6 @@ async function renderSourceShell(shell) {
   }, 320);
 }
 
-function shellMapVector(shell) {
-  return shell.contour_pc || [];
-}
-
-function nearestMapNeighbors(values, count = 14) {
-  const axisCount = Math.min(axisOptionCount(), 6);
-  const source = state.filtered.length ? state.filtered : state.shells;
-  const best = [];
-  let worstIndex = -1;
-  let worstDistance = -Infinity;
-  const refreshWorst = () => {
-    worstIndex = -1;
-    worstDistance = -Infinity;
-    for (let index = 0; index < best.length; index += 1) {
-      if (best[index].distanceSq > worstDistance) {
-        worstDistance = best[index].distanceSq;
-        worstIndex = index;
-      }
-    }
-  };
-  for (const shell of source) {
-    const vector = shellMapVector(shell);
-    let distanceSq = 0;
-    for (let axis = 0; axis < axisCount; axis += 1) {
-      const range = axisRange(axis);
-      const span = Math.max(1e-6, range ? range.p99 - range.p01 : 1);
-      const delta = ((vector[axis] || 0) - (values[axis] || 0)) / span;
-      distanceSq += delta * delta;
-    }
-    if (best.length < count) {
-      best.push({ distanceSq, shell });
-      if (distanceSq > worstDistance) {
-        worstDistance = distanceSq;
-        worstIndex = best.length - 1;
-      }
-    } else if (distanceSq < worstDistance) {
-      best[worstIndex] = { distanceSq, shell };
-      refreshWorst();
-    }
-  }
-  best.sort((a, b) => a.distanceSq - b.distanceSq);
-  return best;
-}
-
-function neighborWeights(neighbors) {
-  const weights = new Float32Array(neighbors.length);
-  if (!neighbors.length) return weights;
-  const distances = neighbors.map((item) => Math.sqrt(item.distanceSq));
-  const sigma = Math.max(distances[Math.min(5, distances.length - 1)] || distances.at(-1) || 1, 0.001);
-  for (let index = 0; index < neighbors.length; index += 1) {
-    weights[index] = Math.exp(-neighbors[index].distanceSq / (2 * sigma * sigma)) + 0.0001;
-  }
-  return weights;
-}
-
-function align4(value) {
-  return (value + 3) & ~3;
-}
-
-function blendContoursWithWasm(contours, weights, count, valueCount) {
-  if (!state.generatorKernelReady) return null;
-  const contourPtr = 0;
-  const weightsPtr = align4(contourPtr + contours.byteLength);
-  const outPtr = align4(weightsPtr + weights.byteLength);
-  const tempPtr = align4(outPtr + valueCount * 4);
-  const bytesNeeded = tempPtr + valueCount * 4;
-  const memory = state.generatorKernel.memory;
-  if (memory.buffer.byteLength < bytesNeeded) {
-    memory.grow(Math.ceil((bytesNeeded - memory.buffer.byteLength) / 65536));
-  }
-  const f32View = new Float32Array(memory.buffer);
-  f32View.set(contours, contourPtr / 4);
-  f32View.set(weights, weightsPtr / 4);
-  state.generatorKernel.blend_contours(
-    contourPtr,
-    weightsPtr,
-    outPtr,
-    tempPtr,
-    count,
-    valueCount,
-    0,
-    0,
-  );
-  return Float32Array.from(f32View.subarray(outPtr / 4, outPtr / 4 + valueCount));
-}
-
-function blendContoursWithJs(contours, weights, count, valueCount) {
-  const out = new Float32Array(valueCount);
-  let weightTotal = 0;
-  for (const weight of weights) weightTotal += weight;
-  if (weightTotal <= 0) weightTotal = 1;
-  for (let index = 0; index < valueCount; index += 1) {
-    let total = 0;
-    for (let neighbor = 0; neighbor < count; neighbor += 1) {
-      total += contours[neighbor * valueCount + index] * weights[neighbor];
-    }
-    out[index] = total / weightTotal;
-  }
-  return out;
-}
-
-function smoothContour(contour, amount = 0.16, passes = 2) {
-  const pointCount = Math.floor(contour.length / 2);
-  let current = Float32Array.from(contour);
-  let next = new Float32Array(contour.length);
-  for (let pass = 0; pass < passes; pass += 1) {
-    for (let index = 0; index < pointCount; index += 1) {
-      const prev = ((index - 1 + pointCount) % pointCount) * 2;
-      const here = index * 2;
-      const after = ((index + 1) % pointCount) * 2;
-      next[here] = current[here] * (1 - amount) + ((current[prev] + current[after]) / 2) * amount;
-      next[here + 1] =
-        current[here + 1] * (1 - amount) + ((current[prev + 1] + current[after + 1]) / 2) * amount;
-    }
-    const swap = current;
-    current = next;
-    next = swap;
-  }
-  return current;
-}
-
-function blendTraits(neighbors, weights, keys = null) {
-  const fields =
-    keys ||
-    [
-      "color_r_mean",
-      "color_g_mean",
-      "color_b_mean",
-      "color_l_mean",
-      "color_a_mean",
-      "color_b_lab_mean",
-      "color_chroma_mean",
-      "color_chroma_std",
-      "color_saturation_mean",
-      "color_saturation_std",
-      "roughness",
-      "texture_gradient_mean",
-      "texture_residual_std",
-      "texture_luma_iqr",
-      "color_pattern_strength",
-      "color_pattern_contrast",
-      "color_pattern_chroma",
-      "contour_concavity",
-      "contour_solidity",
-    ];
-  const traits = {};
-  let weightTotal = 0;
-  for (const weight of weights) weightTotal += weight;
-  if (weightTotal <= 0) weightTotal = 1;
-  for (const key of fields) {
-    let total = 0;
-    for (let index = 0; index < neighbors.length; index += 1) {
-      total += (neighbors[index].shell[key] || 0) * weights[index];
-    }
-    traits[key] = total / weightTotal;
-  }
-  return traits;
-}
-
-function generateLocalShellFromTarget() {
-  if (!state.contours || !state.contourPoints) return;
-  const values = [...activeAxisValues()];
-  const neighbors = nearestMapNeighbors(values);
-  const count = neighbors.length;
-  const valueCount = state.contourPoints * 2;
-  if (!count || !valueCount) return;
-  const contours = new Float32Array(count * valueCount);
-  for (let index = 0; index < count; index += 1) {
-    const contour = normalizedContour(neighbors[index].shell);
-    if (contour) contours.set(contour, index * valueCount);
-  }
-  const weights = neighborWeights(neighbors);
-  const wasmContour = blendContoursWithWasm(contours, weights, count, valueCount);
-  state.generatedContour = smoothContour(wasmContour || blendContoursWithJs(contours, weights, count, valueCount));
-  state.generatedTraits = blendTraits(neighbors, weights);
-  state.generatedNeighbors = neighbors;
-  state.generatedMode = wasmContour ? "wasm" : "js";
-  updateGeneratorStatus();
-  drawOutline();
-  renderPalette();
-}
-
-function generateFromPcVector(values, mode = "latent") {
-  if (!state.contours || !state.contourPoints) return;
-  const neighbors = nearestMapNeighbors(values);
-  const count = neighbors.length;
-  const valueCount = state.contourPoints * 2;
-  if (!count || !valueCount) return;
-  const contours = new Float32Array(count * valueCount);
-  for (let index = 0; index < count; index += 1) {
-    const contour = normalizedContour(neighbors[index].shell);
-    if (contour) contours.set(contour, index * valueCount);
-  }
-  const weights = neighborWeights(neighbors);
-  const wasmContour = blendContoursWithWasm(contours, weights, count, valueCount);
-  state.pcValues = [...values];
-  for (let index = 0; index < contourAxisCount(); index += 1) updatePcControl(index, values[index] || 0);
-  state.generatedContour = smoothContour(wasmContour || blendContoursWithJs(contours, weights, count, valueCount));
-  state.generatedTraits = blendTraits(neighbors, weights);
-  state.generatedNeighbors = neighbors;
-  state.generatedMode = mode;
-  updateGeneratorStatus();
-  drawOutline();
-  renderPalette();
-  renderPathNeighbors(neighbors);
-  scheduleDraw();
-  scheduleHashUpdate();
-}
-
 function contourPcDistanceSq(shell, candidate) {
   let distance = 0;
   const count = Math.min(4, shell.contour_pc?.length || 0, candidate.contour_pc?.length || 0);
@@ -2662,27 +2428,6 @@ function renderNeighbors(shell, token = state.neighborToken) {
     button.addEventListener("click", () => {
       centerViewportOnShell(item.shell);
       selectShell(item.shell);
-    });
-    els.neighborsList.append(button);
-  }
-}
-
-function renderPathNeighbors(neighbors) {
-  els.neighborsList.innerHTML = "";
-  for (const item of neighbors.slice(0, 8)) {
-    const shell = item.shell;
-    const button = document.createElement("button");
-    button.className = "neighbor-button";
-    button.title = `${shell.species} (${formatNumber(Math.sqrt(item.distanceSq || item.distance || 0), 3)})`;
-    const image = document.createElement("canvas");
-    image.setAttribute("aria-label", shell.species);
-    drawShellThumbToCanvas(image, shell, { loadImage: false });
-    const label = document.createElement("span");
-    label.textContent = "near";
-    button.append(image, label);
-    button.addEventListener("click", () => {
-      centerViewportOnShell(shell);
-      selectShell(shell);
     });
     els.neighborsList.append(button);
   }
@@ -2848,7 +2593,6 @@ function selectShell(shell, { renderNearest = true } = {}) {
   state.selectedContour = normalizedContour(shell);
   state.generatedContour = state.selectedContour;
   state.generatedTraits = shapeTraitsFromShell(shell);
-  state.generatedNeighbors = [];
   state.generatedMode = "selected";
   (shell.contour_pc || []).forEach((value, index) => {
     state.pcValues[index] = value;
@@ -2919,7 +2663,7 @@ function nearestShell(screenX, screenY) {
   return bestDistance <= 14 * 14 ? best : null;
 }
 
-function setTargetFromEvent(event, blend = false) {
+function setTargetFromEvent(event) {
   const rect = els.scatter.getBoundingClientRect();
   const size = resizeCanvas(els.scatter, scatterCtx);
   const point = screenToWorld(event.clientX - rect.left, event.clientY - rect.top, size);
@@ -2928,7 +2672,6 @@ function setTargetFromEvent(event, blend = false) {
   updatePcControl(state.xAxis, point.x);
   updatePcControl(state.yAxis, point.y);
   reconstructFromPc();
-  if (blend) generateLocalShellFromTarget();
   scheduleDraw();
   scheduleHashUpdate();
 }
@@ -3694,7 +3437,7 @@ function setupEvents() {
     if (shell) selectShell(shell);
     else {
       state.draggingTarget = true;
-      setTargetFromEvent(event, true);
+      setTargetFromEvent(event);
     }
   });
 
@@ -3706,7 +3449,7 @@ function setupEvents() {
     }
     if (state.draggingTarget) {
       event.preventDefault();
-      setTargetFromEvent(event, true);
+      setTargetFromEvent(event);
       els.pointTooltip.hidden = true;
       return;
     }
@@ -3767,7 +3510,6 @@ async function init() {
   const contourBuffer = model.contour_file
     ? await fetchCompressedArrayBuffer(asset(`data/${model.contour_file}`))
     : null;
-  await initGeneratorKernel();
 
   state.model = model;
   state.shells = unpackShells(shellPayload);
