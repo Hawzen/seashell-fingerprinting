@@ -1,4 +1,5 @@
 PYTHON ?= python3
+JS_RUNNER ?= bun
 PORT ?= 8010
 MAX_SIZE ?= 400
 SMOOTH_WINDOW ?= 5
@@ -9,7 +10,7 @@ THUMBNAIL_SIZE ?= 224
 THUMBNAIL_QUALITY ?= 45
 THUMBNAIL_FORMAT ?= avif
 
-.PHONY: fingerprints export-data localities species-traits smoke verify verify-browser verify-perf serve
+.PHONY: fingerprints export-data localities species-traits frontend-build frontend-typecheck smoke verify verify-browser verify-perf dev serve
 
 fingerprints:
 	$(PYTHON) tools/build_fingerprints.py --dataset dataset --output processed --max-size $(MAX_SIZE) --smooth-window $(SMOOTH_WINDOW) --center centroid --contour-points $(CONTOUR_POINTS)
@@ -23,7 +24,13 @@ localities:
 species-traits:
 	$(PYTHON) tools/build_species_traits.py
 
-smoke:
+frontend-build:
+	$(JS_RUNNER) run build
+
+frontend-typecheck:
+	$(JS_RUNNER) run typecheck
+
+smoke: frontend-build frontend-typecheck
 	node --check public/app.js
 	$(PYTHON) -m py_compile tools/*.py
 
@@ -35,6 +42,9 @@ verify-browser: smoke
 
 verify-perf: smoke
 	$(PYTHON) tools/verify_project.py --browser --perf
+
+dev:
+	$(JS_RUNNER) run dev
 
 serve:
 	$(PYTHON) -m http.server $(PORT)

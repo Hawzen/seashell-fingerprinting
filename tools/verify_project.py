@@ -64,6 +64,9 @@ class ControlParser(HTMLParser):
         if tag == "select" and self.select_stack:
             self.select_stack.pop()
 
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+
 
 def load_json(path: Path) -> dict:
     if not path.exists():
@@ -152,8 +155,15 @@ def unpack_shell_payload(payload: dict) -> list[dict]:
 def verify_entrypoint() -> None:
     path = Path("index.html")
     text = path.read_text(encoding="utf-8")
+    shell_path = Path("src/components/AppShell.tsx")
+    if not shell_path.exists():
+        raise AssertionError("Solid app shell is missing src/components/AppShell.tsx")
+    shell_text = shell_path.read_text(encoding="utf-8")
+    combined_text = f"{text}\n{shell_text}"
     parser = ControlParser()
-    parser.feed(text)
+    parser.feed(combined_text)
+    if '<div id="root"></div>' not in text or './public/app.js' not in text or '/src/main.tsx' not in text:
+        raise AssertionError("index.html should mount Solid from source in Vite dev and from public/app.js in static builds")
     required_ids = {
         "scatterCanvas",
         "xAxisSelect",
@@ -187,7 +197,7 @@ def verify_entrypoint() -> None:
     expected_color_modes = ["locality", "species", "conservation", "shell", "pattern", "lightness", "concavity"]
     if parser.options.get("colorModeSelect") != expected_color_modes:
         raise AssertionError(f"Unexpected color modes: {parser.options.get('colorModeSelect')}")
-    if 'placeholder="Species or Shellprint"' not in text:
+    if 'placeholder="Species or Shellprint"' not in combined_text:
         raise AssertionError("Search placeholder should say Species or Shellprint")
     legacy_title = "Seashell " + "PCA Explorer"
     retired = [
@@ -228,10 +238,10 @@ def verify_entrypoint() -> None:
         "Chroma",
     ]
     for marker in retired:
-        if marker in text:
-            raise AssertionError(f"Retired UI/path marker is still present in index.html: {marker}")
+        if marker in combined_text:
+            raise AssertionError(f"Retired UI/path marker is still present in frontend shell: {marker}")
     for marker in ["rpg-loader", "loader-shell-top", "loader-shell-bottom", "loader-pearl", "pearl-spark"]:
-        if marker not in text:
+        if marker not in combined_text:
             raise AssertionError(f"Loading animation is missing {marker!r}")
     styles = Path("public/styles.css").read_text(encoding="utf-8")
     for marker in [
@@ -252,7 +262,7 @@ def verify_entrypoint() -> None:
     if "paddedContourCrop(shell, contour, 0.035)" not in app:
         raise AssertionError("Starred shelf should render contour-cropped thumbnails")
     for marker in ["filtersToggle", "filtersPanel", "filterControls", "resetTraitFilters"]:
-        if marker not in text:
+        if marker not in combined_text:
             raise AssertionError(f"New feature UI is missing {marker!r}")
     for marker in [
         "deriveMorphMetrics",

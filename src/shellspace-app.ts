@@ -1,532 +1,20 @@
-const scriptRel = "modulepreload";
-const assetsURL = function(dep) {
-  return "/" + dep;
-};
-const seen = {};
-const __vitePreload = function preload(baseModule, deps, importerUrl) {
-  let promise = Promise.resolve();
-  if (deps && deps.length > 0) {
-    let allSettled2 = function(promises) {
-      return Promise.all(
-        promises.map(
-          (p) => Promise.resolve(p).then(
-            (value) => ({ status: "fulfilled", value }),
-            (reason) => ({ status: "rejected", reason })
-          )
-        )
-      );
-    };
-    document.getElementsByTagName("link");
-    const cspNonceMeta = document.querySelector(
-      "meta[property=csp-nonce]"
-    );
-    const cspNonce = (cspNonceMeta == null ? void 0 : cspNonceMeta.nonce) || (cspNonceMeta == null ? void 0 : cspNonceMeta.getAttribute("nonce"));
-    promise = allSettled2(
-      deps.map((dep) => {
-        dep = assetsURL(dep);
-        if (dep in seen) return;
-        seen[dep] = true;
-        const isCss = dep.endsWith(".css");
-        const cssSelector = isCss ? '[rel="stylesheet"]' : "";
-        if (document.querySelector(`link[href="${dep}"]${cssSelector}`)) {
-          return;
-        }
-        const link = document.createElement("link");
-        link.rel = isCss ? "stylesheet" : scriptRel;
-        if (!isCss) {
-          link.as = "script";
-        }
-        link.crossOrigin = "";
-        link.href = dep;
-        if (cspNonce) {
-          link.setAttribute("nonce", cspNonce);
-        }
-        document.head.appendChild(link);
-        if (isCss) {
-          return new Promise((res, rej) => {
-            link.addEventListener("load", res);
-            link.addEventListener(
-              "error",
-              () => rej(new Error(`Unable to preload CSS for ${dep}`))
-            );
-          });
-        }
-      })
-    );
-  }
-  function handlePreloadError(err) {
-    const e = new Event("vite:preloadError", {
-      cancelable: true
-    });
-    e.payload = err;
-    window.dispatchEvent(e);
-    if (!e.defaultPrevented) {
-      throw err;
-    }
-  }
-  return promise.then((res) => {
-    for (const item of res || []) {
-      if (item.status !== "rejected") continue;
-      handlePreloadError(item.reason);
-    }
-    return baseModule().catch(handlePreloadError);
-  });
-};
-const IS_DEV = false;
-let runEffects = runQueue;
-const STALE = 1;
-const PENDING = 2;
-const UNOWNED = {
-  owned: null,
-  cleanups: null,
-  context: null,
-  owner: null
-};
-var Owner = null;
-let Transition = null;
-let ExternalSourceConfig = null;
-let Listener = null;
-let Updates = null;
-let Effects = null;
-let ExecCount = 0;
-function createRoot(fn, detachedOwner) {
-  const listener = Listener, owner = Owner, unowned = fn.length === 0, current = detachedOwner === void 0 ? owner : detachedOwner, root2 = unowned ? UNOWNED : {
-    owned: null,
-    cleanups: null,
-    context: current ? current.context : null,
-    owner: current
-  }, updateFn = unowned ? fn : () => fn(() => untrack(() => cleanNode(root2)));
-  Owner = root2;
-  Listener = null;
-  try {
-    return runUpdates(updateFn, true);
-  } finally {
-    Listener = listener;
-    Owner = owner;
-  }
-}
-function createRenderEffect(fn, value, options) {
-  const c = createComputation(fn, value, false, STALE);
-  updateComputation(c);
-}
-function untrack(fn) {
-  if (Listener === null) return fn();
-  const listener = Listener;
-  Listener = null;
-  try {
-    if (ExternalSourceConfig) ;
-    return fn();
-  } finally {
-    Listener = listener;
-  }
-}
-function writeSignal(node, value, isComp) {
-  let current = node.value;
-  if (!node.comparator || !node.comparator(current, value)) {
-    node.value = value;
-    if (node.observers && node.observers.length) {
-      runUpdates(() => {
-        for (let i = 0; i < node.observers.length; i += 1) {
-          const o = node.observers[i];
-          const TransitionRunning = Transition && Transition.running;
-          if (TransitionRunning && Transition.disposed.has(o)) ;
-          if (TransitionRunning ? !o.tState : !o.state) {
-            if (o.pure) Updates.push(o);
-            else Effects.push(o);
-            if (o.observers) markDownstream(o);
-          }
-          if (!TransitionRunning) o.state = STALE;
-        }
-        if (Updates.length > 1e6) {
-          Updates = [];
-          if (IS_DEV) ;
-          throw new Error();
-        }
-      }, false);
-    }
-  }
-  return value;
-}
-function updateComputation(node) {
-  if (!node.fn) return;
-  cleanNode(node);
-  const time = ExecCount;
-  runComputation(node, node.value, time);
-}
-function runComputation(node, value, time) {
-  let nextValue;
-  const owner = Owner, listener = Listener;
-  Listener = Owner = node;
-  try {
-    nextValue = node.fn(value);
-  } catch (err) {
-    if (node.pure) {
-      {
-        node.state = STALE;
-        node.owned && node.owned.forEach(cleanNode);
-        node.owned = null;
-      }
-    }
-    node.updatedAt = time + 1;
-    return handleError(err);
-  } finally {
-    Listener = listener;
-    Owner = owner;
-  }
-  if (!node.updatedAt || node.updatedAt <= time) {
-    if (node.updatedAt != null && "observers" in node) {
-      writeSignal(node, nextValue);
-    } else node.value = nextValue;
-    node.updatedAt = time;
-  }
-}
-function createComputation(fn, init2, pure, state2 = STALE, options) {
-  const c = {
-    fn,
-    state: state2,
-    updatedAt: null,
-    owned: null,
-    sources: null,
-    sourceSlots: null,
-    cleanups: null,
-    value: init2,
-    owner: Owner,
-    context: Owner ? Owner.context : null,
-    pure
-  };
-  if (Owner === null) ;
-  else if (Owner !== UNOWNED) {
-    {
-      if (!Owner.owned) Owner.owned = [c];
-      else Owner.owned.push(c);
-    }
-  }
-  return c;
-}
-function runTop(node) {
-  if (node.state === 0) return;
-  if (node.state === PENDING) return lookUpstream(node);
-  if (node.suspense && untrack(node.suspense.inFallback)) return node.suspense.effects.push(node);
-  const ancestors = [node];
-  while ((node = node.owner) && (!node.updatedAt || node.updatedAt < ExecCount)) {
-    if (node.state) ancestors.push(node);
-  }
-  for (let i = ancestors.length - 1; i >= 0; i--) {
-    node = ancestors[i];
-    if (node.state === STALE) {
-      updateComputation(node);
-    } else if (node.state === PENDING) {
-      const updates = Updates;
-      Updates = null;
-      runUpdates(() => lookUpstream(node, ancestors[0]), false);
-      Updates = updates;
-    }
-  }
-}
-function runUpdates(fn, init2) {
-  if (Updates) return fn();
-  let wait = false;
-  if (!init2) Updates = [];
-  if (Effects) wait = true;
-  else Effects = [];
-  ExecCount++;
-  try {
-    const res = fn();
-    completeUpdates(wait);
-    return res;
-  } catch (err) {
-    if (!wait) Effects = null;
-    Updates = null;
-    handleError(err);
-  }
-}
-function completeUpdates(wait) {
-  if (Updates) {
-    runQueue(Updates);
-    Updates = null;
-  }
-  if (wait) return;
-  const e = Effects;
-  Effects = null;
-  if (e.length) runUpdates(() => runEffects(e), false);
-}
-function runQueue(queue) {
-  for (let i = 0; i < queue.length; i++) runTop(queue[i]);
-}
-function lookUpstream(node, ignore) {
-  node.state = 0;
-  for (let i = 0; i < node.sources.length; i += 1) {
-    const source = node.sources[i];
-    if (source.sources) {
-      const state2 = source.state;
-      if (state2 === STALE) {
-        if (source !== ignore && (!source.updatedAt || source.updatedAt < ExecCount)) runTop(source);
-      } else if (state2 === PENDING) lookUpstream(source, ignore);
-    }
-  }
-}
-function markDownstream(node) {
-  for (let i = 0; i < node.observers.length; i += 1) {
-    const o = node.observers[i];
-    if (!o.state) {
-      o.state = PENDING;
-      if (o.pure) Updates.push(o);
-      else Effects.push(o);
-      o.observers && markDownstream(o);
-    }
-  }
-}
-function cleanNode(node) {
-  let i;
-  if (node.sources) {
-    while (node.sources.length) {
-      const source = node.sources.pop(), index = node.sourceSlots.pop(), obs = source.observers;
-      if (obs && obs.length) {
-        const n = obs.pop(), s = source.observerSlots.pop();
-        if (index < obs.length) {
-          n.sourceSlots[s] = index;
-          obs[index] = n;
-          source.observerSlots[index] = s;
-        }
-      }
-    }
-  }
-  if (node.tOwned) {
-    for (i = node.tOwned.length - 1; i >= 0; i--) cleanNode(node.tOwned[i]);
-    delete node.tOwned;
-  }
-  if (node.owned) {
-    for (i = node.owned.length - 1; i >= 0; i--) cleanNode(node.owned[i]);
-    node.owned = null;
-  }
-  if (node.cleanups) {
-    for (i = node.cleanups.length - 1; i >= 0; i--) node.cleanups[i]();
-    node.cleanups = null;
-  }
-  node.state = 0;
-}
-function castError(err) {
-  if (err instanceof Error) return err;
-  return new Error(typeof err === "string" ? err : "Unknown error", {
-    cause: err
-  });
-}
-function handleError(err, owner = Owner) {
-  const error = castError(err);
-  throw error;
-}
-function createComponent(Comp, props) {
-  return untrack(() => Comp(props || {}));
-}
-function reconcileArrays(parentNode, a, b) {
-  let bLength = b.length, aEnd = a.length, bEnd = bLength, aStart = 0, bStart = 0, after = a[aEnd - 1].nextSibling, map = null;
-  while (aStart < aEnd || bStart < bEnd) {
-    if (a[aStart] === b[bStart]) {
-      aStart++;
-      bStart++;
-      continue;
-    }
-    while (a[aEnd - 1] === b[bEnd - 1]) {
-      aEnd--;
-      bEnd--;
-    }
-    if (aEnd === aStart) {
-      const node = bEnd < bLength ? bStart ? b[bStart - 1].nextSibling : b[bEnd - bStart] : after;
-      while (bStart < bEnd) parentNode.insertBefore(b[bStart++], node);
-    } else if (bEnd === bStart) {
-      while (aStart < aEnd) {
-        if (!map || !map.has(a[aStart])) a[aStart].remove();
-        aStart++;
-      }
-    } else if (a[aStart] === b[bEnd - 1] && b[bStart] === a[aEnd - 1]) {
-      const node = a[--aEnd].nextSibling;
-      parentNode.insertBefore(b[bStart++], a[aStart++].nextSibling);
-      parentNode.insertBefore(b[--bEnd], node);
-      a[aEnd] = b[bEnd];
-    } else {
-      if (!map) {
-        map = /* @__PURE__ */ new Map();
-        let i = bStart;
-        while (i < bEnd) map.set(b[i], i++);
-      }
-      const index = map.get(a[aStart]);
-      if (index != null) {
-        if (bStart < index && index < bEnd) {
-          let i = aStart, sequence = 1, t;
-          while (++i < aEnd && i < bEnd) {
-            if ((t = map.get(a[i])) == null || t !== index + sequence) break;
-            sequence++;
-          }
-          if (sequence > index - bStart) {
-            const node = a[aStart];
-            while (bStart < index) parentNode.insertBefore(b[bStart++], node);
-          } else parentNode.replaceChild(b[bStart++], a[aStart++]);
-        } else aStart++;
-      } else a[aStart++].remove();
-    }
-  }
-}
-function render(code, element, init2, options = {}) {
-  let disposer;
-  createRoot((dispose) => {
-    disposer = dispose;
-    element === document ? code() : insert(element, code(), element.firstChild ? null : void 0, init2);
-  }, options.owner);
-  return () => {
-    disposer();
-    element.textContent = "";
-  };
-}
-function template(html, isImportNode, isSVG, isMathML) {
-  let node;
-  const create = () => {
-    const t = document.createElement("template");
-    t.innerHTML = html;
-    return t.content.firstChild;
-  };
-  const fn = () => (node || (node = create())).cloneNode(true);
-  fn.cloneNode = fn;
-  return fn;
-}
-function insert(parent, accessor, marker, initial) {
-  if (marker !== void 0 && !initial) initial = [];
-  if (typeof accessor !== "function") return insertExpression(parent, accessor, initial, marker);
-  createRenderEffect((current) => insertExpression(parent, accessor(), current, marker), initial);
-}
-function insertExpression(parent, value, current, marker, unwrapArray) {
-  while (typeof current === "function") current = current();
-  if (value === current) return current;
-  const t = typeof value, multi = marker !== void 0;
-  parent = multi && current[0] && current[0].parentNode || parent;
-  if (t === "string" || t === "number") {
-    if (t === "number") {
-      value = value.toString();
-      if (value === current) return current;
-    }
-    if (multi) {
-      let node = current[0];
-      if (node && node.nodeType === 3) {
-        node.data !== value && (node.data = value);
-      } else node = document.createTextNode(value);
-      current = cleanChildren(parent, current, marker, node);
-    } else {
-      if (current !== "" && typeof current === "string") {
-        current = parent.firstChild.data = value;
-      } else current = parent.textContent = value;
-    }
-  } else if (value == null || t === "boolean") {
-    current = cleanChildren(parent, current, marker);
-  } else if (t === "function") {
-    createRenderEffect(() => {
-      let v = value();
-      while (typeof v === "function") v = v();
-      current = insertExpression(parent, v, current, marker);
-    });
-    return () => current;
-  } else if (Array.isArray(value)) {
-    const array = [];
-    const currentArray = current && Array.isArray(current);
-    if (normalizeIncomingArray(array, value, current, unwrapArray)) {
-      createRenderEffect(() => current = insertExpression(parent, array, current, marker, true));
-      return () => current;
-    }
-    if (array.length === 0) {
-      current = cleanChildren(parent, current, marker);
-      if (multi) return current;
-    } else if (currentArray) {
-      if (current.length === 0) {
-        appendNodes(parent, array, marker);
-      } else reconcileArrays(parent, current, array);
-    } else {
-      current && cleanChildren(parent);
-      appendNodes(parent, array);
-    }
-    current = array;
-  } else if (value.nodeType) {
-    if (Array.isArray(current)) {
-      if (multi) return current = cleanChildren(parent, current, marker, value);
-      cleanChildren(parent, current, null, value);
-    } else if (current == null || current === "" || !parent.firstChild) {
-      parent.appendChild(value);
-    } else parent.replaceChild(value, parent.firstChild);
-    current = value;
-  } else ;
-  return current;
-}
-function normalizeIncomingArray(normalized, array, current, unwrap) {
-  let dynamic = false;
-  for (let i = 0, len = array.length; i < len; i++) {
-    let item = array[i], prev = current && current[normalized.length], t;
-    if (item == null || item === true || item === false) ;
-    else if ((t = typeof item) === "object" && item.nodeType) {
-      normalized.push(item);
-    } else if (Array.isArray(item)) {
-      dynamic = normalizeIncomingArray(normalized, item, prev) || dynamic;
-    } else if (t === "function") {
-      if (unwrap) {
-        while (typeof item === "function") item = item();
-        dynamic = normalizeIncomingArray(normalized, Array.isArray(item) ? item : [item], Array.isArray(prev) ? prev : [prev]) || dynamic;
-      } else {
-        normalized.push(item);
-        dynamic = true;
-      }
-    } else {
-      const value = String(item);
-      if (prev && prev.nodeType === 3 && prev.data === value) normalized.push(prev);
-      else normalized.push(document.createTextNode(value));
-    }
-  }
-  return dynamic;
-}
-function appendNodes(parent, array, marker = null) {
-  for (let i = 0, len = array.length; i < len; i++) parent.insertBefore(array[i], marker);
-}
-function cleanChildren(parent, current, marker, replacement) {
-  if (marker === void 0) return parent.textContent = "";
-  const node = replacement || document.createTextNode("");
-  if (current.length) {
-    let inserted = false;
-    for (let i = current.length - 1; i >= 0; i--) {
-      const el = current[i];
-      if (node !== el) {
-        const isParent = el.parentNode === parent;
-        if (!inserted && !i) isParent ? parent.replaceChild(node, el) : parent.insertBefore(node, marker);
-        else isParent && el.remove();
-      } else inserted = true;
-    }
-  } else parent.insertBefore(node, marker);
-  return [node];
-}
-var _tmpl$ = /* @__PURE__ */ template(`<header class=topbar><div class=brand-block><h1>Shellspace</h1><p class=tagline>Every shell is a fingerprint — Shellspace is the atlas.</p><p id=statusLine>Loading shell model</p></div><div id=starredBand class=starred-band aria-label="Starred shells"></div><div id=starBurst class=star-burst aria-hidden=true></div><div class=top-actions><button id=zoomOut title="Zoom out">-</button><button id=zoomIn title="Zoom in">+</button><button id=resetView title="Reset map view">Reset`), _tmpl$2 = /* @__PURE__ */ template(`<main class=workspace><aside class="panel controls-panel"><section class="panel-section search-section"><div class=search-row><label class=field><span>Search</span><input id=searchBox type=search placeholder="Species or Shellprint"></label><button id=filtersToggle class=filters-toggle title="Open filters"aria-expanded=false>Filters</button></div><div id=filtersPanel class=filters-popover hidden><header><h2>Filters</h2><button id=closeFilters title="Close filters"aria-label="Close filters">x</button></header><div id=filterControls class=filter-controls></div><div class=filter-actions><button id=resetTraitFilters title="Reset filters">Reset</button></div></div><button id=randomShell title="Select a random shell">Surprise me</button><button id=uploadShell class=upload-shell title="Bring your own shell">+ Bring your own shell</button><input id=uploadInput type=file accept=image/* hidden><div class=section-title><h2>Map</h2></div><div class=axis-grid><label><span>X</span><select id=xAxisSelect></select></label><label><span>Y</span><select id=yAxisSelect></select></label></div><label class=field><span>Color</span><select id=colorModeSelect><option value=locality>Location</option><option value=species>Species</option><option value=conservation>Conservation</option><option value=shell>Shell color</option><option value=pattern>Pattern</option><option value=lightness>Lightness</option><option value=concavity>Concavity</option></select></label></section><section class="panel-section physical-shell"><div class=section-title><h2>Physical Shell <span id=physicalHash class="fingerprint-chip compact">------</span></h2><button id=starShell class=star-button title="Star this shape"aria-label="Star this shape"aria-pressed=false><svg class=star-icon viewBox="0 0 24 24"aria-hidden=true><path class=star-shape d="M12 2.8l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.6l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9L12 2.8z"></path></svg></button></div><div class=source-frame><div id=sourceSpinner class=source-spinner hidden></div><canvas id=sourceThumb width=420 height=300></canvas><img id=sourceImage alt hidden></div><div id=selectedName class=selected-name>None</div><dl id=selectedDetails></dl></section></aside><section class=scatter-panel aria-label="PCA scatter plot"><canvas id=scatterCanvas></canvas><div id=pointTooltip class=point-tooltip hidden></div></section><aside class="panel lab-panel"><section class="panel-section projected-lab"><div class=generated-shape><div class=section-title><h2>Projected Shell <span id=projectedHash class="fingerprint-chip compact">------</span></h2></div><div class=projection-frame><canvas id=outlineCanvas width=420 height=420></canvas><button id=exportSvg class=svg-export title="Export generated shell as SVG">SVG</button></div></div><div class=color-palette><h2>Palette</h2><div id=paletteSwatches class=palette-swatches></div></div><div class=slider-stack><div class=section-title><h2>Contour PCs</h2><div class=title-actions><button id=meanShape title="Reset contour coordinates">Mean</button><button id=walkPca title="Animate through contour PCA space">Walk</button></div></div><div id=pcControls></div></div></section><section class="panel-section neighbors"><div class=section-title><h2>Nearest Shells</h2></div><div id=neighborsList>`), _tmpl$3 = /* @__PURE__ */ template(`<div id=loadingOverlay class=loading-overlay><div class=rpg-loader aria-hidden=true><div class=loader-shadow></div><div class=loader-aura></div><div class="loader-shell loader-shell-top"><span class="shell-rib rib-1"></span><span class="shell-rib rib-2"></span><span class="shell-rib rib-3"></span><span class="shell-rib rib-4"></span><span class="shell-rib rib-5"></span><span class=shell-lip></span></div><div class="loader-shell loader-shell-bottom"><span class="shell-rib rib-1"></span><span class="shell-rib rib-2"></span><span class="shell-rib rib-3"></span><span class="shell-rib rib-4"></span><span class="shell-rib rib-5"></span><span class=shell-lip></span></div><div class=loader-pearl><span class="pearl-spark spark-1"></span><span class="pearl-spark spark-2"></span><span class="pearl-spark spark-3"></span></div></div><p id=loadingText>Opening shell data`), _tmpl$4 = /* @__PURE__ */ template(`<div id=missingData class=missing-data hidden><div><h2>Processed Data Missing</h2><p>Build processed data, export static data, then refresh the app.</p><code>make fingerprints
-make export-data`);
-function AppShell() {
-  return [_tmpl$(), _tmpl$2(), _tmpl$3(), _tmpl$4()];
-}
-const root = document.querySelector("#root");
-if (!root) {
-  throw new Error("Missing #root");
-}
-render(() => createComponent(AppShell, {}), root);
-void __vitePreload(async () => {
-  const { startShellspace: startShellspace2 } = await Promise.resolve().then(() => shellspaceApp);
-  return { startShellspace: startShellspace2 };
-}, true ? void 0 : void 0).then(({
-  startShellspace: startShellspace2
-}) => startShellspace2());
+// @ts-nocheck
+
 const repoBase = new URL("../", import.meta.url).pathname;
 const publicBase = `${repoBase}public/`;
+
 const colorModes = ["locality", "species", "conservation", "shell", "pattern", "lightness", "concavity"];
 const starStorageKey = "shellspace-starred";
 const rangeFilterDefs = [
   { key: "lightness", label: "Lightness", format: "percent" },
   { key: "area", label: "Area", format: "percent" },
   { key: "concavity", label: "Concavity", format: "percent" },
-  { key: "asymmetry", label: "Asymmetry", format: "percent" }
+  { key: "asymmetry", label: "Asymmetry", format: "percent" },
 ];
 const filterLevels = [
   { key: "low", label: "Low", min: 0, max: 1 / 3 },
   { key: "medium", label: "Medium", min: 1 / 3, max: 2 / 3 },
-  { key: "high", label: "High", min: 2 / 3, max: 1 }
+  { key: "high", label: "High", min: 2 / 3, max: 1 },
 ];
 const rarityFilterOptions = ["Common", "Uncommon", "Rare", "Extremely rare", "Data deficient"];
 const colorSwatches = [
@@ -541,8 +29,9 @@ const colorSwatches = [
   ["#91885b", "Olive"],
   ["#7f9294", "Blue gray"],
   ["#c6c8c0", "Pearl"],
-  ["#ffffff", "White"]
+  ["#ffffff", "White"],
 ];
+
 const state = {
   shells: [],
   filtered: [],
@@ -561,13 +50,13 @@ const state = {
   yAxis: 1,
   colorMode: "locality",
   pcValues: [],
-  morphFilters: /* @__PURE__ */ new Map(),
+  morphFilters: new Map(),
   categoryFilters: { origin: "", rarity: "", color: "" },
-  conservationCache: /* @__PURE__ */ new Map(),
+  conservationCache: new Map(),
   starredIds: [],
   showAllStars: false,
-  speciesCounts: /* @__PURE__ */ new Map(),
-  speciesTraits: /* @__PURE__ */ new Map(),
+  speciesCounts: new Map(),
+  speciesTraits: new Map(),
   localityMatchRate: 0,
   drawFrame: 0,
   drawTimer: 0,
@@ -589,20 +78,21 @@ const state = {
   sourceToken: 0,
   sourceLoadTimer: 0,
   scatterPointCache: null,
-  shellById: /* @__PURE__ */ new Map(),
-  shellsByThumbnailPage: /* @__PURE__ */ new Map(),
-  loadedThumbnailPages: /* @__PURE__ */ new Set(),
+  shellById: new Map(),
+  shellsByThumbnailPage: new Map(),
+  loadedThumbnailPages: new Set(),
   warmingThumbnails: false,
   surpriseQueue: [],
   surpriseQueueSource: null,
   surprisePrimeTimer: 0,
-  neighborCache: /* @__PURE__ */ new Map(),
+  neighborCache: new Map(),
   neighborTimer: 0,
   neighborToken: 0,
-  pointColorCache: /* @__PURE__ */ new Map(),
-  paletteCache: /* @__PURE__ */ new Map(),
-  originFilterOptionsCache: null
+  pointColorCache: new Map(),
+  paletteCache: new Map(),
+  originFilterOptionsCache: null,
 };
+
 const els = {
   statusLine: document.querySelector("#statusLine"),
   starredBand: document.querySelector("#starredBand"),
@@ -641,55 +131,75 @@ const els = {
   resetView: document.querySelector("#resetView"),
   loadingOverlay: document.querySelector("#loadingOverlay"),
   loadingText: document.querySelector("#loadingText"),
-  missingData: document.querySelector("#missingData")
+  missingData: document.querySelector("#missingData"),
 };
+
 const scatterCtx = els.scatter.getContext("2d");
 const outlineCtx = els.outline.getContext("2d");
 const sourceThumbCtx = els.sourceThumb.getContext("2d");
-const normalizedContourCache = /* @__PURE__ */ new Map();
-const thumbnailPageCache = /* @__PURE__ */ new Map();
-const originalImageCache = /* @__PURE__ */ new Map();
+const normalizedContourCache = new Map();
+const thumbnailPageCache = new Map();
+const originalImageCache = new Map();
+
 function asset(path) {
   return `${publicBase}${path}`;
 }
+
 function datasetAsset(path) {
   return `${repoBase}dataset/${encodeURIComponent(path).replaceAll("%2F", "/")}`;
 }
+
 function clamp01(value) {
   return Math.max(0, Math.min(1, value));
 }
+
 function formatNumber(value, digits = 3) {
-  return Number(value || 0).toLocaleString(void 0, { maximumFractionDigits: digits });
+  return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: digits });
 }
+
+function percentValue(value) {
+  return `${Math.round(clamp01(value) * 100)}%`;
+}
+
 function precisePercentValue(value) {
   return `${formatNumber(clamp01(value) * 100, 1)}%`;
 }
+
 function relativeArea(shell) {
-  return clamp01(((shell == null ? void 0 : shell.area) || 0) / Math.max(1, ((shell == null ? void 0 : shell.image_width) || 0) * ((shell == null ? void 0 : shell.image_height) || 0)));
+  return clamp01((shell?.area || 0) / Math.max(1, (shell?.image_width || 0) * (shell?.image_height || 0)));
 }
+
+function relativeMeanRadius(shell) {
+  return clamp01((shell?.mean_radius || 0) / Math.max(1, Math.min(shell?.image_width || 1, shell?.image_height || 1)));
+}
+
 function datasetCmScale(shell) {
-  const width = Math.max(1, (shell == null ? void 0 : shell.image_width) || 400);
-  const height = Math.max(1, (shell == null ? void 0 : shell.image_height) || 300);
+  const width = Math.max(1, shell?.image_width || 400);
+  const height = Math.max(1, shell?.image_height || 300);
   const longSide = Math.max(width, height);
-  const longSideCm = 10;
+  const longSideCm = 10.0;
   return {
     cmPerImageUnit: longSideCm / longSide,
-    widthCm: width / longSide * longSideCm,
-    heightCm: height / longSide * longSideCm,
-    longSideCm
+    widthCm: (width / longSide) * longSideCm,
+    heightCm: (height / longSide) * longSideCm,
+    longSideCm,
   };
 }
+
 function shellAreaCm2(shell) {
   const scale = datasetCmScale(shell);
-  return ((shell == null ? void 0 : shell.area) || 0) * scale.cmPerImageUnit * scale.cmPerImageUnit;
+  return (shell?.area || 0) * scale.cmPerImageUnit * scale.cmPerImageUnit;
 }
+
 function shellMeanRadiusCm(shell) {
-  return ((shell == null ? void 0 : shell.mean_radius) || 0) * datasetCmScale(shell).cmPerImageUnit;
+  return (shell?.mean_radius || 0) * datasetCmScale(shell).cmPerImageUnit;
 }
+
 function setLoading(text, visible = true) {
   if (els.loadingText && text) els.loadingText.textContent = text;
   if (els.loadingOverlay) els.loadingOverlay.hidden = !visible;
 }
+
 function hashString(input) {
   let hash = 2166136261;
   for (let index = 0; index < input.length; index += 1) {
@@ -698,24 +208,28 @@ function hashString(input) {
   }
   return hash >>> 0;
 }
+
 function fingerprintHash(shell) {
   const pcs = (shell.contour_pc || []).slice(0, 6).map((value) => Number(value || 0).toFixed(4));
   const seed = `${shell.species}|${shell.specimen}|${shell.view}|${pcs.join(",")}`;
   return hashString(seed).toString(36).toUpperCase().padStart(6, "0").slice(-6);
 }
+
 function applyFingerprintStyle(node, hash) {
   const hue = hashString(hash) % 360;
   node.style.setProperty("--hash-hue", String(hue));
   node.textContent = hash;
 }
-function applyShellFingerprintStyle(node, shell, hash = shell == null ? void 0 : shell.fingerprint_hash) {
+
+function applyShellFingerprintStyle(node, shell, hash = shell?.fingerprint_hash) {
   if (!node || !hash) return;
-  const color = rgbToHsl((shell == null ? void 0 : shell.color_r_mean) ?? 0.68, (shell == null ? void 0 : shell.color_g_mean) ?? 0.62, (shell == null ? void 0 : shell.color_b_mean) ?? 0.52);
+  const color = rgbToHsl(shell?.color_r_mean ?? 0.68, shell?.color_g_mean ?? 0.62, shell?.color_b_mean ?? 0.52);
   node.style.setProperty("--hash-hue", String(Math.round(color.h)));
   node.style.setProperty("--hash-saturation", `${Math.round(Math.max(0.28, color.s) * 100)}%`);
   node.style.setProperty("--hash-lightness", `${Math.round(Math.max(0.3, Math.min(0.72, color.l)) * 100)}%`);
   node.textContent = hash;
 }
+
 function rgbToHsl(red, green, blue) {
   const r = clamp01(red);
   const g = clamp01(green);
@@ -735,11 +249,13 @@ function rgbToHsl(red, green, blue) {
   }
   return { h: h * 360, s, l };
 }
+
 function hslCss(h, s, l) {
-  return `hsl(${(h % 360 + 360) % 360}, ${Math.round(clamp01(s) * 100)}%, ${Math.round(clamp01(l) * 100)}%)`;
+  return `hsl(${((h % 360) + 360) % 360}, ${Math.round(clamp01(s) * 100)}%, ${Math.round(clamp01(l) * 100)}%)`;
 }
+
 function hslToRgba(h, s, l, alpha = 1) {
-  const hue = (h % 360 + 360) % 360 / 360;
+  const hue = (((h % 360) + 360) % 360) / 360;
   const sat = clamp01(s);
   const light = clamp01(l);
   if (sat === 0) {
@@ -761,38 +277,39 @@ function hslToRgba(h, s, l, alpha = 1) {
     Math.round(channel(1 / 3) * 255),
     Math.round(channel(0) * 255),
     Math.round(channel(-1 / 3) * 255),
-    Math.round(clamp01(alpha) * 255)
+    Math.round(clamp01(alpha) * 255),
   ];
 }
+
 function physicalLocationLabel(shell) {
   return shell.location_label || "Locality unavailable";
 }
+
 function regionLabel(localityPayload, key) {
-  var _a;
   if (!key) return "";
-  return ((_a = localityPayload == null ? void 0 : localityPayload.region_labels) == null ? void 0 : _a[key]) || key.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return localityPayload?.region_labels?.[key] || key.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
+
 function countryLabel(localityPayload, code) {
-  var _a, _b;
-  return ((_b = (_a = localityPayload == null ? void 0 : localityPayload.countries) == null ? void 0 : _a[code]) == null ? void 0 : _b.title) || code;
+  return localityPayload?.countries?.[code]?.title || code;
 }
+
 function buildLocalityLookup(localityPayload) {
-  var _a, _b, _c, _d, _e;
-  const lookup = /* @__PURE__ */ new Map();
-  if ((localityPayload == null ? void 0 : localityPayload.encoding) !== "shell-localities-v1") return lookup;
+  const lookup = new Map();
+  if (localityPayload?.encoding !== "shell-localities-v1") return lookup;
   const names = localityPayload.species_names || [];
   for (let index = 0; index < names.length; index += 1) {
-    const country = ((_a = localityPayload.primary_country_codes) == null ? void 0 : _a[index]) || "";
-    const region = ((_b = localityPayload.region_keys) == null ? void 0 : _b[index]) || "";
-    const total = ((_c = localityPayload.total_occurrences) == null ? void 0 : _c[index]) || 0;
-    const topCodes = ((_d = localityPayload.top_country_codes) == null ? void 0 : _d[index]) || [];
-    const topCounts = ((_e = localityPayload.top_country_counts) == null ? void 0 : _e[index]) || [];
+    const country = localityPayload.primary_country_codes?.[index] || "";
+    const region = localityPayload.region_keys?.[index] || "";
+    const total = localityPayload.total_occurrences?.[index] || 0;
+    const topCodes = localityPayload.top_country_codes?.[index] || [];
+    const topCounts = localityPayload.top_country_counts?.[index] || [];
     const countryName = country ? countryLabel(localityPayload, country) : "";
     const regionName = regionLabel(localityPayload, region);
     const topCountries = topCodes.map((code, topIndex) => ({
       code,
       label: countryLabel(localityPayload, code),
-      count: topCounts[topIndex] || 0
+      count: topCounts[topIndex] || 0,
     }));
     lookup.set(names[index], {
       primary_country: country,
@@ -801,55 +318,56 @@ function buildLocalityLookup(localityPayload) {
       region_label: regionName,
       total_occurrences: total,
       top_countries: topCountries,
-      location_label: countryName && regionName ? `${countryName}, ${regionName}` : countryName || regionName || ""
+      location_label: countryName && regionName ? `${countryName}, ${regionName}` : countryName || regionName || "",
     });
   }
   return lookup;
 }
+
 function buildSpeciesTraitsLookup(speciesTraitsPayload) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
-  const lookup = /* @__PURE__ */ new Map();
-  if ((speciesTraitsPayload == null ? void 0 : speciesTraitsPayload.encoding) !== "shell-species-traits-v1") return lookup;
+  const lookup = new Map();
+  if (speciesTraitsPayload?.encoding !== "shell-species-traits-v1") return lookup;
   const names = speciesTraitsPayload.species_names || [];
   const rarityLabels = speciesTraitsPayload.rarity_labels || [];
   const protectionLabels = speciesTraitsPayload.protection_status_labels || [];
   for (let index = 0; index < names.length; index += 1) {
-    const countryCodes = ((_a = speciesTraitsPayload.known_range_country_codes) == null ? void 0 : _a[index]) || [];
-    const countryCounts = ((_b = speciesTraitsPayload.known_range_country_counts) == null ? void 0 : _b[index]) || [];
+    const countryCodes = speciesTraitsPayload.known_range_country_codes?.[index] || [];
+    const countryCounts = speciesTraitsPayload.known_range_country_counts?.[index] || [];
     const rangeCountries = countryCodes.map((code, countryIndex) => ({
       code,
       label: countryLabel(speciesTraitsPayload, code),
-      count: countryCounts[countryIndex] || 0
+      count: countryCounts[countryIndex] || 0,
     }));
     lookup.set(names[index], {
-      genus: ((_c = speciesTraitsPayload.genus) == null ? void 0 : _c[index]) || "",
-      rarity_label: rarityLabels[(_d = speciesTraitsPayload.rarity) == null ? void 0 : _d[index]] || "Data deficient",
-      rarity_reason: ((_e = speciesTraitsPayload.rarity_reasons) == null ? void 0 : _e[index]) || "",
-      dataset_sample_count: ((_f = speciesTraitsPayload.dataset_sample_count) == null ? void 0 : _f[index]) || 0,
-      observation_count: ((_g = speciesTraitsPayload.observation_count) == null ? void 0 : _g[index]) || 0,
-      known_range_country_count: ((_h = speciesTraitsPayload.country_count) == null ? void 0 : _h[index]) || rangeCountries.length,
+      genus: speciesTraitsPayload.genus?.[index] || "",
+      rarity_label: rarityLabels[speciesTraitsPayload.rarity?.[index]] || "Data deficient",
+      rarity_reason: speciesTraitsPayload.rarity_reasons?.[index] || "",
+      dataset_sample_count: speciesTraitsPayload.dataset_sample_count?.[index] || 0,
+      observation_count: speciesTraitsPayload.observation_count?.[index] || 0,
+      known_range_country_count: speciesTraitsPayload.country_count?.[index] || rangeCountries.length,
       known_range_countries: rangeCountries,
-      primary_country: ((_i = speciesTraitsPayload.primary_country_codes) == null ? void 0 : _i[index]) || "",
-      region_key: ((_j = speciesTraitsPayload.region_keys) == null ? void 0 : _j[index]) || "",
-      region_label: regionLabel(speciesTraitsPayload, ((_k = speciesTraitsPayload.region_keys) == null ? void 0 : _k[index]) || ""),
-      protection_status: protectionLabels[(_l = speciesTraitsPayload.protection_status) == null ? void 0 : _l[index]] || "Not assessed",
-      market_price_usd: ((_m = speciesTraitsPayload.market_price_usd) == null ? void 0 : _m[index]) ?? null
+      primary_country: speciesTraitsPayload.primary_country_codes?.[index] || "",
+      region_key: speciesTraitsPayload.region_keys?.[index] || "",
+      region_label: regionLabel(speciesTraitsPayload, speciesTraitsPayload.region_keys?.[index] || ""),
+      protection_status: protectionLabels[speciesTraitsPayload.protection_status?.[index]] || "Not assessed",
+      market_price_usd: speciesTraitsPayload.market_price_usd?.[index] ?? null,
     });
   }
   return lookup;
 }
+
 function deriveMorphMetrics(shell) {
   const solidityLoss = clamp01((1 - (shell.contour_solidity || 1)) / 0.32);
   const pc = shell.contour_pc || [];
   const pc2 = clamp01(((pc[1] || 0) + 7) / 14);
   const pc4 = clamp01(((pc[3] || 0) + 3) / 6);
   return {
-    asymmetry: clamp01(0.4 * Math.abs(pc2 - 0.5) * 2 + 0.34 * Math.abs(pc4 - 0.5) * 2 + 0.26 * solidityLoss)
+    asymmetry: clamp01(0.4 * Math.abs(pc2 - 0.5) * 2 + 0.34 * Math.abs(pc4 - 0.5) * 2 + 0.26 * solidityLoss),
   };
 }
+
 function buildDerivedShellData(shells, localityPayload = null, speciesTraitsPayload = null) {
-  var _a;
-  state.speciesCounts = /* @__PURE__ */ new Map();
+  state.speciesCounts = new Map();
   state.originFilterOptionsCache = null;
   for (const shell of shells) {
     state.speciesCounts.set(shell.species, (state.speciesCounts.get(shell.species) || 0) + 1);
@@ -857,7 +375,7 @@ function buildDerivedShellData(shells, localityPayload = null, speciesTraitsPayl
   const localityLookup = buildLocalityLookup(localityPayload);
   const speciesTraitsLookup = buildSpeciesTraitsLookup(speciesTraitsPayload);
   state.speciesTraits = speciesTraitsLookup;
-  state.localityMatchRate = (localityPayload == null ? void 0 : localityPayload.match_rate) || 0;
+  state.localityMatchRate = localityPayload?.match_rate || 0;
   for (const shell of shells) {
     const locality = localityLookup.get(shell.species);
     const traits = speciesTraitsLookup.get(shell.species);
@@ -865,23 +383,29 @@ function buildDerivedShellData(shells, localityPayload = null, speciesTraitsPayl
     shell.species_sample_count = state.speciesCounts.get(shell.species) || 1;
     shell.species_traits = traits || null;
     shell.morph_traits = deriveMorphMetrics(shell);
-    shell.rarity_label = (traits == null ? void 0 : traits.rarity_label) || "Data deficient";
-    shell.rarity_reason = (traits == null ? void 0 : traits.rarity_reason) || "";
-    shell.global_occurrences = (traits == null ? void 0 : traits.observation_count) || (locality == null ? void 0 : locality.total_occurrences) || 0;
-    shell.location_label = (locality == null ? void 0 : locality.location_label) || "Locality unavailable";
-    shell.location_key = (locality == null ? void 0 : locality.primary_country) || (locality == null ? void 0 : locality.region_key) || "unknown";
-    shell.location_color = shell.location_key === "unknown" ? "rgba(96, 108, 106, 0.62)" : speciesColor(shell.location_key);
+    shell.rarity_label = traits?.rarity_label || "Data deficient";
+    shell.rarity_reason = traits?.rarity_reason || "";
+    shell.global_occurrences = traits?.observation_count || locality?.total_occurrences || 0;
+    shell.location_label = locality?.location_label || "Locality unavailable";
+    shell.location_key = locality?.primary_country || locality?.region_key || "unknown";
+    shell.location_color = shell.location_key === "unknown"
+      ? "rgba(96, 108, 106, 0.62)"
+      : speciesColor(shell.location_key);
     shell.species_color = speciesColor(shell.species);
-    shell.region_label = (locality == null ? void 0 : locality.region_label) || "";
-    shell.top_countries_label = ((_a = locality == null ? void 0 : locality.top_countries) == null ? void 0 : _a.length) ? locality.top_countries.slice(0, 3).map((country) => country.label).join(", ") : "";
+    shell.region_label = locality?.region_label || "";
+    shell.top_countries_label = locality?.top_countries?.length
+      ? locality.top_countries.slice(0, 3).map((country) => country.label).join(", ")
+      : "";
   }
 }
+
 function fetchJson(url) {
   return fetch(url, { cache: "no-store" }).then((response) => {
     if (!response.ok) throw new Error(`${url} returned ${response.status}`);
     return response.json();
   });
 }
+
 async function fetchCompressedArrayBuffer(url) {
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) throw new Error(`${url} returned ${response.status}`);
@@ -891,14 +415,15 @@ async function fetchCompressedArrayBuffer(url) {
   }
   return new Response(response.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
 }
+
 async function fetchCompressedJson(url) {
   const buffer = await fetchCompressedArrayBuffer(url);
   return JSON.parse(new TextDecoder().decode(buffer));
 }
+
 function unpackShells(payload) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v;
-  if (Array.isArray(payload == null ? void 0 : payload.records)) return payload.records;
-  if ((payload == null ? void 0 : payload.encoding) !== "shell-pack-v1") {
+  if (Array.isArray(payload?.records)) return payload.records;
+  if (payload?.encoding !== "shell-pack-v1") {
     throw new Error("Unsupported shell data pack.");
   }
   const count = payload.count || 0;
@@ -908,49 +433,53 @@ function unpackShells(payload) {
   const traitPcCount = payload.trait_pc_count || 0;
   const shells = [];
   for (let id = 0; id < count; id += 1) {
-    const speciesIndex = ((_a = payload.species) == null ? void 0 : _a[id]) ?? 0;
-    const specimenIndex = ((_b = payload.specimens) == null ? void 0 : _b[id]) ?? 0;
-    const viewIndex = ((_c = payload.views) == null ? void 0 : _c[id]) ?? 0;
+    const speciesIndex = payload.species?.[id] ?? 0;
+    const specimenIndex = payload.specimens?.[id] ?? 0;
+    const viewIndex = payload.views?.[id] ?? 0;
     const shell = {
       id,
-      file: ((_d = payload.files) == null ? void 0 : _d[id]) || "",
-      species: ((_e = payload.species_names) == null ? void 0 : _e[speciesIndex]) || "Unknown shell",
-      specimen: ((_f = payload.specimen_values) == null ? void 0 : _f[specimenIndex]) || "",
-      specimen_label: ((_g = payload.specimen_labels) == null ? void 0 : _g[specimenIndex]) || "Unknown specimen",
-      view: ((_h = payload.view_values) == null ? void 0 : _h[viewIndex]) || "",
-      view_label: ((_i = payload.view_labels) == null ? void 0 : _i[viewIndex]) || "Unknown view",
-      area: ((_j = payload.area) == null ? void 0 : _j[id]) || 0,
-      center: [((_k = payload.centers) == null ? void 0 : _k[id * 2]) || 0, ((_l = payload.centers) == null ? void 0 : _l[id * 2 + 1]) || 0],
-      image_width: ((_m = payload.dims) == null ? void 0 : _m[id * 2]) || 0,
-      image_height: ((_n = payload.dims) == null ? void 0 : _n[id * 2 + 1]) || 0,
+      file: payload.files?.[id] || "",
+      species: payload.species_names?.[speciesIndex] || "Unknown shell",
+      specimen: payload.specimen_values?.[specimenIndex] || "",
+      specimen_label: payload.specimen_labels?.[specimenIndex] || "Unknown specimen",
+      view: payload.view_values?.[viewIndex] || "",
+      view_label: payload.view_labels?.[viewIndex] || "Unknown view",
+      area: payload.area?.[id] || 0,
+      center: [payload.centers?.[id * 2] || 0, payload.centers?.[id * 2 + 1] || 0],
+      image_width: payload.dims?.[id * 2] || 0,
+      image_height: payload.dims?.[id * 2 + 1] || 0,
       bbox: [
-        ((_o = payload.bbox) == null ? void 0 : _o[id * 4]) || 0,
-        ((_p = payload.bbox) == null ? void 0 : _p[id * 4 + 1]) || 0,
-        ((_q = payload.bbox) == null ? void 0 : _q[id * 4 + 2]) || 0,
-        ((_r = payload.bbox) == null ? void 0 : _r[id * 4 + 3]) || 0
+        payload.bbox?.[id * 4] || 0,
+        payload.bbox?.[id * 4 + 1] || 0,
+        payload.bbox?.[id * 4 + 2] || 0,
+        payload.bbox?.[id * 4 + 3] || 0,
       ],
       contour_pc: [],
       trait_pc: [],
-      legacy_fingerprint_hash: ((_s = payload.legacy_hashes) == null ? void 0 : _s[id]) || ""
+      legacy_fingerprint_hash: payload.legacy_hashes?.[id] || "",
     };
     shell.name = `${shell.species} ${shell.specimen_label} ${shell.view_label}`;
     for (let pc = 0; pc < contourPcCount; pc += 1) {
-      shell.contour_pc.push(((_t = payload.contour_pc) == null ? void 0 : _t[id * contourPcCount + pc]) || 0);
+      shell.contour_pc.push(payload.contour_pc?.[id * contourPcCount + pc] || 0);
     }
     for (let pc = 0; pc < traitPcCount; pc += 1) {
-      shell.trait_pc.push(((_u = payload.trait_pc) == null ? void 0 : _u[id * traitPcCount + pc]) || 0);
+      shell.trait_pc.push(payload.trait_pc?.[id * traitPcCount + pc] || 0);
     }
     for (const field of fields) {
-      shell[field] = ((_v = metrics[field]) == null ? void 0 : _v[id]) || 0;
+      shell[field] = metrics[field]?.[id] || 0;
     }
     shells.push(shell);
   }
   return shells;
 }
+
 function parseHashState() {
-  const raw = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
+  const raw = window.location.hash.startsWith("#")
+    ? window.location.hash.slice(1)
+    : window.location.hash;
   return new URLSearchParams(raw);
 }
+
 function updateHashState() {
   if (!state.hashReady || state.suppressHash) return;
   const params = new URLSearchParams();
@@ -962,11 +491,13 @@ function updateHashState() {
   const next = `${window.location.pathname}${window.location.search}#${params.toString()}`;
   window.history.replaceState(null, "", next);
 }
+
 function scheduleHashUpdate() {
   if (!state.hashReady || state.suppressHash) return;
   window.clearTimeout(state.hashTimer);
   state.hashTimer = window.setTimeout(updateHashState, 80);
 }
+
 function resizeCanvas(canvas, ctx) {
   const rect = canvas.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
@@ -984,95 +515,106 @@ function resizeCanvas(canvas, ctx) {
   }
   return { width: rect.width, height: rect.height };
 }
+
 function contourAxisCount() {
-  var _a;
-  return Math.min(6, ((_a = state.model) == null ? void 0 : _a.contour_visible_component_count) || 0);
+  return Math.min(6, state.model?.contour_visible_component_count || 0);
 }
+
 function axisOptionCount() {
   return contourAxisCount();
 }
+
 function activeAxisValues() {
   return state.pcValues;
 }
+
 function axisRange(axisIndex) {
-  var _a;
-  return (_a = state.model.contour_pca_ranges) == null ? void 0 : _a[axisIndex];
+  return state.model.contour_pca_ranges?.[axisIndex];
 }
+
 function axisVariance(axisIndex) {
-  var _a;
-  return ((_a = state.model.contour_explained_variance_ratio) == null ? void 0 : _a[axisIndex]) || 0;
+  return state.model.contour_explained_variance_ratio?.[axisIndex] || 0;
 }
+
 function axisMeaning(axisIndex) {
   return `PC${axisIndex + 1}`;
 }
+
 function axisLabel(axisIndex) {
   return axisMeaning(axisIndex);
 }
+
 function axisValue(shell, axisIndex) {
-  var _a;
-  return ((_a = shell.contour_pc) == null ? void 0 : _a[axisIndex]) || 0;
+  return shell.contour_pc?.[axisIndex] || 0;
 }
+
 function initialViewport(xIndex = state.xAxis, yIndex = state.yAxis) {
-  var _a;
-  const fallback = ((_a = state.model.contour_pca_ranges) == null ? void 0 : _a[0]) || { p01: -1, p99: 1 };
+  const fallback = state.model.contour_pca_ranges?.[0] || { p01: -1, p99: 1 };
   const x = axisRange(xIndex) || fallback;
   const y = axisRange(yIndex) || axisRange(1) || fallback;
-  const padX = Math.max((x.p99 - x.p01) * 0.08, 1e-3);
-  const padY = Math.max((y.p99 - y.p01) * 0.08, 1e-3);
+  const padX = Math.max((x.p99 - x.p01) * 0.08, 0.001);
+  const padY = Math.max((y.p99 - y.p01) * 0.08, 0.001);
   return {
     minX: x.p01 - padX,
     maxX: x.p99 + padX,
     minY: y.p01 - padY,
-    maxY: y.p99 + padY
+    maxY: y.p99 + padY,
   };
 }
+
 function worldToScreen(x, y, size) {
   const vx = state.viewport;
   return {
-    x: (x - vx.minX) / (vx.maxX - vx.minX) * size.width,
-    y: size.height - (y - vx.minY) / (vx.maxY - vx.minY) * size.height
+    x: ((x - vx.minX) / (vx.maxX - vx.minX)) * size.width,
+    y: size.height - ((y - vx.minY) / (vx.maxY - vx.minY)) * size.height,
   };
 }
+
 function screenToWorld(x, y, size) {
   const vx = state.viewport;
   return {
-    x: vx.minX + x / size.width * (vx.maxX - vx.minX),
-    y: vx.minY + (size.height - y) / size.height * (vx.maxY - vx.minY)
+    x: vx.minX + (x / size.width) * (vx.maxX - vx.minX),
+    y: vx.minY + ((size.height - y) / size.height) * (vx.maxY - vx.minY),
   };
 }
+
 function speciesColor(species, alpha = 0.78) {
   let hash = 0;
   for (let index = 0; index < species.length; index += 1) {
-    hash = hash * 31 + species.charCodeAt(index) >>> 0;
+    hash = (hash * 31 + species.charCodeAt(index)) >>> 0;
   }
   return `hsla(${hash % 360}, 42%, 42%, ${alpha})`;
 }
+
 function speciesColorRgba(species, alpha = 0.78) {
   let hash = 0;
   const value = String(species || "");
   for (let index = 0; index < value.length; index += 1) {
-    hash = hash * 31 + value.charCodeAt(index) >>> 0;
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
   }
   return hslToRgba(hash % 360, 0.42, 0.42, alpha);
 }
+
 function shellRgb(shell, alpha = 1) {
   const red = Math.round(clamp01(shell.color_r_mean ?? 0.68) * 255);
   const green = Math.round(clamp01(shell.color_g_mean ?? 0.64) * 255);
   const blue = Math.round(clamp01(shell.color_b_mean ?? 0.56) * 255);
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
+
 function shellRgba(shell, alpha = 1) {
   return [
     Math.round(clamp01(shell.color_r_mean ?? 0.68) * 255),
     Math.round(clamp01(shell.color_g_mean ?? 0.64) * 255),
     Math.round(clamp01(shell.color_b_mean ?? 0.56) * 255),
-    Math.round(clamp01(alpha) * 255)
+    Math.round(clamp01(alpha) * 255),
   ];
 }
+
 function conservationStatus(shell) {
-  var _a;
-  return (shell == null ? void 0 : shell.live_conservation_status) || ((_a = shell == null ? void 0 : shell.species_traits) == null ? void 0 : _a.protection_status) || "Not assessed";
+  return shell?.live_conservation_status || shell?.species_traits?.protection_status || "Not assessed";
 }
+
 function conservationRgba(shell) {
   const status = conservationStatus(shell).toLowerCase();
   if (status.includes("critically")) return [126, 24, 28, 230];
@@ -1082,6 +624,7 @@ function conservationRgba(shell) {
   if (status.includes("least")) return [58, 139, 99, 190];
   return [102, 111, 117, 112];
 }
+
 function pointRgbaForMode(shell, mode) {
   if (mode === "locality") {
     if (shell.location_key === "unknown") return [96, 108, 106, 158];
@@ -1103,6 +646,7 @@ function pointRgbaForMode(shell, mode) {
   }
   return speciesColorRgba(shell.species, 0.78);
 }
+
 function pointColorArray(mode) {
   if (state.pointColorCache.has(mode)) return state.pointColorCache.get(mode);
   const colors = new Uint8ClampedArray(state.shells.length * 4);
@@ -1118,6 +662,7 @@ function pointColorArray(mode) {
   state.pointColorCache.set(mode, colors);
   return colors;
 }
+
 function scheduleDraw(delay = 0) {
   state.needsDraw = true;
   state.scatterHitCache = null;
@@ -1134,6 +679,7 @@ function scheduleDraw(delay = 0) {
     drawScatter();
   });
 }
+
 function drawScatterPoints(pointCache) {
   const pixelWidth = els.scatter.width;
   const pixelHeight = els.scatter.height;
@@ -1173,6 +719,7 @@ function drawScatterPoints(pointCache) {
   }
   scatterCtx.putImageData(imageData, 0, 0);
 }
+
 function drawScatter() {
   const size = resizeCanvas(els.scatter, scatterCtx);
   if (!state.viewport || !state.needsDraw) return;
@@ -1196,6 +743,7 @@ function drawScatter() {
     scatterCtx.lineTo(size.width, origin.y);
     scatterCtx.stroke();
   }
+
   const values = activeAxisValues();
   if (values.length) {
     const target = worldToScreen(values[state.xAxis] || 0, values[state.yAxis] || 0, size);
@@ -1208,11 +756,12 @@ function drawScatter() {
     scatterCtx.lineTo(target.x, target.y + 10);
     scatterCtx.stroke();
   }
+
   if (state.selected) {
     const selected = worldToScreen(
       axisValue(state.selected, state.xAxis),
       axisValue(state.selected, state.yAxis),
-      size
+      size,
     );
     scatterCtx.fillStyle = "#ffffff";
     scatterCtx.strokeStyle = "#20242a";
@@ -1224,6 +773,7 @@ function drawScatter() {
   }
   scatterCtx.restore();
 }
+
 function scatterHitKey(size) {
   const viewport = state.viewport || {};
   return [
@@ -1234,13 +784,13 @@ function scatterHitKey(size) {
     Number(viewport.minX || 0).toFixed(4),
     Number(viewport.maxX || 0).toFixed(4),
     Number(viewport.minY || 0).toFixed(4),
-    Number(viewport.maxY || 0).toFixed(4)
+    Number(viewport.maxY || 0).toFixed(4),
   ].join("|");
 }
+
 function scatterScreenPoints(size) {
-  var _a;
   const key = scatterHitKey(size);
-  if (((_a = state.scatterPointCache) == null ? void 0 : _a.key) === key && state.scatterPointCache.shells === state.filtered) {
+  if (state.scatterPointCache?.key === key && state.scatterPointCache.shells === state.filtered) {
     return state.scatterPointCache;
   }
   const shells = state.filtered;
@@ -1254,17 +804,17 @@ function scatterScreenPoints(size) {
   state.scatterHitCache = null;
   return state.scatterPointCache;
 }
+
 function scatterHitPoints(size) {
-  var _a;
   const pointCache = scatterScreenPoints(size);
   const key = pointCache.key;
-  if (((_a = state.scatterHitCache) == null ? void 0 : _a.key) === key && state.scatterHitCache.shells === state.filtered) {
+  if (state.scatterHitCache?.key === key && state.scatterHitCache.shells === state.filtered) {
     return state.scatterHitCache;
   }
   const shells = pointCache.shells;
   const points = pointCache.points;
   const cellSize = 24;
-  const grid = /* @__PURE__ */ new Map();
+  const grid = new Map();
   for (let index = 0; index < shells.length; index += 1) {
     const pointX = points[index * 2];
     const pointY = points[index * 2 + 1];
@@ -1284,36 +834,43 @@ function scatterHitPoints(size) {
   state.scatterHitCache = { key, shells, points, grid, cellSize };
   return state.scatterHitCache;
 }
+
 function shellOriginKey(shell) {
-  var _a;
-  return ((_a = shell == null ? void 0 : shell.species_traits) == null ? void 0 : _a.region_key) || (shell == null ? void 0 : shell.location_key) || "unknown";
+  return shell?.species_traits?.region_key || shell?.location_key || "unknown";
 }
+
 function shellOriginLabel(shell) {
-  var _a;
-  return ((_a = shell == null ? void 0 : shell.species_traits) == null ? void 0 : _a.region_label) || (shell == null ? void 0 : shell.region_label) || (shell == null ? void 0 : shell.location_label) || "Unknown";
+  return shell?.species_traits?.region_label || shell?.region_label || shell?.location_label || "Unknown";
 }
-function shellOriginMatches(shell, filterValue2) {
-  var _a, _b, _c;
-  if (!filterValue2) return true;
-  const [type, value] = filterValue2.split(":");
-  if (!value) return shellOriginKey(shell) === filterValue2;
+
+function shellOriginMatches(shell, filterValue) {
+  if (!filterValue) return true;
+  const [type, value] = filterValue.split(":");
+  if (!value) return shellOriginKey(shell) === filterValue;
   if (type === "region") {
-    return ((_a = shell == null ? void 0 : shell.species_traits) == null ? void 0 : _a.region_key) === value || (shell == null ? void 0 : shell.region_key) === value || (shell == null ? void 0 : shell.location_key) === value || shellOriginKey(shell) === value;
+    return shell?.species_traits?.region_key === value
+      || shell?.region_key === value
+      || shell?.location_key === value
+      || shellOriginKey(shell) === value;
   }
   if (type === "country") {
-    return (shell == null ? void 0 : shell.location_key) === value || ((_b = shell == null ? void 0 : shell.species_traits) == null ? void 0 : _b.primary_country) === value || (((_c = shell == null ? void 0 : shell.species_traits) == null ? void 0 : _c.known_range_countries) || []).some((country) => country.code === value);
+    return shell?.location_key === value
+      || shell?.species_traits?.primary_country === value
+      || (shell?.species_traits?.known_range_countries || []).some((country) => country.code === value);
   }
-  return shellOriginKey(shell) === filterValue2;
+  return shellOriginKey(shell) === filterValue;
 }
+
 function hexToRgb(hex) {
   const value = String(hex || "").replace("#", "");
   if (!/^[0-9a-f]{6}$/i.test(value)) return null;
   return {
     r: parseInt(value.slice(0, 2), 16),
     g: parseInt(value.slice(2, 4), 16),
-    b: parseInt(value.slice(4, 6), 16)
+    b: parseInt(value.slice(4, 6), 16),
   };
 }
+
 function shellColorDistance(shell, hex) {
   const target = hexToRgb(hex);
   if (!target) return Infinity;
@@ -1324,18 +881,20 @@ function shellColorDistance(shell, hex) {
   const patternBonus = Math.min(24, Math.max(0, shell.color_pattern_strength || 0) * 80);
   return Math.sqrt(dr * dr + dg * dg + db * db) - patternBonus;
 }
+
 function shellMatchesColor(shell, hex) {
   if (!hex) return true;
   return shellColorDistance(shell, hex) <= 105;
 }
+
 function filterValue(shell, key) {
-  var _a;
   if (key === "lightness") return clamp01(shell.color_l_mean || 0);
   if (key === "area") return relativeArea(shell);
   if (key === "concavity") return clamp01((shell.contour_concavity || 0) / 0.32);
-  if (key === "asymmetry") return clamp01(((_a = shell.morph_traits) == null ? void 0 : _a.asymmetry) || 0);
+  if (key === "asymmetry") return clamp01(shell.morph_traits?.asymmetry || 0);
   return 0;
 }
+
 function passesMorphFilters(shell) {
   for (const def of rangeFilterDefs) {
     const filter = state.morphFilters.get(def.key);
@@ -1348,24 +907,28 @@ function passesMorphFilters(shell) {
   if (!shellMatchesColor(shell, state.categoryFilters.color)) return false;
   return true;
 }
+
 function updateFilter() {
-  var _a;
   const query = els.search.value.trim().toLowerCase();
-  state.filtered = query ? state.shells.filter(
-    (shell) => `${shell.name} ${shell.species} ${shell.file} ${shell.fingerprint_hash || ""} ${shell.legacy_fingerprint_hash || ""} ${shell.location_label || ""}`.toLowerCase().includes(query) && passesMorphFilters(shell)
-  ) : state.shells.filter(passesMorphFilters);
+  state.filtered = query
+    ? state.shells.filter((shell) =>
+        `${shell.name} ${shell.species} ${shell.file} ${shell.fingerprint_hash || ""} ${shell.legacy_fingerprint_hash || ""} ${shell.location_label || ""}`.toLowerCase().includes(query)
+        && passesMorphFilters(shell),
+      )
+    : state.shells.filter(passesMorphFilters);
   state.scatterHitCache = null;
   state.scatterPointCache = null;
   resetSurpriseQueue();
   primeSurpriseQueue();
   scheduleRenderNeighbors(state.selected);
   renderPalette(false);
-  if (els.statusLine && ((_a = state.model) == null ? void 0 : _a.processed_count)) {
+  if (els.statusLine && state.model?.processed_count) {
     els.statusLine.textContent = `${state.filtered.length.toLocaleString()} of ${state.model.processed_count.toLocaleString()} shells`;
   }
   updateFilterButton();
   scheduleDraw(120);
 }
+
 function updateFilterButton() {
   if (!els.filtersToggle) return;
   let active = 0;
@@ -1379,29 +942,36 @@ function updateFilterButton() {
   els.filtersToggle.textContent = active ? `Filters (${active})` : "Filters";
   els.filtersToggle.classList.toggle("is-active", active > 0);
 }
+
+function originFilterOptions() {
+  return [
+    ...originFilterData().regions.map((item) => [item.value, `Continent: ${item.label}`]),
+    ...originFilterData().countries.map((item) => [item.value, `Country: ${item.label}`]),
+  ];
+}
+
 function originFilterData() {
-  var _a, _b, _c, _d, _e, _f;
-  const regions = /* @__PURE__ */ new Map();
-  const countries = /* @__PURE__ */ new Map();
+  const regions = new Map();
+  const countries = new Map();
   if (state.originFilterOptionsCache) return state.originFilterOptionsCache;
   for (const shell of state.shells) {
-    const regionKey = ((_a = shell.species_traits) == null ? void 0 : _a.region_key) || shell.region_key || "";
-    const regionName = ((_b = shell.species_traits) == null ? void 0 : _b.region_label) || shell.region_label || "";
+    const regionKey = shell.species_traits?.region_key || shell.region_key || "";
+    const regionName = shell.species_traits?.region_label || shell.region_label || "";
     if (regionKey && regionKey !== "unknown") {
       const value = `region:${regionKey}`;
       const current = regions.get(value) || { value, key: regionKey, label: regionName || shellOriginLabel(shell), count: 0 };
       current.count += 1;
       regions.set(value, current);
     }
-    for (const country of ((_c = shell.species_traits) == null ? void 0 : _c.known_range_countries) || []) {
+    for (const country of shell.species_traits?.known_range_countries || []) {
       if (!country.code || !country.label) continue;
       const value = `country:${country.code}`;
       const current = countries.get(value) || {
         value,
         code: country.code,
         label: country.label,
-        region: ((_d = shell.species_traits) == null ? void 0 : _d.region_key) || "",
-        count: 0
+        region: shell.species_traits?.region_key || "",
+        count: 0,
       };
       current.count += Math.max(1, Number(country.count || 0));
       countries.set(value, current);
@@ -1412,9 +982,9 @@ function originFilterData() {
       const current = countries.get(value) || {
         value,
         code: localityKey,
-        label: ((_e = shell.location_label) == null ? void 0 : _e.split(",")[0]) || localityKey,
-        region: ((_f = shell.species_traits) == null ? void 0 : _f.region_key) || "",
-        count: 0
+        label: shell.location_label?.split(",")[0] || localityKey,
+        region: shell.species_traits?.region_key || "",
+        count: 0,
       };
       current.count += 1;
       countries.set(value, current);
@@ -1422,10 +992,11 @@ function originFilterData() {
   }
   state.originFilterOptionsCache = {
     regions: [...regions.values()].sort((a, b) => a.label.localeCompare(b.label)),
-    countries: [...countries.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    countries: [...countries.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
   };
   return state.originFilterOptionsCache;
 }
+
 function addFilterSelect(labelText, key, options) {
   const row = document.createElement("label");
   row.className = `filter-row filter-select-row filter-${key}-row`;
@@ -1448,6 +1019,7 @@ function addFilterSelect(labelText, key, options) {
   row.append(header, select);
   els.filterControls.append(row);
 }
+
 function addOriginMapFilter() {
   const row = document.createElement("div");
   row.className = "filter-row origin-filter-row";
@@ -1489,8 +1061,13 @@ function addOriginMapFilter() {
   chips.className = "origin-country-grid";
   function visibleCountries() {
     const query = countrySearch.value.trim().toLowerCase();
-    const activeRegion = state.categoryFilters.origin.startsWith("region:") ? state.categoryFilters.origin.slice("region:".length) : "";
-    const list = data.countries.filter((country) => !activeRegion || country.region === activeRegion).filter((country) => !query || `${country.label} ${country.code}`.toLowerCase().includes(query)).slice(0, query ? 42 : 18);
+    const activeRegion = state.categoryFilters.origin.startsWith("region:")
+      ? state.categoryFilters.origin.slice("region:".length)
+      : "";
+    const list = data.countries
+      .filter((country) => !activeRegion || country.region === activeRegion)
+      .filter((country) => !query || `${country.label} ${country.code}`.toLowerCase().includes(query))
+      .slice(0, query ? 42 : 18);
     const selectedCountry = data.countries.find((country) => country.value === state.categoryFilters.origin);
     if (selectedCountry && !query && !list.some((country) => country.value === selectedCountry.value)) {
       list.unshift(selectedCountry);
@@ -1533,17 +1110,24 @@ function addOriginMapFilter() {
   row.append(header, wrap);
   els.filterControls.append(row);
 }
+
+function originRegionLabel(key) {
+  return originFilterData().regions.find((region) => region.key === key)?.label || key.replaceAll("_", " ");
+}
+
 function originFilterLabel(value) {
   if (!value) return "Any";
   const data = originFilterData();
   const hit = [...data.regions, ...data.countries].find((item) => item.value === value);
-  return (hit == null ? void 0 : hit.label) || "Any";
+  return hit?.label || "Any";
 }
+
 function setOriginFilter(value) {
   state.categoryFilters.origin = state.categoryFilters.origin === value ? "" : value;
   buildTraitFilters();
   updateFilter();
 }
+
 function addRangeFilter(def) {
   state.morphFilters.set(def.key, state.morphFilters.get(def.key) || { min: 0, max: 1 });
   const row = document.createElement("div");
@@ -1554,7 +1138,7 @@ function addRangeFilter(def) {
   const output = document.createElement("output");
   const current = state.morphFilters.get(def.key);
   const activeLevel = filterLevels.find((level) => Math.abs(current.min - level.min) < 0.01 && Math.abs(current.max - level.max) < 0.01);
-  output.textContent = (activeLevel == null ? void 0 : activeLevel.label) || "Any";
+  output.textContent = activeLevel?.label || "Any";
   header.append(label, output);
   const levels = document.createElement("div");
   levels.className = "filter-levels";
@@ -1564,7 +1148,7 @@ function addRangeFilter(def) {
     button.dataset.level = level.key;
     button.textContent = level.label;
     button.title = `${def.label}: ${level.label}`;
-    const pressed = (activeLevel == null ? void 0 : activeLevel.key) === level.key;
+    const pressed = activeLevel?.key === level.key;
     button.setAttribute("aria-pressed", pressed ? "true" : "false");
     button.addEventListener("click", () => {
       const isActive = button.getAttribute("aria-pressed") === "true";
@@ -1577,15 +1161,15 @@ function addRangeFilter(def) {
   row.append(header, levels);
   els.filterControls.append(row);
 }
+
 function addColorPickerFilter() {
-  var _a;
   const row = document.createElement("div");
   row.className = "filter-row color-filter-row";
   const header = document.createElement("header");
   const label = document.createElement("span");
   label.textContent = "Color";
   const output = document.createElement("output");
-  output.textContent = ((_a = colorSwatches.find(([hex]) => hex === state.categoryFilters.color)) == null ? void 0 : _a[1]) || "Any";
+  output.textContent = colorSwatches.find(([hex]) => hex === state.categoryFilters.color)?.[1] || "Any";
   header.append(label, output);
   const panel = document.createElement("div");
   panel.className = "color-filter-panel";
@@ -1625,6 +1209,7 @@ function addColorPickerFilter() {
   row.append(header, panel);
   els.filterControls.append(row);
 }
+
 function buildTraitFilters() {
   if (!els.filterControls) return;
   els.filterControls.innerHTML = "";
@@ -1637,23 +1222,24 @@ function buildTraitFilters() {
   }
   updateFilterButton();
 }
+
 function resetTraitFilters() {
   for (const def of rangeFilterDefs) state.morphFilters.set(def.key, { min: 0, max: 1 });
   state.categoryFilters = { origin: "", rarity: "", color: "" };
   buildTraitFilters();
   updateFilter();
 }
+
 function positionFiltersPanel() {
-  var _a;
   if (!els.filtersPanel || !els.filtersToggle || els.filtersPanel.hidden) return;
   const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1024;
   const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 768;
   const toggleRect = els.filtersToggle.getBoundingClientRect();
-  const controlsRect = (_a = document.querySelector(".controls-panel")) == null ? void 0 : _a.getBoundingClientRect();
+  const controlsRect = document.querySelector(".controls-panel")?.getBoundingClientRect();
   const desktopRoom = controlsRect ? viewportWidth - controlsRect.right - 24 : 0;
   const desktop = viewportWidth > 1080 && desktopRoom >= 520;
   const width = desktop ? Math.min(940, desktopRoom) : Math.min(860, Math.max(340, viewportWidth - 24));
-  const preferredLeft = desktop ? controlsRect.right + 12 : toggleRect.left;
+  const preferredLeft = desktop ? (controlsRect.right + 12) : toggleRect.left;
   const left = Math.max(12, Math.min(preferredLeft, viewportWidth - width - 12));
   const measuredHeight = els.filtersPanel.offsetHeight || 420;
   const preferredTop = desktop ? toggleRect.top : toggleRect.bottom + 8;
@@ -1662,6 +1248,7 @@ function positionFiltersPanel() {
   els.filtersPanel.style.setProperty("--filters-top", `${Math.round(top)}px`);
   els.filtersPanel.style.setProperty("--filters-width", `${Math.round(width)}px`);
 }
+
 function setFiltersPanelOpen(open) {
   if (!els.filtersPanel || !els.filtersToggle) return;
   els.filtersPanel.hidden = !open;
@@ -1671,11 +1258,13 @@ function setFiltersPanelOpen(open) {
     window.requestAnimationFrame(positionFiltersPanel);
   }
 }
+
 function shellById(id) {
   const numeric = Number(id);
   if (!Number.isFinite(numeric)) return null;
   return state.shellById.get(numeric) || null;
 }
+
 function centerViewportOnShell(shell) {
   if (!state.viewport || !shell) return;
   const width = state.viewport.maxX - state.viewport.minX;
@@ -1686,9 +1275,10 @@ function centerViewportOnShell(shell) {
     minX: x - width / 2,
     maxX: x + width / 2,
     minY: y - height / 2,
-    maxY: y + height / 2
+    maxY: y + height / 2,
   };
 }
+
 function selectRandomShell() {
   const source = state.filtered.length ? state.filtered : state.shells;
   if (!source.length) return;
@@ -1699,13 +1289,16 @@ function selectRandomShell() {
   scheduleDraw(420);
   primeSurpriseQueue(source);
 }
+
 function iucnSearchUrl(species) {
   const encoded = encodeURIComponent(species || "");
   return `https://www.iucnredlist.org/search?query=${encoded}&searchType=species`;
 }
+
 function speciesCacheKey(species) {
   return String(species || "").trim().toLowerCase();
 }
+
 function iucnStatusName(code) {
   const normalized = String(code || "").trim().toUpperCase();
   return {
@@ -1716,15 +1309,18 @@ function iucnStatusName(code) {
     VU: "Vulnerable",
     NT: "Near threatened",
     LC: "Least concern",
-    DD: "Data deficient"
+    DD: "Data deficient",
   }[normalized] || normalized;
 }
+
 function conservationRecordIsGlobal(record) {
   return record && (record.place == null && record.place_id == null);
 }
+
 function conservationRecordIsIucn(record) {
-  return /iucn/i.test(String((record == null ? void 0 : record.authority) || "")) || Number((record == null ? void 0 : record.iucn) || 0) > 0;
+  return /iucn/i.test(String(record?.authority || "")) || Number(record?.iucn || 0) > 0;
 }
+
 function bestConservationRecord(...taxa) {
   const records = [];
   for (const taxon of taxa) {
@@ -1732,8 +1328,13 @@ function bestConservationRecord(...taxa) {
     if (taxon.conservation_status) records.push(taxon.conservation_status);
     if (Array.isArray(taxon.conservation_statuses)) records.push(...taxon.conservation_statuses);
   }
-  return records.find((record) => conservationRecordIsGlobal(record) && conservationRecordIsIucn(record)) || records.find((record) => conservationRecordIsIucn(record)) || records.find((record) => conservationRecordIsGlobal(record)) || records[0] || null;
+  return records.find((record) => conservationRecordIsGlobal(record) && conservationRecordIsIucn(record))
+    || records.find((record) => conservationRecordIsIucn(record))
+    || records.find((record) => conservationRecordIsGlobal(record))
+    || records[0]
+    || null;
 }
+
 function conservationStatusLabel(record) {
   if (!record) return "Not assessed";
   const code = String(record.status || "").trim().toUpperCase();
@@ -1743,12 +1344,17 @@ function conservationStatusLabel(record) {
   if (!code || name.toUpperCase().includes(`(${code})`) || name.toUpperCase() === code) return name;
   return `${name} (${code})`;
 }
+
 function pickINaturalistTaxon(results, species) {
   const key = speciesCacheKey(species);
-  return results.find((taxon) => speciesCacheKey(taxon.name) === key) || results.find((taxon) => speciesCacheKey(taxon.matched_term) === key) || results.find((taxon) => taxon.rank === "species") || results[0] || null;
+  return results.find((taxon) => speciesCacheKey(taxon.name) === key)
+    || results.find((taxon) => speciesCacheKey(taxon.matched_term) === key)
+    || results.find((taxon) => taxon.rank === "species")
+    || results[0]
+    || null;
 }
+
 async function lookupConservationStatus(species, { signal = null } = {}) {
-  var _a;
   const key = speciesCacheKey(species);
   if (!key) return { status: "Not assessed", authority: "", url: "", taxonId: null };
   if (state.conservationCache.has(key)) return state.conservationCache.get(key);
@@ -1759,7 +1365,7 @@ async function lookupConservationStatus(species, { signal = null } = {}) {
     if (!searchResponse.ok) return fallback;
     const searchPayload = await searchResponse.json();
     const taxon = pickINaturalistTaxon(searchPayload.results || [], species);
-    if (!(taxon == null ? void 0 : taxon.id)) {
+    if (!taxon?.id) {
       state.conservationCache.set(key, fallback);
       return fallback;
     }
@@ -1767,22 +1373,23 @@ async function lookupConservationStatus(species, { signal = null } = {}) {
     const detailResponse = await fetch(`https://api.inaturalist.org/v1/taxa/${taxon.id}`, { signal });
     if (detailResponse.ok) {
       const detailPayload = await detailResponse.json();
-      detailTaxon = ((_a = detailPayload.results) == null ? void 0 : _a[0]) || taxon;
+      detailTaxon = detailPayload.results?.[0] || taxon;
     }
     const record = bestConservationRecord(detailTaxon, taxon);
     const result = {
       status: conservationStatusLabel(record),
-      authority: (record == null ? void 0 : record.authority) || "iNaturalist",
-      url: (record == null ? void 0 : record.url) || iucnSearchUrl(species),
-      taxonId: taxon.id
+      authority: record?.authority || "iNaturalist",
+      url: record?.url || iucnSearchUrl(species),
+      taxonId: taxon.id,
     };
     state.conservationCache.set(key, result);
     return result;
   } catch (error) {
-    if ((error == null ? void 0 : error.name) === "AbortError") throw error;
+    if (error?.name === "AbortError") throw error;
     return fallback;
   }
 }
+
 function zoom(factor, center = null) {
   const size = resizeCanvas(els.scatter, scatterCtx);
   const pivot = center || { x: size.width / 2, y: size.height / 2 };
@@ -1791,13 +1398,14 @@ function zoom(factor, center = null) {
   const width = (vx.maxX - vx.minX) * factor;
   const height = (vx.maxY - vx.minY) * factor;
   state.viewport = {
-    minX: before.x - pivot.x / size.width * width,
+    minX: before.x - (pivot.x / size.width) * width,
     maxX: before.x + (1 - pivot.x / size.width) * width,
-    minY: before.y - (size.height - pivot.y) / size.height * height,
-    maxY: before.y + pivot.y / size.height * height
+    minY: before.y - ((size.height - pivot.y) / size.height) * height,
+    maxY: before.y + (pivot.y / size.height) * height,
   };
   scheduleDraw();
 }
+
 function buildAxisControls() {
   const count = axisOptionCount();
   for (const select of [els.xAxisSelect, els.yAxisSelect]) {
@@ -1812,15 +1420,18 @@ function buildAxisControls() {
   els.xAxisSelect.value = String(state.xAxis);
   els.yAxisSelect.value = String(state.yAxis);
 }
+
 function setAxes(xAxis, yAxis) {
   state.xAxis = xAxis;
   state.yAxis = yAxis;
   els.xAxisSelect.value = String(xAxis);
   els.yAxisSelect.value = String(yAxis);
   state.viewport = initialViewport(xAxis, yAxis);
+  renderPcaInterpretation();
   scheduleDraw(120);
   scheduleHashUpdate();
 }
+
 function buildPcControls() {
   els.pcControls.innerHTML = "";
   const count = contourAxisCount();
@@ -1829,10 +1440,11 @@ function buildPcControls() {
     const range = state.model.contour_pca_ranges[index];
     const low = range ? range.p01 : -1;
     const high = range ? range.p99 : 1;
-    const step = Math.max((high - low) / 500, 1e-3);
+    const step = Math.max((high - low) / 500, 0.001);
     const row = document.createElement("div");
     row.className = "pc-row";
     row.dataset.pcRow = String(index);
+
     const label = document.createElement("label");
     label.textContent = axisMeaning(index);
     const slider = document.createElement("input");
@@ -1845,18 +1457,21 @@ function buildPcControls() {
     number.type = "number";
     number.step = String(step);
     number.value = "0.000";
+
     slider.addEventListener("input", () => setPcValue(index, Number(slider.value)));
     number.addEventListener("change", () => setPcValue(index, Number(number.value)));
     row.append(label, slider, number);
     els.pcControls.append(row);
   }
 }
+
 function updatePcControl(index, value) {
   const row = document.querySelector(`[data-pc-row="${index}"]`);
   if (!row) return;
   row.querySelector("input[type='range']").value = String(value);
   row.querySelector("input[type='number']").value = Number(value).toFixed(3);
 }
+
 function setPcValue(index, value) {
   state.pcValues[index] = value;
   updatePcControl(index, value);
@@ -1864,6 +1479,7 @@ function setPcValue(index, value) {
   scheduleDraw();
   scheduleHashUpdate();
 }
+
 function setPcValues(values, updateHash = true) {
   values.forEach((value, index) => {
     state.pcValues[index] = value;
@@ -1873,22 +1489,26 @@ function setPcValues(values, updateHash = true) {
   scheduleDraw();
   if (updateHash) scheduleHashUpdate();
 }
+
+function renderPcaInterpretation() {
+  return;
+}
+
 function contourForShell(shell) {
-  var _a, _b;
   if (!shell) return null;
   const uploadContour = shell.upload_contour || (shell.id < 0 && state.selected === shell ? state.selectedContour : null);
   if (shell.id < 0 && uploadContour) {
-    const points2 = [];
-    const centerX = ((_a = shell.center) == null ? void 0 : _a[0]) || 0;
-    const centerY = ((_b = shell.center) == null ? void 0 : _b[1]) || 0;
+    const points = [];
+    const centerX = shell.center?.[0] || 0;
+    const centerY = shell.center?.[1] || 0;
     const radius = shell.mean_radius || 1;
     for (let index = 0; index < uploadContour.length; index += 2) {
-      points2.push([
+      points.push([
         centerX + uploadContour[index] * radius,
-        centerY + uploadContour[index + 1] * radius
+        centerY + uploadContour[index + 1] * radius,
       ]);
     }
-    return points2;
+    return points;
   }
   if (!state.contours || !state.contourPoints) return null;
   const start = shell.id * state.contourPoints * 2;
@@ -1900,9 +1520,10 @@ function contourForShell(shell) {
   }
   return points;
 }
+
 function normalizedContour(shell) {
-  if (shell == null ? void 0 : shell.upload_contour) return shell.upload_contour;
-  if ((shell == null ? void 0 : shell.id) < 0 && state.selected === shell && state.selectedContour) return state.selectedContour;
+  if (shell?.upload_contour) return shell.upload_contour;
+  if (shell?.id < 0 && state.selected === shell && state.selectedContour) return state.selectedContour;
   if (normalizedContourCache.has(shell.id)) return normalizedContourCache.get(shell.id);
   if (!state.contours || !state.contourPoints) return null;
   const start = shell.id * state.contourPoints * 2;
@@ -1920,6 +1541,7 @@ function normalizedContour(shell) {
   normalizedContourCache.set(shell.id, out);
   return out;
 }
+
 function shapeTraitsFromShell(shell) {
   if (!shell) return {};
   return {
@@ -1941,13 +1563,14 @@ function shapeTraitsFromShell(shell) {
     texture_residual_std: shell.texture_residual_std,
     texture_luma_iqr: shell.texture_luma_iqr,
     contour_concavity: shell.contour_concavity,
-    contour_solidity: shell.contour_solidity
+    contour_solidity: shell.contour_solidity,
   };
 }
+
 function shellColorName(shell) {
   const lightness = shell.color_l_mean ?? 0.5;
   const chroma = shell.color_chroma_mean ?? 0.1;
-  const hue = (Math.atan2(shell.color_hue_sin || 0, shell.color_hue_cos || 1) * 180 / Math.PI + 360) % 360;
+  const hue = ((Math.atan2(shell.color_hue_sin || 0, shell.color_hue_cos || 1) * 180) / Math.PI + 360) % 360;
   if (lightness > 0.72 && chroma < 0.12) return "ivory";
   if (lightness < 0.32) return "dark brown";
   if (chroma < 0.08) return lightness > 0.58 ? "chalky cream" : "stone gray";
@@ -1959,31 +1582,35 @@ function shellColorName(shell) {
   if (hue < 292) return "violet-gray";
   return "pink-tan";
 }
+
 function effectiveGeneratedTraits() {
   return state.generatedTraits || shapeTraitsFromShell(state.selected);
 }
+
 function reconstructFromPc() {
   const out = contourFromPcValues(state.pcValues);
   if (!out) return;
   state.generatedContour = out;
   state.generatedTraits = null;
   state.generatedMode = "pca";
+  updateGeneratorStatus();
   drawOutline();
 }
+
 function contourFromPcValues(values) {
-  var _a, _b, _c, _d, _e;
-  if (!((_b = (_a = state.model) == null ? void 0 : _a.contour_mean) == null ? void 0 : _b.length) || !((_d = (_c = state.model) == null ? void 0 : _c.contour_components) == null ? void 0 : _d.length)) return null;
+  if (!state.model?.contour_mean?.length || !state.model?.contour_components?.length) return null;
   const valueCount = state.model.contour_mean.length;
   const out = new Float32Array(valueCount);
   for (let index = 0; index < valueCount; index += 1) {
     let value = state.model.contour_mean[index] || 0;
     for (let pc = 0; pc < state.model.contour_components.length; pc += 1) {
-      value += (values[pc] || 0) * (((_e = state.model.contour_components[pc]) == null ? void 0 : _e[index]) || 0);
+      value += (values[pc] || 0) * (state.model.contour_components[pc]?.[index] || 0);
     }
     out[index] = value;
   }
   return out;
 }
+
 function maxContourRadius(contours) {
   let radius = 0;
   for (const contour of contours) {
@@ -1994,6 +1621,7 @@ function maxContourRadius(contours) {
   }
   return radius || 1;
 }
+
 function contourPath(ctx, contour, centerX, centerY, scale) {
   ctx.beginPath();
   const count = Math.floor(contour.length / 2);
@@ -2005,44 +1633,49 @@ function contourPath(ctx, contour, centerX, centerY, scale) {
   }
   ctx.closePath();
 }
+
 function shellFillColor(traits, alpha = 0.9) {
-  const red = Math.round(clamp01((traits == null ? void 0 : traits.color_r_mean) ?? 0.72) * 255);
-  const green = Math.round(clamp01((traits == null ? void 0 : traits.color_g_mean) ?? 0.66) * 255);
-  const blue = Math.round(clamp01((traits == null ? void 0 : traits.color_b_mean) ?? 0.54) * 255);
+  const red = Math.round(clamp01(traits?.color_r_mean ?? 0.72) * 255);
+  const green = Math.round(clamp01(traits?.color_g_mean ?? 0.66) * 255);
+  const blue = Math.round(clamp01(traits?.color_b_mean ?? 0.54) * 255);
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
+
 function generatedFingerprintHash() {
   const values = state.pcValues.slice(0, 6).map((value) => Number(value || 0).toFixed(4));
   return hashString(`projected|${values.join(",")}`).toString(36).toUpperCase().padStart(6, "0").slice(-6);
 }
+
 function updateHashChips() {
-  var _a, _b, _c;
-  if (((_a = state.selected) == null ? void 0 : _a.fingerprint_hash) && els.physicalHash) {
+  if (state.selected?.fingerprint_hash && els.physicalHash) {
     applyShellFingerprintStyle(els.physicalHash, state.selected);
   }
   if (els.projectedHash) {
-    const hash = state.generatedMode === "selected" && ((_b = state.selected) == null ? void 0 : _b.fingerprint_hash) ? state.selected.fingerprint_hash : generatedFingerprintHash();
-    if (state.generatedMode === "selected" && ((_c = state.selected) == null ? void 0 : _c.fingerprint_hash)) {
+    const hash = state.generatedMode === "selected" && state.selected?.fingerprint_hash
+      ? state.selected.fingerprint_hash
+      : generatedFingerprintHash();
+    if (state.generatedMode === "selected" && state.selected?.fingerprint_hash) {
       applyShellFingerprintStyle(els.projectedHash, state.selected, hash);
     } else {
       applyFingerprintStyle(els.projectedHash, hash);
     }
   }
 }
+
 function drawGeneratedTexture(ctx, contour, centerX, centerY, scale, traits) {
   const pointCount = Math.floor(contour.length / 2);
   if (pointCount < 4) return;
-  const roughness = clamp01(((traits == null ? void 0 : traits.roughness) || 0.012) / 0.04);
-  const chroma = clamp01(((traits == null ? void 0 : traits.color_chroma_mean) || 0.08) / 0.35);
-  const concavity = clamp01(((traits == null ? void 0 : traits.contour_concavity) || 0.04) / 0.35);
-  const pattern = clamp01(((traits == null ? void 0 : traits.color_pattern_strength) || 0.06) / 0.22);
-  const patternContrast = clamp01(((traits == null ? void 0 : traits.color_pattern_contrast) || 0.04) / 0.18);
+  const roughness = clamp01((traits?.roughness || 0.012) / 0.04);
+  const chroma = clamp01((traits?.color_chroma_mean || 0.08) / 0.35);
+  const concavity = clamp01((traits?.contour_concavity || 0.04) / 0.35);
+  const pattern = clamp01((traits?.color_pattern_strength || 0.06) / 0.22);
+  const patternContrast = clamp01((traits?.color_pattern_contrast || 0.04) / 0.18);
   ctx.save();
   contourPath(ctx, contour, centerX, centerY, scale);
   ctx.clip();
   const ringCount = 4 + Math.round(concavity * 4 + pattern * 5);
   for (let ring = 1; ring <= ringCount; ring += 1) {
-    contourPath(ctx, contour, centerX, centerY, scale * (0.16 + ring / (ringCount + 1) * 0.78));
+    contourPath(ctx, contour, centerX, centerY, scale * (0.16 + (ring / (ringCount + 1)) * 0.78));
     ctx.strokeStyle = `rgba(32, 36, 42, ${0.035 + chroma * 0.035 + patternContrast * 0.05})`;
     ctx.lineWidth = 0.8 + pattern * 0.55;
     ctx.stroke();
@@ -2064,7 +1697,7 @@ function drawGeneratedTexture(ctx, contour, centerX, centerY, scale, traits) {
     scale * 0.08,
     centerX,
     centerY,
-    scale * 1.25
+    scale * 1.25,
   );
   gloss.addColorStop(0, "rgba(255, 255, 255, 0.34)");
   gloss.addColorStop(0.45, "rgba(255, 255, 255, 0.08)");
@@ -2073,6 +1706,11 @@ function drawGeneratedTexture(ctx, contour, centerX, centerY, scale, traits) {
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.restore();
 }
+
+function updateGeneratorStatus() {
+  return;
+}
+
 function drawOutline() {
   const { width, height } = els.outline;
   outlineCtx.clearRect(0, 0, width, height);
@@ -2083,7 +1721,7 @@ function drawOutline() {
   updateHashChips();
   const centerX = width / 2;
   const centerY = height / 2;
-  const scale = Math.min(width, height) * 0.42 / maxContourRadius([contour]);
+  const scale = (Math.min(width, height) * 0.42) / maxContourRadius([contour]);
   const traits = effectiveGeneratedTraits();
   outlineCtx.save();
   contourPath(outlineCtx, contour, centerX, centerY, scale);
@@ -2100,6 +1738,7 @@ function drawOutline() {
   outlineCtx.fill();
   outlineCtx.restore();
 }
+
 function svgPathFromContour(contour, centerX, centerY, scale) {
   const parts = [];
   const count = Math.floor(contour.length / 2);
@@ -2111,12 +1750,13 @@ function svgPathFromContour(contour, centerX, centerY, scale) {
   parts.push("Z");
   return parts.join(" ");
 }
+
 function exportGeneratedSvg() {
   const contour = state.generatedContour || state.selectedContour;
   if (!contour) return;
   const size = 512;
   const center = size / 2;
-  const scale = size * 0.42 / maxContourRadius([contour]);
+  const scale = (size * 0.42) / maxContourRadius([contour]);
   const path = svgPathFromContour(contour, center, center, scale);
   const fill = shellFillColor(effectiveGeneratedTraits(), 0.86);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}"><rect width="${size}" height="${size}" fill="#f7f7f2"/><path d="${path}" fill="${fill}" stroke="#287a74" stroke-width="6" stroke-linejoin="round"/></svg>`;
@@ -2128,15 +1768,19 @@ function exportGeneratedSvg() {
   link.click();
   URL.revokeObjectURL(url);
 }
+
 function contourFallbackDataUrl(shell) {
   const contour = contourForShell(shell);
-  if (!(contour == null ? void 0 : contour.length)) return "";
+  if (!contour?.length) return "";
   const width = shell.image_width || 400;
   const height = shell.image_height || 300;
-  const path = contour.map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`).join(" ");
+  const path = contour
+    .map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`)
+    .join(" ");
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#f7f7f2"/><path d="${path} Z" fill="${shellRgb(shell, 0.35)}" stroke="#287a74" stroke-width="3" stroke-linejoin="round"/></svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
+
 function fitImageFrame(imageWidth, imageHeight, frameWidth, frameHeight) {
   const scale = Math.min(frameWidth / Math.max(1, imageWidth), frameHeight / Math.max(1, imageHeight));
   const width = imageWidth * scale;
@@ -2146,26 +1790,26 @@ function fitImageFrame(imageWidth, imageHeight, frameWidth, frameHeight) {
     y: (frameHeight - height) / 2,
     width,
     height,
-    scale
+    scale,
   };
 }
+
 function thumbnailPageForShell(shell) {
-  var _a;
-  const atlas = (_a = state.model) == null ? void 0 : _a.thumbnail_atlas;
+  const atlas = state.model?.thumbnail_atlas;
   if (!atlas || !shell || shell.id < 0) return null;
   const perAtlas = atlas.per_atlas || 2048;
   return Math.floor(shell.id / perAtlas);
 }
+
 function thumbnailSourceRect(shell) {
-  var _a;
-  const atlas = (_a = state.model) == null ? void 0 : _a.thumbnail_atlas;
+  const atlas = state.model?.thumbnail_atlas;
   const page = thumbnailPageForShell(shell);
   if (!atlas || page == null) return null;
   const tile = atlas.size || 56;
   const columns = atlas.columns || 64;
   const perAtlas = atlas.per_atlas || 2048;
   const local = shell.id % perAtlas;
-  const tileX = local % columns * tile;
+  const tileX = (local % columns) * tile;
   const tileY = Math.floor(local / columns) * tile;
   const imageScale = Math.min(tile / Math.max(1, shell.image_width), tile / Math.max(1, shell.image_height));
   const width = Math.max(1, shell.image_width * imageScale);
@@ -2175,13 +1819,13 @@ function thumbnailSourceRect(shell) {
     x: tileX + (tile - width) / 2,
     y: tileY + (tile - height) / 2,
     width,
-    height
+    height,
   };
 }
+
 function loadThumbnailPage(page) {
-  var _a, _b;
-  const atlas = (_a = state.model) == null ? void 0 : _a.thumbnail_atlas;
-  if (!((_b = atlas == null ? void 0 : atlas.files) == null ? void 0 : _b[page])) return Promise.resolve(null);
+  const atlas = state.model?.thumbnail_atlas;
+  if (!atlas?.files?.[page]) return Promise.resolve(null);
   if (thumbnailPageCache.has(page)) return thumbnailPageCache.get(page);
   const promise = new Promise((resolve) => {
     const image = new Image();
@@ -2196,6 +1840,7 @@ function loadThumbnailPage(page) {
   thumbnailPageCache.set(page, promise);
   return promise;
 }
+
 function loadOriginalImage(shell) {
   if (!shell || shell.id < 0 || !shell.file) return Promise.resolve(null);
   if (originalImageCache.has(shell.file)) return originalImageCache.get(shell.file);
@@ -2209,8 +1854,9 @@ function loadOriginalImage(shell) {
   originalImageCache.set(shell.file, promise);
   return promise;
 }
+
 function buildThumbnailPageIndex(shells) {
-  const byPage = /* @__PURE__ */ new Map();
+  const byPage = new Map();
   for (const shell of shells) {
     const page = thumbnailPageForShell(shell);
     if (page == null) continue;
@@ -2223,6 +1869,7 @@ function buildThumbnailPageIndex(shells) {
   }
   return byPage;
 }
+
 function scheduleIdleWork(callback, timeout = 1200) {
   if ("requestIdleCallback" in window) {
     window.requestIdleCallback(callback, { timeout });
@@ -2230,7 +1877,8 @@ function scheduleIdleWork(callback, timeout = 1200) {
   }
   window.setTimeout(callback, Math.min(timeout, 160));
 }
-function randomShellFromSource(source, avoidId = ((_a) => (_a = state.selected) == null ? void 0 : _a.id)()) {
+
+function randomShellFromSource(source, avoidId = state.selected?.id) {
   if (!source.length) return null;
   let index = Math.floor(Math.random() * source.length);
   if (avoidId != null && source.length > 1 && source[index].id === avoidId) {
@@ -2238,17 +1886,16 @@ function randomShellFromSource(source, avoidId = ((_a) => (_a = state.selected) 
   }
   return source[index];
 }
+
 function resetSurpriseQueue() {
   state.surpriseQueue = [];
   state.surpriseQueueSource = null;
   window.clearTimeout(state.surprisePrimeTimer);
   state.surprisePrimeTimer = 0;
 }
+
 function queueRandomSurpriseShell(source) {
-  const queuedIds = new Set(state.surpriseQueue.map((entry2) => {
-    var _a;
-    return (_a = entry2.shell) == null ? void 0 : _a.id;
-  }));
+  const queuedIds = new Set(state.surpriseQueue.map((entry) => entry.shell?.id));
   let shell = null;
   for (let attempt = 0; attempt < 12; attempt += 1) {
     const candidate = randomShellFromSource(source);
@@ -2267,6 +1914,7 @@ function queueRandomSurpriseShell(source) {
     });
   }
 }
+
 function primeSurpriseQueue(source = state.filtered, targetSize = 3) {
   if (!source.length) return;
   if (state.surpriseQueueSource !== source) {
@@ -2280,19 +1928,20 @@ function primeSurpriseQueue(source = state.filtered, targetSize = 3) {
     }, 500);
   }, 80);
 }
+
 function thumbnailWarmOrder() {
-  var _a, _b;
-  const files = ((_b = (_a = state.model) == null ? void 0 : _a.thumbnail_atlas) == null ? void 0 : _b.files) || [];
+  const files = state.model?.thumbnail_atlas?.files || [];
   const selectedPage = thumbnailPageForShell(state.selected);
-  return Array.from({ length: files.length }, (_value, index) => index).sort((left, right) => {
-    const leftDistance = selectedPage == null ? left : Math.abs(left - selectedPage);
-    const rightDistance = selectedPage == null ? right : Math.abs(right - selectedPage);
-    return leftDistance - rightDistance;
-  });
+  return Array.from({ length: files.length }, (_value, index) => index)
+    .sort((left, right) => {
+      const leftDistance = selectedPage == null ? left : Math.abs(left - selectedPage);
+      const rightDistance = selectedPage == null ? right : Math.abs(right - selectedPage);
+      return leftDistance - rightDistance;
+    });
 }
+
 function warmThumbnailPages({ eager = false } = {}) {
-  var _a, _b, _c;
-  if (state.warmingThumbnails || !((_c = (_b = (_a = state.model) == null ? void 0 : _a.thumbnail_atlas) == null ? void 0 : _b.files) == null ? void 0 : _c.length)) return;
+  if (state.warmingThumbnails || !state.model?.thumbnail_atlas?.files?.length) return;
   state.warmingThumbnails = true;
   const order = thumbnailWarmOrder();
   let cursor = 0;
@@ -2315,6 +1964,7 @@ function warmThumbnailPages({ eager = false } = {}) {
   };
   scheduleIdleWork(pump, eager ? 100 : 1600);
 }
+
 function drawLoadedThumbnailImage(ctx, shell, source, image, frameWidth, frameHeight) {
   if (!source || !image) return false;
   const frame = fitImageFrame(shell.image_width, shell.image_height, frameWidth, frameHeight);
@@ -2327,13 +1977,14 @@ function drawLoadedThumbnailImage(ctx, shell, source, image, frameWidth, frameHe
     frame.x,
     frame.y,
     frame.width,
-    frame.height
+    frame.height,
   );
   return frame;
 }
+
 function thumbnailContourPath(ctx, shell, frame) {
   const contour = contourForShell(shell);
-  if (!(contour == null ? void 0 : contour.length) || !frame) return false;
+  if (!contour?.length || !frame) return false;
   ctx.beginPath();
   for (let index = 0; index < contour.length; index += 1) {
     const x = frame.x + contour[index][0] * frame.scale;
@@ -2344,6 +1995,7 @@ function thumbnailContourPath(ctx, shell, frame) {
   ctx.closePath();
   return true;
 }
+
 function drawContourFallbackThumb(ctx, shell, frame, frameWidth, frameHeight) {
   if (!thumbnailContourPath(ctx, shell, frame)) return false;
   ctx.fillStyle = shellRgb(shell, 0.9);
@@ -2354,8 +2006,9 @@ function drawContourFallbackThumb(ctx, shell, frame, frameWidth, frameHeight) {
   ctx.stroke();
   return true;
 }
+
 function contourPointBounds(points) {
-  if (!(points == null ? void 0 : points.length)) return null;
+  if (!points?.length) return null;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -2369,6 +2022,7 @@ function contourPointBounds(points) {
   if (!Number.isFinite(minX) || maxX <= minX || maxY <= minY) return null;
   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
 }
+
 function paddedContourCrop(shell, contour, paddingRatio = 0.08) {
   const bounds = contourPointBounds(contour);
   if (!bounds) return null;
@@ -2383,9 +2037,10 @@ function paddedContourCrop(shell, contour, paddingRatio = 0.08) {
     x,
     y,
     width: Math.max(1, right - x),
-    height: Math.max(1, bottom - y)
+    height: Math.max(1, bottom - y),
   };
 }
+
 function fitCropFrame(crop, frameWidth, frameHeight, inset = 2) {
   const availableWidth = Math.max(1, frameWidth - inset * 2);
   const availableHeight = Math.max(1, frameHeight - inset * 2);
@@ -2397,11 +2052,12 @@ function fitCropFrame(crop, frameWidth, frameHeight, inset = 2) {
     y: (frameHeight - height) / 2,
     width,
     height,
-    scale
+    scale,
   };
 }
+
 function croppedContourPath(ctx, contour, crop, frame) {
-  if (!(contour == null ? void 0 : contour.length) || !crop || !frame) return false;
+  if (!contour?.length || !crop || !frame) return false;
   ctx.beginPath();
   for (let index = 0; index < contour.length; index += 1) {
     const x = frame.x + (contour[index][0] - crop.x) * frame.scale;
@@ -2412,6 +2068,7 @@ function croppedContourPath(ctx, contour, crop, frame) {
   ctx.closePath();
   return true;
 }
+
 function drawCroppedContourFallback(ctx, shell, contour, crop, frame, frameWidth, frameHeight) {
   if (!croppedContourPath(ctx, contour, crop, frame)) return false;
   ctx.fillStyle = shellRgb(shell, 0.92);
@@ -2422,6 +2079,7 @@ function drawCroppedContourFallback(ctx, shell, contour, crop, frame, frameWidth
   ctx.stroke();
   return true;
 }
+
 function transparentBlackPixels(ctx, x, y, width, height) {
   const matrix = ctx.getTransform();
   const scaleX = Math.abs(matrix.a) || 1;
@@ -2468,11 +2126,12 @@ function transparentBlackPixels(ctx, x, y, width, height) {
   }
   ctx.putImageData(imageData, left, top);
 }
+
 function drawCroppedLoadedShellImage(ctx, shell, source, image, frameWidth, frameHeight) {
   if (!source || !image) return null;
   const contour = contourForShell(shell);
   const crop = paddedContourCrop(shell, contour, 0.045);
-  if (!(contour == null ? void 0 : contour.length) || !crop) return null;
+  if (!contour?.length || !crop) return null;
   const frame = fitCropFrame(crop, frameWidth, frameHeight, 8);
   const scaleX = source.width / Math.max(1, shell.image_width || crop.width);
   const scaleY = source.height / Math.max(1, shell.image_height || crop.height);
@@ -2488,23 +2147,24 @@ function drawCroppedLoadedShellImage(ctx, shell, source, image, frameWidth, fram
     frame.x,
     frame.y,
     frame.width,
-    frame.height
+    frame.height,
   );
   ctx.restore();
   transparentBlackPixels(ctx, frame.x, frame.y, frame.width, frame.height);
   if (croppedContourPath(ctx, contour, crop, frame)) {
     const hsl = rgbToHsl(shell.color_r_mean ?? 0.68, shell.color_g_mean ?? 0.64, shell.color_b_mean ?? 0.56);
     ctx.strokeStyle = hslCss(hsl.h, Math.max(0.18, hsl.s * 0.76), Math.max(0.16, hsl.l - 0.26));
-    ctx.lineWidth = Math.max(1.15, Math.min(frameWidth, frameHeight) * 8e-3);
+    ctx.lineWidth = Math.max(1.15, Math.min(frameWidth, frameHeight) * 0.008);
     ctx.stroke();
   }
   return frame;
 }
+
 function drawCroppedOriginalShellImage(ctx, shell, image, frameWidth, frameHeight) {
   if (!image) return null;
   const contour = contourForShell(shell);
   const crop = paddedContourCrop(shell, contour, 0.045);
-  if (!(contour == null ? void 0 : contour.length) || !crop) return null;
+  if (!contour?.length || !crop) return null;
   const frame = fitCropFrame(crop, frameWidth, frameHeight, 8);
   const scaleX = (image.naturalWidth || shell.image_width || crop.width) / Math.max(1, shell.image_width || crop.width);
   const scaleY = (image.naturalHeight || shell.image_height || crop.height) / Math.max(1, shell.image_height || crop.height);
@@ -2520,15 +2180,16 @@ function drawCroppedOriginalShellImage(ctx, shell, image, frameWidth, frameHeigh
     frame.x,
     frame.y,
     frame.width,
-    frame.height
+    frame.height,
   );
   ctx.restore();
   transparentBlackPixels(ctx, frame.x, frame.y, frame.width, frame.height);
   return frame;
 }
+
 function starredThumbSize(crop) {
   const cssHeight = 44;
-  if (!(crop == null ? void 0 : crop.width) || !(crop == null ? void 0 : crop.height)) {
+  if (!crop?.width || !crop?.height) {
     return { cssWidth: 44, pixelWidth: 96, pixelHeight: 96 };
   }
   const ratio = crop.width / Math.max(1, crop.height);
@@ -2536,15 +2197,17 @@ function starredThumbSize(crop) {
   const pixelHeight = 104;
   return {
     cssWidth,
-    pixelWidth: Math.round(cssWidth / cssHeight * pixelHeight),
-    pixelHeight
+    pixelWidth: Math.round((cssWidth / cssHeight) * pixelHeight),
+    pixelHeight,
   };
 }
+
 function starredThumbGeometry(shell) {
   const contour = contourForShell(shell);
   const crop = paddedContourCrop(shell, contour, 0.035);
   return { contour, crop, size: starredThumbSize(crop) };
 }
+
 async function drawStarredThumbToCanvas(canvas, shell, geometry = null, { loadImage = false } = {}) {
   const ctx = canvas.getContext("2d");
   const { contour, crop, size } = geometry || starredThumbGeometry(shell);
@@ -2576,13 +2239,14 @@ async function drawStarredThumbToCanvas(canvas, shell, geometry = null, { loadIm
         frame.x,
         frame.y,
         frame.width,
-        frame.height
+        frame.height,
       );
       ctx.restore();
       transparentBlackPixels(ctx, frame.x, frame.y, frame.width, frame.height);
     }
   }
 }
+
 async function drawThumbnailImage(ctx, shell, frameWidth, frameHeight, { onlyIfReady = false } = {}) {
   const source = thumbnailSourceRect(shell);
   if (!source) return false;
@@ -2591,6 +2255,7 @@ async function drawThumbnailImage(ctx, shell, frameWidth, frameHeight, { onlyIfR
   if (!image) return false;
   return drawLoadedThumbnailImage(ctx, shell, source, image, frameWidth, frameHeight);
 }
+
 async function drawShellThumbToCanvas(canvas, shell, { loadImage = true } = {}) {
   const ctx = canvas.getContext("2d");
   canvas.width = 96;
@@ -2612,6 +2277,7 @@ async function drawShellThumbToCanvas(canvas, shell, { loadImage = true } = {}) 
     return;
   }
 }
+
 function setSourceImageUrl(url, shell, alt = "") {
   els.sourceThumb.hidden = true;
   els.sourceImage.hidden = false;
@@ -2634,11 +2300,14 @@ function setSourceImageUrl(url, shell, alt = "") {
   };
   els.sourceImage.src = url;
 }
+
 function drawSourceFallback(shell, size) {
   sourceThumbCtx.clearRect(0, 0, size.width, size.height);
   const contour = contourForShell(shell);
   const crop = paddedContourCrop(shell, contour, 0.045);
-  const frame = crop ? fitCropFrame(crop, size.width, size.height, 8) : fitImageFrame(shell.image_width || size.width, shell.image_height || size.height, size.width, size.height);
+  const frame = crop
+    ? fitCropFrame(crop, size.width, size.height, 8)
+    : fitImageFrame(shell.image_width || size.width, shell.image_height || size.height, size.width, size.height);
   if (!crop || !drawCroppedContourFallback(sourceThumbCtx, shell, contour, crop, frame, size.width, size.height)) {
     sourceThumbCtx.fillStyle = shellRgb(shell, 0.84);
     sourceThumbCtx.beginPath();
@@ -2650,6 +2319,7 @@ function drawSourceFallback(shell, size) {
   if (els.sourceSpinner) els.sourceSpinner.hidden = true;
   renderPalette(false);
 }
+
 async function renderSourceShell(shell) {
   if (!shell) return;
   const token = ++state.sourceToken;
@@ -2669,9 +2339,9 @@ async function renderSourceShell(shell) {
     if (token !== state.sourceToken || state.selected !== shell) return;
     if (original) {
       sourceThumbCtx.clearRect(0, 0, size.width, size.height);
-      const frame2 = drawCroppedOriginalShellImage(sourceThumbCtx, shell, original, size.width, size.height);
-      if (frame2) {
-        state.sourceFrame = frame2;
+      const frame = drawCroppedOriginalShellImage(sourceThumbCtx, shell, original, size.width, size.height);
+      if (frame) {
+        state.sourceFrame = frame;
         state.sourceMode = "original";
         if (els.sourceSpinner) els.sourceSpinner.hidden = true;
         renderPalette(true);
@@ -2682,7 +2352,8 @@ async function renderSourceShell(shell) {
     const image = await loadThumbnailPage(source.page);
     if (token !== state.sourceToken || state.selected !== shell) return;
     sourceThumbCtx.clearRect(0, 0, size.width, size.height);
-    const frame = drawCroppedLoadedShellImage(sourceThumbCtx, shell, source, image, size.width, size.height) || drawLoadedThumbnailImage(sourceThumbCtx, shell, source, image, size.width, size.height);
+    const frame = drawCroppedLoadedShellImage(sourceThumbCtx, shell, source, image, size.width, size.height)
+      || drawLoadedThumbnailImage(sourceThumbCtx, shell, source, image, size.width, size.height);
     if (frame) {
       state.sourceFrame = frame;
       state.sourceMode = "atlas";
@@ -2693,15 +2364,16 @@ async function renderSourceShell(shell) {
     drawSourceFallback(shell, size);
   }, 320);
 }
+
 function contourPcDistanceSq(shell, candidate) {
-  var _a, _b;
   let distance = 0;
-  const count = Math.min(4, ((_a = shell.contour_pc) == null ? void 0 : _a.length) || 0, ((_b = candidate.contour_pc) == null ? void 0 : _b.length) || 0);
+  const count = Math.min(4, shell.contour_pc?.length || 0, candidate.contour_pc?.length || 0);
   for (let index = 0; index < count; index += 1) {
     distance += ((shell.contour_pc[index] || 0) - (candidate.contour_pc[index] || 0)) ** 2;
   }
   return distance;
 }
+
 function nearestContourNeighbors(shell) {
   if (!shell) return [];
   if (state.neighborCache.has(shell.id)) return state.neighborCache.get(shell.id);
@@ -2732,11 +2404,12 @@ function nearestContourNeighbors(shell) {
   best.sort((a, b) => a.distance - b.distance);
   const neighbors = best.map((item) => ({
     distance: Math.sqrt(item.distance),
-    shell: item.shell
+    shell: item.shell,
   }));
   state.neighborCache.set(shell.id, neighbors);
   return neighbors;
 }
+
 function renderNeighbors(shell, token = state.neighborToken) {
   els.neighborsList.innerHTML = "";
   if (!shell || token !== state.neighborToken) return;
@@ -2759,6 +2432,7 @@ function renderNeighbors(shell, token = state.neighborToken) {
     els.neighborsList.append(button);
   }
 }
+
 function scheduleRenderNeighbors(shell, delay = 2500) {
   state.neighborToken += 1;
   const token = state.neighborToken;
@@ -2771,6 +2445,7 @@ function scheduleRenderNeighbors(shell, delay = 2500) {
     renderNeighbors(shell, token);
   }, delay);
 }
+
 function loadStarred() {
   try {
     const raw = JSON.parse(localStorage.getItem(starStorageKey) || "[]");
@@ -2779,12 +2454,15 @@ function loadStarred() {
     state.starredIds = [];
   }
 }
+
 function saveStarred() {
   localStorage.setItem(starStorageKey, JSON.stringify(state.starredIds.slice(0, 80)));
 }
+
 function isStarred(shell) {
   return Boolean(shell && state.starredIds.includes(shell.id));
 }
+
 function updateStarButton() {
   if (!els.starShell) return;
   const active = isStarred(state.selected);
@@ -2792,6 +2470,7 @@ function updateStarButton() {
   els.starShell.title = active ? "Unstar this shape" : "Star this shape";
   els.starShell.setAttribute("aria-label", active ? "Unstar this shape" : "Star this shape");
 }
+
 function toggleStarredShell() {
   if (!state.selected) return;
   const selectedForNeighbors = state.selected;
@@ -2813,11 +2492,11 @@ function toggleStarredShell() {
   window.setTimeout(saveStarred, 0);
   scheduleRenderNeighbors(selectedForNeighbors, 900);
 }
+
 function triggerStarBurst() {
-  var _a;
   if (!els.starBurst || !els.starShell) return;
   const starRect = els.starShell.getBoundingClientRect();
-  const targetRect = (_a = els.starredBand) == null ? void 0 : _a.getBoundingClientRect();
+  const targetRect = els.starredBand?.getBoundingClientRect();
   const startX = starRect.left + starRect.width / 2;
   const startY = starRect.top + starRect.height / 2;
   const endX = targetRect ? targetRect.left + Math.min(70, targetRect.width * 0.4) : startX;
@@ -2830,7 +2509,7 @@ function triggerStarBurst() {
   for (let index = 0; index < 9; index += 1) {
     const spark = document.createElement("span");
     spark.style.setProperty("--spark-angle", `${index * 40 - 20}deg`);
-    spark.style.setProperty("--spark-distance", `${24 + index % 3 * 10}px`);
+    spark.style.setProperty("--spark-distance", `${24 + (index % 3) * 10}px`);
     spark.style.setProperty("--spark-delay", `${index * 18}ms`);
     els.starBurst.append(spark);
   }
@@ -2839,17 +2518,17 @@ function triggerStarBurst() {
   els.starBurst.classList.add("is-active");
   window.setTimeout(() => els.starBurst.classList.remove("is-active"), 900);
 }
+
 function starredShelfSelection() {
-  var _a;
   if (state.showAllStars) {
-    const items2 = [];
+    const items = [];
     for (const id of state.starredIds) {
       const shell = shellById(id);
-      if (shell) items2.push({ shell, geometry: starredThumbGeometry(shell) });
+      if (shell) items.push({ shell, geometry: starredThumbGeometry(shell) });
     }
-    return { items: items2, hidden: 0 };
+    return { items, hidden: 0 };
   }
-  const available = Math.max(44, ((_a = els.starredBand) == null ? void 0 : _a.clientWidth) || 0);
+  const available = Math.max(44, els.starredBand?.clientWidth || 0);
   const items = [];
   let used = 0;
   let hidden = 0;
@@ -2869,6 +2548,7 @@ function starredShelfSelection() {
   }
   return { items, hidden };
 }
+
 function renderStarred() {
   if (!els.starredBand) return;
   els.starredBand.innerHTML = "";
@@ -2901,8 +2581,8 @@ function renderStarred() {
     els.starredBand.append(more);
   }
 }
+
 function selectShell(shell, { renderNearest = true } = {}) {
-  var _a;
   if (!shell) return;
   if (state.walkingPca) stopPcaWalk(false);
   if (shell.id >= 0 && state.uploadImageUrl) {
@@ -2931,8 +2611,8 @@ function selectShell(shell, { renderNearest = true } = {}) {
     ["Mean radius", `${formatNumber(shellMeanRadiusCm(shell), 2)} cm`],
     ["Lightness", precisePercentValue(shell.color_l_mean ?? 0)],
     ["Concavity", precisePercentValue((shell.contour_concavity || 0) / 0.32)],
-    ["Asymmetry", precisePercentValue(((_a = shell.morph_traits) == null ? void 0 : _a.asymmetry) || 0)],
-    ["Scale", `${formatNumber(scale.widthCm, 2)} x ${formatNumber(scale.heightCm, 2)} cm frame`]
+    ["Asymmetry", precisePercentValue(shell.morph_traits?.asymmetry || 0)],
+    ["Scale", `${formatNumber(scale.widthCm, 2)} x ${formatNumber(scale.heightCm, 2)} cm frame`],
   ];
   for (const [key, value] of details) {
     const dt = document.createElement("dt");
@@ -2945,11 +2625,13 @@ function selectShell(shell, { renderNearest = true } = {}) {
   renderSourceShell(shell);
   if (renderNearest) scheduleRenderNeighbors(shell);
   else els.neighborsList.innerHTML = "";
+  updateGeneratorStatus();
   drawOutline();
   renderPalette(false);
   scheduleDraw(120);
   scheduleHashUpdate();
 }
+
 function nearestShell(screenX, screenY) {
   const size = resizeCanvas(els.scatter, scatterCtx);
   const hitCache = scatterHitPoints(size);
@@ -2980,6 +2662,7 @@ function nearestShell(screenX, screenY) {
   }
   return bestDistance <= 14 * 14 ? best : null;
 }
+
 function setTargetFromEvent(event) {
   const rect = els.scatter.getBoundingClientRect();
   const size = resizeCanvas(els.scatter, scatterCtx);
@@ -2992,40 +2675,44 @@ function setTargetFromEvent(event) {
   scheduleDraw();
   scheduleHashUpdate();
 }
+
 function startViewportPan(event) {
   const rect = els.scatter.getBoundingClientRect();
   state.panningViewport = {
     pointerId: event.pointerId,
     startX: event.clientX - rect.left,
     startY: event.clientY - rect.top,
-    viewport: { ...state.viewport }
+    viewport: { ...state.viewport },
   };
   state.draggingTarget = false;
   els.scatter.classList.add("is-panning");
   els.pointTooltip.hidden = true;
 }
+
 function panViewportFromEvent(event) {
   if (!state.panningViewport || state.panningViewport.pointerId !== event.pointerId) return;
   const rect = els.scatter.getBoundingClientRect();
   const size = resizeCanvas(els.scatter, scatterCtx);
   const start = state.panningViewport;
   const vx = start.viewport;
-  const dx = (event.clientX - rect.left - start.startX) / size.width * (vx.maxX - vx.minX);
-  const dy = (event.clientY - rect.top - start.startY) / size.height * (vx.maxY - vx.minY);
+  const dx = ((event.clientX - rect.left - start.startX) / size.width) * (vx.maxX - vx.minX);
+  const dy = ((event.clientY - rect.top - start.startY) / size.height) * (vx.maxY - vx.minY);
   state.viewport = {
     minX: vx.minX - dx,
     maxX: vx.maxX - dx,
     minY: vx.minY + dy,
-    maxY: vx.maxY + dy
+    maxY: vx.maxY + dy,
   };
   scheduleDraw();
 }
+
 function stopViewportPan() {
   if (!state.panningViewport) return;
   state.panningViewport = null;
   els.scatter.classList.remove("is-panning");
   scheduleHashUpdate();
 }
+
 function showPointTooltip(event, shell) {
   if (!shell) {
     els.pointTooltip.hidden = true;
@@ -3042,16 +2729,17 @@ function showPointTooltip(event, shell) {
     document.createElement("br"),
     document.createTextNode(`${axisLabel(state.xAxis)} ${formatNumber(axisValue(shell, state.xAxis))}, ${axisLabel(state.yAxis)} ${formatNumber(axisValue(shell, state.yAxis))}`),
     document.createElement("br"),
-    document.createTextNode(`${shellColorName(shell)}, lightness ${formatNumber(shell.color_l_mean, 3)}`)
+    document.createTextNode(`${shellColorName(shell)}, lightness ${formatNumber(shell.color_l_mean, 3)}`),
   );
   els.pointTooltip.style.left = `${Math.min(Math.max(8, rect.width - 248), Math.max(8, event.clientX - rect.left + 14))}px`;
   els.pointTooltip.style.top = `${Math.min(Math.max(8, rect.height - 84), Math.max(8, event.clientY - rect.top + 14))}px`;
   els.pointTooltip.hidden = false;
 }
+
 function queuePointTooltip(event) {
   state.tooltipEvent = {
     clientX: event.clientX,
-    clientY: event.clientY
+    clientY: event.clientY,
   };
   if (state.tooltipFrame) return;
   state.tooltipFrame = requestAnimationFrame(() => {
@@ -3065,15 +2753,18 @@ function queuePointTooltip(event) {
     showPointTooltip(next, nearestShell(next.clientX - rect.left, next.clientY - rect.top));
   });
 }
+
 function rgbCssFromTriplet(color) {
   return `rgb(${Math.round(color[0])}, ${Math.round(color[1])}, ${Math.round(color[2])})`;
 }
+
 function colorDistanceSq(a, b) {
   const red = a[0] - b[0];
   const green = a[1] - b[1];
   const blue = a[2] - b[2];
   return red * red + green * green + blue * blue;
 }
+
 function fiveDistinctColorsFromPixels(pixels) {
   if (!pixels.length) return null;
   const centers = [pixels.reduce((best, color) => {
@@ -3115,12 +2806,15 @@ function fiveDistinctColorsFromPixels(pixels) {
       centers[index] = [
         totals[index][0] / totals[index][3],
         totals[index][1] / totals[index][3],
-        totals[index][2] / totals[index][3]
+        totals[index][2] / totals[index][3],
       ];
     }
   }
-  return centers.sort((a, b) => rgbToHsl(a[0] / 255, a[1] / 255, a[2] / 255).l - rgbToHsl(b[0] / 255, b[1] / 255, b[2] / 255).l).map(rgbCssFromTriplet);
+  return centers
+    .sort((a, b) => rgbToHsl(a[0] / 255, a[1] / 255, a[2] / 255).l - rgbToHsl(b[0] / 255, b[1] / 255, b[2] / 255).l)
+    .map(rgbCssFromTriplet);
 }
+
 function paletteFromSourceCanvas() {
   if (els.sourceThumb.hidden || !els.sourceThumb.width || !els.sourceThumb.height) return null;
   let data;
@@ -3130,7 +2824,7 @@ function paletteFromSourceCanvas() {
     return null;
   }
   const pixels = [];
-  const step = Math.max(4, Math.floor(Math.sqrt(els.sourceThumb.width * els.sourceThumb.height / 2200)));
+  const step = Math.max(4, Math.floor(Math.sqrt((els.sourceThumb.width * els.sourceThumb.height) / 2200)));
   for (let y = 0; y < els.sourceThumb.height; y += step) {
     for (let x = 0; x < els.sourceThumb.width; x += step) {
       const offset = (y * els.sourceThumb.width + x) * 4;
@@ -3144,11 +2838,12 @@ function paletteFromSourceCanvas() {
   }
   return fiveDistinctColorsFromPixels(pixels);
 }
+
 function paletteFromTraits(traits) {
   const base = {
     r: clamp01(traits.color_r_mean ?? 0.72),
     g: clamp01(traits.color_g_mean ?? 0.66),
-    b: clamp01(traits.color_b_mean ?? 0.54)
+    b: clamp01(traits.color_b_mean ?? 0.54),
   };
   const hsl = rgbToHsl(base.r, base.g, base.b);
   const contrast = clamp01((traits.color_l_std || 0.18) / 0.32);
@@ -3157,9 +2852,10 @@ function paletteFromTraits(traits) {
     hslCss(hsl.h - 8, hsl.s * 0.92, Math.max(0.22, hsl.l - 0.12)),
     hslCss(hsl.h, hsl.s, hsl.l),
     hslCss(hsl.h + 6, hsl.s * 0.72, Math.min(0.86, hsl.l + 0.16)),
-    hslCss(hsl.h, hsl.s * 0.48, Math.min(0.94, hsl.l + 0.3 + contrast * 0.04))
+    hslCss(hsl.h, hsl.s * 0.48, Math.min(0.94, hsl.l + 0.3 + contrast * 0.04)),
   ];
 }
+
 function renderPalette(preferCanvas = false) {
   if (!els.paletteSwatches) return;
   els.paletteSwatches.innerHTML = "";
@@ -3179,15 +2875,18 @@ function renderPalette(preferCanvas = false) {
     els.paletteSwatches.append(swatch);
   }
 }
+
 function percentile(sortedValues, q) {
   if (!sortedValues.length) return 0;
   const index = Math.min(sortedValues.length - 1, Math.max(0, Math.round((sortedValues.length - 1) * q)));
   return sortedValues[index];
 }
+
 function srgbToLinear(value) {
   const v = value / 255;
   return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
 }
+
 function labFromRgb(red, green, blue) {
   const r = srgbToLinear(red);
   const g = srgbToLinear(green);
@@ -3195,18 +2894,18 @@ function labFromRgb(red, green, blue) {
   let x = (r * 0.4124564 + g * 0.3575761 + b * 0.1804375) / 0.95047;
   let y = r * 0.2126729 + g * 0.7151522 + b * 0.072175;
   let z = (r * 0.0193339 + g * 0.119192 + b * 0.9503041) / 1.08883;
-  const f = (value) => value > 8856e-6 ? Math.cbrt(value) : 7.787 * value + 16 / 116;
+  const f = (value) => (value > 0.008856 ? Math.cbrt(value) : 7.787 * value + 16 / 116);
   x = f(x);
   y = f(y);
   z = f(z);
   return {
     l: clamp01((116 * y - 16) / 100),
-    a: 500 * (x - y) / 127,
-    b: 200 * (y - z) / 127
+    a: ((500 * (x - y)) / 127),
+    b: ((200 * (y - z)) / 127),
   };
 }
+
 async function readUploadImage(file, maxSize = 640) {
-  var _a;
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
   const width = Math.max(1, Math.round(bitmap.width * scale));
@@ -3218,9 +2917,10 @@ async function readUploadImage(file, maxSize = 640) {
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, width, height);
   ctx.drawImage(bitmap, 0, 0, width, height);
-  (_a = bitmap.close) == null ? void 0 : _a.call(bitmap);
+  bitmap.close?.();
   return ctx.getImageData(0, 0, width, height);
 }
+
 function estimateBorderBackground(data, width, height) {
   const step = Math.max(1, Math.floor((width + height) / 260));
   let r = 0;
@@ -3244,13 +2944,14 @@ function estimateBorderBackground(data, width, height) {
   }
   return [r / Math.max(1, count), g / Math.max(1, count), b / Math.max(1, count)];
 }
+
 function otsuThreshold(values) {
   const bins = 256;
   const hist = new Uint32Array(bins);
   let maxValue = 1;
   for (const value of values) maxValue = Math.max(maxValue, value);
   for (const value of values) {
-    hist[Math.min(bins - 1, Math.floor(value / maxValue * (bins - 1)))] += 1;
+    hist[Math.min(bins - 1, Math.floor((value / maxValue) * (bins - 1)))] += 1;
   }
   let sum = 0;
   let total = 0;
@@ -3276,8 +2977,9 @@ function otsuThreshold(values) {
       best = index;
     }
   }
-  return best / (bins - 1) * maxValue;
+  return (best / (bins - 1)) * maxValue;
 }
+
 function largestMaskComponent(mask, width, height) {
   const visited = new Uint8Array(mask.length);
   const queue = new Int32Array(mask.length);
@@ -3285,15 +2987,15 @@ function largestMaskComponent(mask, width, height) {
   let bestCount = 0;
   for (let start = 0; start < mask.length; start += 1) {
     if (!mask[start] || visited[start]) continue;
-    let head2 = 0;
-    let tail2 = 0;
+    let head = 0;
+    let tail = 0;
     let count = 0;
     visited[start] = 1;
-    queue[tail2] = start;
-    tail2 += 1;
-    while (head2 < tail2) {
-      const here = queue[head2];
-      head2 += 1;
+    queue[tail] = start;
+    tail += 1;
+    while (head < tail) {
+      const here = queue[head];
+      head += 1;
       count += 1;
       const x = here % width;
       const y = Math.floor(here / width);
@@ -3304,8 +3006,8 @@ function largestMaskComponent(mask, width, height) {
         const ny = Math.floor(next / width);
         if (Math.abs(nx - x) + Math.abs(ny - y) !== 1) continue;
         visited[next] = 1;
-        queue[tail2] = next;
-        tail2 += 1;
+        queue[tail] = next;
+        tail += 1;
       }
     }
     if (count > bestCount) {
@@ -3340,6 +3042,7 @@ function largestMaskComponent(mask, width, height) {
   }
   return output;
 }
+
 function isolateUploadMask(imageData) {
   const { data, width, height } = imageData;
   const background = estimateBorderBackground(data, width, height);
@@ -3349,7 +3052,7 @@ function isolateUploadMask(imageData) {
     diffs[index] = Math.hypot(
       data[offset] - background[0],
       data[offset + 1] - background[1],
-      data[offset + 2] - background[2]
+      data[offset + 2] - background[2],
     );
   }
   const threshold = Math.max(14, otsuThreshold(diffs) * 0.72);
@@ -3357,8 +3060,9 @@ function isolateUploadMask(imageData) {
   for (let index = 0; index < mask.length; index += 1) {
     mask[index] = diffs[index] > threshold && data[index * 4 + 3] > 20 ? 1 : 0;
   }
-  return largestMaskComponent(mask, width);
+  return largestMaskComponent(mask, width, height);
 }
+
 function contourFromUploadMask(mask, width, height, pointCount) {
   let area = 0;
   let sumX = 0;
@@ -3386,7 +3090,7 @@ function contourFromUploadMask(mask, width, height, pointCount) {
   const points = [];
   const radii = [];
   for (let point = 0; point < pointCount; point += 1) {
-    const angle = -Math.PI / 2 + point / pointCount * Math.PI * 2;
+    const angle = -Math.PI / 2 + (point / pointCount) * Math.PI * 2;
     const dx = Math.cos(angle);
     const dy = Math.sin(angle);
     let lastX = centerX;
@@ -3424,9 +3128,10 @@ function contourFromUploadMask(mask, width, height, pointCount) {
     bbox: [minX, minY, maxX, maxY],
     aspectRatio: Math.max((maxX - minX + 1) / Math.max(1, maxY - minY + 1), (maxY - minY + 1) / Math.max(1, maxX - minX + 1)),
     roughness: rough / Math.max(1e-6, meanRadius * radii.length),
-    concavity: clamp01(1 - area / bboxArea)
+    concavity: clamp01(1 - area / bboxArea),
   };
 }
+
 function traitsFromUpload(imageData, mask, geometry) {
   const { data, width, height } = imageData;
   const lumaImage = new Float32Array(width * height);
@@ -3473,7 +3178,8 @@ function traitsFromUpload(imageData, mask, geometry) {
   }
   const count = Math.max(1, luma.length);
   const mean = (values) => values.reduce((total, value) => total + value, 0) / Math.max(1, values.length);
-  const std = (values, center) => Math.sqrt(values.reduce((total, value) => total + (value - center) ** 2, 0) / Math.max(1, values.length));
+  const std = (values, center) =>
+    Math.sqrt(values.reduce((total, value) => total + (value - center) ** 2, 0) / Math.max(1, values.length));
   const lMean = mean(luma);
   const cMean = mean(chroma);
   const sMean = mean(saturation);
@@ -3486,7 +3192,13 @@ function traitsFromUpload(imageData, mask, geometry) {
       if (!mask[index]) continue;
       const gx = lumaImage[index + 1] - lumaImage[index - 1];
       const gy = lumaImage[index + width] - lumaImage[index - width];
-      const local = (lumaImage[index - width] + lumaImage[index + width] + lumaImage[index - 1] + lumaImage[index + 1] + lumaImage[index]) / 5;
+      const local =
+        (lumaImage[index - width] +
+          lumaImage[index + width] +
+          lumaImage[index - 1] +
+          lumaImage[index + 1] +
+          lumaImage[index]) /
+        5;
       gradientTotal += Math.hypot(gx, gy);
       residualValues.push(lumaImage[index] - local);
     }
@@ -3495,7 +3207,13 @@ function traitsFromUpload(imageData, mask, geometry) {
   const textureResidual = std(residualValues, residualMean);
   const textureIqr = percentile(sortedLuma, 0.75) - percentile(sortedLuma, 0.25);
   const patternStrength = clamp01(
-    (std(luma, lMean) * 1.7 + std(chroma, cMean) * 2.2 + std(saturation, sMean) * 0.9 + textureResidual * 10 + textureIqr * 1.2 + clamp01(gradientTotal / Math.max(1, residualValues.length) / 1.5)) / 6
+    (std(luma, lMean) * 1.7 +
+      std(chroma, cMean) * 2.2 +
+      std(saturation, sMean) * 0.9 +
+      textureResidual * 10 +
+      textureIqr * 1.2 +
+      clamp01((gradientTotal / Math.max(1, residualValues.length)) / 1.5)) /
+      6,
   );
   const patternContrast = clamp01((std(luma, lMean) * 2 + textureResidual * 12 + textureIqr * 1.3) / 3);
   const patternChroma = clamp01((std(chroma, cMean) * 2.6 + std(saturation, sMean) * 1.2) / 2);
@@ -3530,9 +3248,10 @@ function traitsFromUpload(imageData, mask, geometry) {
     texture_luma_iqr: textureIqr,
     color_pattern_strength: patternStrength,
     color_pattern_contrast: patternContrast,
-    color_pattern_chroma: patternChroma
+    color_pattern_chroma: patternChroma,
   };
 }
+
 function projectContourToPca(contour) {
   const mean = state.model.contour_mean || [];
   const components = state.model.contour_components || [];
@@ -3544,45 +3263,48 @@ function projectContourToPca(contour) {
     return score;
   });
 }
+
 function transformedTraitValue(field, value) {
   const number = Number(value || 0);
   if (field === "aspect_ratio") return Math.log1p(Math.max(0, number));
-  if ([
-    "roughness",
-    "contour_concavity",
-    "texture_gradient_mean",
-    "texture_residual_std",
-    "color_pattern_strength",
-    "color_pattern_contrast",
-    "color_pattern_chroma"
-  ].includes(field)) {
+  if (
+    [
+      "roughness",
+      "contour_concavity",
+      "texture_gradient_mean",
+      "texture_residual_std",
+      "color_pattern_strength",
+      "color_pattern_contrast",
+      "color_pattern_chroma",
+    ].includes(field)
+  ) {
     return Math.log1p(Math.max(0, number) * 64);
   }
   return number;
 }
+
 function projectTraitsToPca(shell) {
   const schema = state.model.trait_feature_schema || [];
   const mean = state.model.trait_mean || [];
   const components = state.model.trait_components || [];
   if (!schema.length || !components.length) return [];
   const standardized = schema.map((spec, index) => {
-    var _a;
     let raw = 0;
     if (String(spec.name || "").startsWith("contour_pc")) {
       const pcIndex = Number(String(spec.name).replace("contour_pc", "")) - 1;
-      raw = ((_a = shell.contour_pc) == null ? void 0 : _a[pcIndex]) || 0;
+      raw = shell.contour_pc?.[pcIndex] || 0;
     } else {
       raw = transformedTraitValue(spec.name, shell[spec.name]);
     }
-    return (raw - (spec.mean || 0)) / Math.max(1e-9, spec.scale || 1) * (spec.weight || 1) - (mean[index] || 0);
+    return ((raw - (spec.mean || 0)) / Math.max(1e-9, spec.scale || 1)) * (spec.weight || 1) - (mean[index] || 0);
   });
-  return components.map(
-    (component) => component.reduce((total, loading, index) => total + (standardized[index] || 0) * loading, 0)
+  return components.map((component) =>
+    component.reduce((total, loading, index) => total + (standardized[index] || 0) * loading, 0),
   );
 }
+
 async function handleUploadShell() {
-  var _a;
-  const file = (_a = els.uploadInput.files) == null ? void 0 : _a[0];
+  const file = els.uploadInput.files?.[0];
   if (!file) return;
   try {
     const imageData = await readUploadImage(file);
@@ -3601,7 +3323,7 @@ async function handleUploadShell() {
       component_count: 1,
       contour_pc: projectContourToPca(geometry.contour),
       upload_contour: geometry.contour,
-      ...traits
+      ...traits,
     };
     shell.trait_pc = projectTraitsToPca(shell);
     shell.morph_traits = deriveMorphMetrics(shell);
@@ -3624,6 +3346,7 @@ async function handleUploadShell() {
     els.uploadInput.value = "";
   }
 }
+
 function stopPcaWalk(updateHash = true) {
   state.walkingPca = false;
   window.cancelAnimationFrame(state.walkFrame);
@@ -3631,10 +3354,11 @@ function stopPcaWalk(updateHash = true) {
   els.walkPca.setAttribute("aria-pressed", "false");
   if (updateHash) scheduleHashUpdate();
 }
+
 function stepPcaWalk(timestamp) {
   if (!state.walkingPca) return;
   if (!state.walkStartedAt) state.walkStartedAt = timestamp;
-  const t = (timestamp - state.walkStartedAt) / 1e3;
+  const t = (timestamp - state.walkStartedAt) / 1000;
   const values = [...state.pcValues];
   for (let index = 0; index < contourAxisCount(); index += 1) {
     const range = state.model.contour_pca_ranges[index];
@@ -3644,6 +3368,7 @@ function stepPcaWalk(timestamp) {
   setPcValues(values, false);
   state.walkFrame = window.requestAnimationFrame(stepPcaWalk);
 }
+
 function togglePcaWalk() {
   if (state.walkingPca) {
     stopPcaWalk();
@@ -3655,23 +3380,21 @@ function togglePcaWalk() {
   els.walkPca.setAttribute("aria-pressed", "true");
   state.walkFrame = window.requestAnimationFrame(stepPcaWalk);
 }
+
 function resetToMeanShape() {
   stopPcaWalk(false);
   setPcValues(Array.from({ length: state.model.contour_component_count || contourAxisCount() }, () => 0));
 }
+
 function setupEvents() {
-  var _a, _b, _c;
   els.search.addEventListener("input", updateFilter);
-  (_a = els.filtersToggle) == null ? void 0 : _a.addEventListener("click", () => {
-    var _a2;
-    return setFiltersPanelOpen(((_a2 = els.filtersPanel) == null ? void 0 : _a2.hidden) !== false);
-  });
-  (_b = els.closeFilters) == null ? void 0 : _b.addEventListener("click", () => setFiltersPanelOpen(false));
+  els.filtersToggle?.addEventListener("click", () => setFiltersPanelOpen(els.filtersPanel?.hidden !== false));
+  els.closeFilters?.addEventListener("click", () => setFiltersPanelOpen(false));
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") setFiltersPanelOpen(false);
   });
   els.randomShell.addEventListener("click", selectRandomShell);
-  (_c = els.resetTraitFilters) == null ? void 0 : _c.addEventListener("click", resetTraitFilters);
+  els.resetTraitFilters?.addEventListener("click", resetTraitFilters);
   els.xAxisSelect.addEventListener("change", () => setAxes(Number(els.xAxisSelect.value), state.yAxis));
   els.yAxisSelect.addEventListener("change", () => setAxes(state.xAxis, Number(els.yAxisSelect.value)));
   els.colorModeSelect.addEventListener("change", () => {
@@ -3691,14 +3414,16 @@ function setupEvents() {
     state.viewport = initialViewport(state.xAxis, state.yAxis);
     scheduleDraw();
   });
+
   els.scatter.addEventListener("wheel", (event) => {
     event.preventDefault();
     const rect = els.scatter.getBoundingClientRect();
     zoom(event.deltaY > 0 ? 1.12 : 0.88, {
       x: event.clientX - rect.left,
-      y: event.clientY - rect.top
+      y: event.clientY - rect.top,
     });
   });
+
   els.scatter.addEventListener("pointerdown", (event) => {
     if (event.button === 1) {
       event.preventDefault();
@@ -3715,6 +3440,7 @@ function setupEvents() {
       setTargetFromEvent(event);
     }
   });
+
   els.scatter.addEventListener("pointermove", (event) => {
     if (state.panningViewport) {
       event.preventDefault();
@@ -3729,6 +3455,7 @@ function setupEvents() {
     }
     queuePointTooltip(event);
   });
+
   for (const eventName of ["pointerup", "pointerleave", "pointercancel"]) {
     els.scatter.addEventListener(eventName, (event) => {
       state.draggingTarget = false;
@@ -3739,6 +3466,7 @@ function setupEvents() {
   els.scatter.addEventListener("auxclick", (event) => {
     if (event.button === 1) event.preventDefault();
   });
+
   window.addEventListener("resize", () => {
     scheduleDraw();
     renderSourceShell(state.selected);
@@ -3748,20 +3476,15 @@ function setupEvents() {
   });
   window.addEventListener("scroll", positionFiltersPanel, true);
 }
+
 window.shellspacePerf = {
   loadedThumbnailPageCount: () => state.loadedThumbnailPages.size,
   warmThumbnails: () => warmThumbnailPages({ eager: true }),
-  selectedId: () => {
-    var _a;
-    return ((_a = state.selected) == null ? void 0 : _a.id) ?? null;
-  },
+  selectedId: () => state.selected?.id ?? null,
   neighborCacheSize: () => state.neighborCache.size,
   surpriseQueueSize: () => state.surpriseQueue.length,
   surpriseReadyCount: () => state.surpriseQueue.filter((entry) => entry.ready || entry.page == null || state.loadedThumbnailPages.has(entry.page)).length,
-  scatterPointCount: () => {
-    var _a, _b;
-    return ((_b = (_a = state.scatterPointCache) == null ? void 0 : _a.shells) == null ? void 0 : _b.length) || 0;
-  },
+  scatterPointCount: () => state.scatterPointCache?.shells?.length || 0,
   sourceMode: () => state.sourceMode,
   filteredCount: () => state.filtered.length,
   lookupConservationStatus,
@@ -3769,9 +3492,10 @@ window.shellspacePerf = {
   selectSpecies: (species) => {
     const shell = state.shells.find((item) => item.species === species);
     if (shell) selectShell(shell);
-    return (shell == null ? void 0 : shell.id) ?? null;
-  }
+    return shell?.id ?? null;
+  },
 };
+
 async function init() {
   setupEvents();
   setLoading("Opening shell model");
@@ -3780,10 +3504,13 @@ async function init() {
   const shellPayload = await fetchCompressedJson(asset(`data/${model.shell_file || "shells.json"}`));
   const [localityPayload, speciesTraitsPayload] = await Promise.all([
     model.locality_file ? fetchCompressedJson(asset(`data/${model.locality_file}`)) : null,
-    model.species_traits_file ? fetchCompressedJson(asset(`data/${model.species_traits_file}`)) : null
+    model.species_traits_file ? fetchCompressedJson(asset(`data/${model.species_traits_file}`)) : null,
   ]);
   setLoading("Unpacking contours");
-  const contourBuffer = model.contour_file ? await fetchCompressedArrayBuffer(asset(`data/${model.contour_file}`)) : null;
+  const contourBuffer = model.contour_file
+    ? await fetchCompressedArrayBuffer(asset(`data/${model.contour_file}`))
+    : null;
+
   state.model = model;
   state.shells = unpackShells(shellPayload);
   state.shellById = new Map(state.shells.map((shell) => [shell.id, shell]));
@@ -3794,11 +3521,15 @@ async function init() {
   state.contours = contourBuffer ? new Uint16Array(contourBuffer) : null;
   state.contourPoints = model.contour_points || 0;
   state.contourScale = model.contour_scale || 1;
+
   const expectedContourValues = model.processed_count * model.contour_points * 2;
   if (!state.contours || state.contours.length < expectedContourValues) {
     throw new Error("Contour binary is shorter than the model manifest expects.");
   }
-  els.statusLine.textContent = model.species_count ? `${model.processed_count.toLocaleString()} shells, ${model.species_count.toLocaleString()} species` : `${model.processed_count.toLocaleString()} shells`;
+  els.statusLine.textContent = model.species_count
+    ? `${model.processed_count.toLocaleString()} shells, ${model.species_count.toLocaleString()} species`
+    : `${model.processed_count.toLocaleString()} shells`;
+
   const initialHash = parseHashState();
   if (colorModes.includes(initialHash.get("color"))) state.colorMode = initialHash.get("color");
   const axisCount = axisOptionCount();
@@ -3806,15 +3537,22 @@ async function init() {
   const y = Number(initialHash.get("y"));
   if (Number.isInteger(x) && x >= 0 && x < axisCount) state.xAxis = x;
   if (Number.isInteger(y) && y >= 0 && y < axisCount) state.yAxis = y;
+
   state.viewport = initialViewport(state.xAxis, state.yAxis);
   buildAxisControls();
   buildPcControls();
   els.colorModeSelect.value = state.colorMode;
+  renderPcaInterpretation();
   loadStarred();
+
   state.suppressHash = true;
   const selected = shellById(initialHash.get("id")) || state.shells[0];
   selectShell(selected, { renderNearest: false });
-  const pcValues = (initialHash.get("pc") || "").split(",").filter((value) => value.trim() !== "").map((value) => Number(value)).filter((value) => Number.isFinite(value));
+  const pcValues = (initialHash.get("pc") || "")
+    .split(",")
+    .filter((value) => value.trim() !== "")
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
   if (pcValues.length) setPcValues(pcValues.slice(0, 6), false);
   state.suppressHash = false;
   state.hashReady = true;
@@ -3825,7 +3563,8 @@ async function init() {
   setLoading("", false);
   primeSurpriseQueue();
 }
-function startShellspace() {
+
+export function startShellspace() {
   init().catch((error) => {
     els.statusLine.textContent = error.message;
     setLoading("", false);
@@ -3833,7 +3572,3 @@ function startShellspace() {
     console.error(error);
   });
 }
-const shellspaceApp = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-  __proto__: null,
-  startShellspace
-}, Symbol.toStringTag, { value: "Module" }));
