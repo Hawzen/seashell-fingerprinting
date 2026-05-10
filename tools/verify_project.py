@@ -637,11 +637,11 @@ def run_browser_check(
                 const firstTraitHigh = document.querySelector('#filterControls .filter-levels button[data-level="high"]');
                 const colorSwatches = document.querySelectorAll('#filterControls .color-swatch-filter button');
                 const colorLabels = Array.from(colorSwatches).map((node) => node.getAttribute('aria-label'));
-                const originRegionButtons = document.querySelectorAll('#filterControls .origin-region-button');
-                const originCountrySearch = document.querySelector('#filterControls .origin-country-search');
+                const originSelect = document.querySelector('#filterControls .filter-origin-row select');
+                const originOptions = Array.from(originSelect?.options || []).map((option) => option.textContent || '');
                 const panelRect = document.querySelector('#filtersPanel').getBoundingClientRect();
                 const levelRect = firstTraitHigh.getBoundingClientRect();
-                const originRect = document.querySelector('#filterControls .origin-region-map').getBoundingClientRect();
+                const originRect = originSelect.getBoundingClientRect();
                 const swatchRect = colorSwatches[0].getBoundingClientRect();
                 const controlsRect = document.querySelector('.controls-panel').getBoundingClientRect();
                 const panelCenterX = panelRect.left + panelRect.width / 2;
@@ -658,10 +658,10 @@ def run_browser_check(
                   hasLevelButtons: document.querySelectorAll('#filterControls .filter-levels button').length >= 12,
                   hasColorSwatches: colorSwatches.length === 12,
                   hasColorLabels: colorLabels.includes('Ivory') && colorLabels.includes('Coral'),
-                  hasOriginMap: originRegionButtons.length >= 6,
-                  hasCountrySearch: Boolean(originCountrySearch),
+                  hasOriginSelect: Boolean(originSelect) && originSelect.options.length > 12,
+                  hasOriginLevels: originOptions.some((label) => label.startsWith('Continent:')) && originOptions.some((label) => label.startsWith('Country:')),
                   opensRight: panelRect.left >= controlsRect.right - 1,
-                  readableSize: panelRect.width >= 780 && levelRect.height >= 44 && originRect.height >= 120 && swatchRect.height >= 44,
+                  readableSize: panelRect.width >= 420 && levelRect.height >= 44 && originRect.height >= 44 && swatchRect.height >= 44,
                   sizes: {{
                     panelWidth: Math.round(panelRect.width),
                     levelHeight: Math.round(levelRect.height),
@@ -682,8 +682,8 @@ def run_browser_check(
                 !filterProbe.hasLevelButtons ||
                 !filterProbe.hasColorSwatches ||
                 !filterProbe.hasColorLabels ||
-                !filterProbe.hasOriginMap ||
-                !filterProbe.hasCountrySearch ||
+                !filterProbe.hasOriginSelect ||
+                !filterProbe.hasOriginLevels ||
                 !filterProbe.opensRight ||
                 !filterProbe.readableSize ||
                 !filterProbe.clickable ||

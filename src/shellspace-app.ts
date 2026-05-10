@@ -997,117 +997,30 @@ function originFilterData() {
   return state.originFilterOptionsCache;
 }
 
-function addFilterSelect(labelText, key, options) {
+function addOriginSelectFilter() {
   const row = document.createElement("label");
-  row.className = `filter-row filter-panel-card filter-select-row filter-${key}-row`;
-  const header = document.createElement("header");
-  const label = document.createElement("span");
-  label.textContent = labelText;
-  header.append(label);
-  const select = document.createElement("select");
-  for (const [value, labelValue] of options) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = labelValue;
-    select.append(option);
-  }
-  select.value = state.categoryFilters[key] || "";
-  select.addEventListener("change", () => {
-    state.categoryFilters[key] = select.value;
-    updateFilter();
-  });
-  row.append(header, select);
-  els.filterControls.append(row);
-}
-
-function addOriginMapFilter() {
-  const row = document.createElement("div");
-  row.className = "filter-row filter-panel-card origin-filter-row";
+  row.className = "filter-row filter-panel-card filter-select-row filter-origin-row";
   const header = document.createElement("header");
   const label = document.createElement("span");
   label.textContent = "Origin";
   const output = document.createElement("output");
   output.textContent = originFilterLabel(state.categoryFilters.origin);
   header.append(label, output);
-  const wrap = document.createElement("div");
-  wrap.className = "origin-filter-card";
-  const data = originFilterData();
-  const map = document.createElement("div");
-  map.className = "origin-region-map";
-  map.setAttribute("aria-label", "Continents");
-  for (const region of data.regions) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "origin-region-button";
-    button.dataset.region = region.key;
-    button.setAttribute("aria-pressed", state.categoryFilters.origin === region.value ? "true" : "false");
-    const name = document.createElement("strong");
-    name.textContent = region.label;
-    const count = document.createElement("span");
-    count.className = "origin-count";
-    count.textContent = formatNumber(region.count, 0);
-    button.append(name, count);
-    button.addEventListener("click", () => setOriginFilter(region.value));
-    map.append(button);
+  const select = document.createElement("select");
+  select.setAttribute("aria-label", "Origin");
+  for (const [value, labelValue] of [["", "Any origin"], ...originFilterOptions()]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = labelValue;
+    select.append(option);
   }
-  const countryPanel = document.createElement("div");
-  countryPanel.className = "origin-country-panel";
-  const countrySearch = document.createElement("input");
-  countrySearch.type = "search";
-  countrySearch.className = "origin-country-search";
-  countrySearch.placeholder = "Search country";
-  countrySearch.autocomplete = "off";
-  const chips = document.createElement("div");
-  chips.className = "origin-country-grid";
-  function visibleCountries() {
-    const query = countrySearch.value.trim().toLowerCase();
-    const activeRegion = state.categoryFilters.origin.startsWith("region:")
-      ? state.categoryFilters.origin.slice("region:".length)
-      : "";
-    const list = data.countries
-      .filter((country) => !activeRegion || country.region === activeRegion)
-      .filter((country) => !query || `${country.label} ${country.code}`.toLowerCase().includes(query))
-      .slice(0, query ? 36 : 6);
-    const selectedCountry = data.countries.find((country) => country.value === state.categoryFilters.origin);
-    if (selectedCountry && !query && !list.some((country) => country.value === selectedCountry.value)) {
-      list.unshift(selectedCountry);
-    }
-    return list;
-  }
-  function renderCountryButtons() {
-    chips.innerHTML = "";
-    const countries = visibleCountries();
-    for (const country of countries) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.title = country.label;
-      button.setAttribute("aria-pressed", state.categoryFilters.origin === country.value ? "true" : "false");
-      const name = document.createElement("span");
-      name.textContent = country.label;
-      const count = document.createElement("small");
-      count.textContent = formatNumber(country.count, 0);
-      button.append(name, count);
-      button.addEventListener("click", () => setOriginFilter(country.value));
-      chips.append(button);
-    }
-    if (!countries.length) {
-      const empty = document.createElement("p");
-      empty.className = "origin-empty";
-      empty.textContent = "No countries";
-      chips.append(empty);
-    }
-  }
-  countrySearch.addEventListener("input", renderCountryButtons);
-  renderCountryButtons();
-  const clear = document.createElement("button");
-  clear.type = "button";
-  clear.className = "origin-clear";
-  clear.textContent = "Any origin";
-  clear.disabled = !state.categoryFilters.origin;
-  clear.addEventListener("click", () => setOriginFilter(""));
-  countryPanel.append(countrySearch, chips, clear);
-  wrap.append(map, countryPanel);
-  row.append(header, wrap);
+  select.value = state.categoryFilters.origin || "";
+  select.addEventListener("change", () => {
+    state.categoryFilters.origin = select.value;
+    buildTraitFilters();
+    updateFilter();
+  });
+  row.append(header, select);
   els.filterControls.append(row);
 }
 
@@ -1138,21 +1051,11 @@ function addRarityFilter() {
   els.filterControls.append(row);
 }
 
-function originRegionLabel(key) {
-  return originFilterData().regions.find((region) => region.key === key)?.label || key.replaceAll("_", " ");
-}
-
 function originFilterLabel(value) {
   if (!value) return "Any";
   const data = originFilterData();
   const hit = [...data.regions, ...data.countries].find((item) => item.value === value);
   return hit?.label || "Any";
-}
-
-function setOriginFilter(value) {
-  state.categoryFilters.origin = state.categoryFilters.origin === value ? "" : value;
-  buildTraitFilters();
-  updateFilter();
 }
 
 function addRangeFilter(def) {
@@ -1219,17 +1122,7 @@ function addColorPickerFilter() {
     });
     controls.append(button);
   }
-  const clear = document.createElement("button");
-  clear.type = "button";
-  clear.className = "color-clear";
-  clear.textContent = "Any color";
-  clear.disabled = !state.categoryFilters.color;
-  clear.addEventListener("click", () => {
-    state.categoryFilters.color = "";
-    buildTraitFilters();
-    updateFilter();
-  });
-  panel.append(controls, clear);
+  panel.append(controls);
   row.append(header, panel);
   els.filterControls.append(row);
 }
@@ -1237,7 +1130,7 @@ function addColorPickerFilter() {
 function buildTraitFilters() {
   if (!els.filterControls) return;
   els.filterControls.innerHTML = "";
-  addOriginMapFilter();
+  addOriginSelectFilter();
   addRarityFilter();
   addColorPickerFilter();
   for (const def of rangeFilterDefs) {
@@ -1262,7 +1155,7 @@ function positionFiltersPanel() {
   const controlsRect = document.querySelector(".controls-panel")?.getBoundingClientRect();
   const desktopRoom = controlsRect ? viewportWidth - controlsRect.right - 24 : 0;
   const desktop = viewportWidth > 1080 && desktopRoom >= 520;
-  const width = desktop ? Math.min(860, desktopRoom) : Math.min(820, Math.max(340, viewportWidth - 24));
+  const width = desktop ? Math.min(460, desktopRoom) : Math.min(460, Math.max(340, viewportWidth - 24));
   const preferredLeft = desktop ? (controlsRect.right + 12) : toggleRect.left;
   const left = Math.max(12, Math.min(preferredLeft, viewportWidth - width - 12));
   const measuredHeight = els.filtersPanel.offsetHeight || 420;
