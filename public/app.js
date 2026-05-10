@@ -603,6 +603,9 @@ const state = {
   neighborCache: /* @__PURE__ */ new Map(),
   neighborTimer: 0,
   neighborToken: 0,
+  neighborRenderKey: "",
+  previewFrame: 0,
+  previewEvent: null,
   pointColorCache: /* @__PURE__ */ new Map(),
   paletteCache: /* @__PURE__ */ new Map(),
   originFilterOptionsCache: null
@@ -1900,7 +1903,7 @@ function effectiveGeneratedTraits() {
   return state.generatedTraits || shapeTraitsFromShell(state.selected);
 }
 function reconstructFromPc() {
-  const out = contourFromPcValues(state.pcValues);
+  const out = regularizeGeneratedContour(contourFromPcValues(state.pcValues));
   if (!out) return;
   state.generatedContour = out;
   state.generatedTraits = null;
@@ -1919,6 +1922,50 @@ function contourFromPcValues(values) {
     }
     out[index] = value;
   }
+  return out;
+}
+function regularizeGeneratedContour(contour) {
+  if (!(contour == null ? void 0 : contour.length)) return contour;
+  const pointCount = Math.floor(contour.length / 2);
+  if (pointCount < 5) return contour;
+  const centered = new Float32Array(contour.length);
+  let centerX = 0;
+  let centerY = 0;
+  for (let index = 0; index < pointCount; index += 1) {
+    centerX += contour[index * 2];
+    centerY += contour[index * 2 + 1];
+  }
+  centerX /= pointCount;
+  centerY /= pointCount;
+  let sourceMeanRadius = 0;
+  for (let index = 0; index < pointCount; index += 1) {
+    const x = contour[index * 2] - centerX;
+    const y = contour[index * 2 + 1] - centerY;
+    centered[index * 2] = x;
+    centered[index * 2 + 1] = y;
+    sourceMeanRadius += Math.hypot(x, y);
+  }
+  sourceMeanRadius /= pointCount;
+  let current = centered;
+  for (let pass = 0; pass < 2; pass += 1) {
+    const next = new Float32Array(current.length);
+    for (let index = 0; index < pointCount; index += 1) {
+      const prev = (index - 1 + pointCount) % pointCount;
+      const after = (index + 1) % pointCount;
+      next[index * 2] = current[prev * 2] * 0.18 + current[index * 2] * 0.64 + current[after * 2] * 0.18;
+      next[index * 2 + 1] = current[prev * 2 + 1] * 0.18 + current[index * 2 + 1] * 0.64 + current[after * 2 + 1] * 0.18;
+    }
+    current = next;
+  }
+  let smoothedMeanRadius = 0;
+  for (let index = 0; index < pointCount; index += 1) {
+    smoothedMeanRadius += Math.hypot(current[index * 2], current[index * 2 + 1]);
+  }
+  smoothedMeanRadius /= pointCount;
+  const scale = sourceMeanRadius > 1e-6 && smoothedMeanRadius > 1e-6 ? sourceMeanRadius / smoothedMeanRadius : 1;
+  if (Math.abs(scale - 1) < 1e-6) return current;
+  const out = new Float32Array(current.length);
+  for (let index = 0; index < current.length; index += 1) out[index] = current[index] * scale;
   return out;
 }
 function maxContourRadius(contours) {
@@ -2639,6 +2686,56 @@ function contourPcDistanceSq(shell, candidate) {
   }
   return distance;
 }
+function activePcaNeighborAxes() {
+  const axes = [];
+  for (const axis of [state.xAxis, state.yAxis]) {
+    if (Number.isInteger(axis) && axis >= 0 && !axes.includes(axis)) axes.push(axis);
+  }
+  return axes.length ? axes : [0, 1];
+}
+function contourPcDistanceSqToValues(candidate, values, axes = null) {
+  let distance = 0;
+  const candidatePc = candidate.contour_pc || [];
+  const dimensions = (axes == null ? void 0 : axes.length) ? axes : Array.from({ length: Math.min(4, candidatePc.length, values.length) }, (_, index) => index);
+  for (const axis of dimensions) {
+    if (axis >= candidatePc.length || axis >= values.length) continue;
+    distance += ((candidatePc[axis] || 0) - (values[axis] || 0)) ** 2;
+  }
+  return distance;
+}
+function nearestContourNeighborsForPc(values, { axes = null, limit = 8, excludeId = null } = {}) {
+  var _a;
+  const candidates = state.filtered.length ? state.filtered : state.shells;
+  const best = [];
+  let worstIndex = -1;
+  let worstDistance = -1;
+  for (const candidate of candidates) {
+    if (candidate.id === excludeId || !((_a = candidate.contour_pc) == null ? void 0 : _a.length)) continue;
+    const distance = contourPcDistanceSqToValues(candidate, values, axes);
+    if (best.length < limit) {
+      best.push({ distance, shell: candidate });
+      if (distance > worstDistance) {
+        worstDistance = distance;
+        worstIndex = best.length - 1;
+      }
+      continue;
+    }
+    if (distance >= worstDistance) continue;
+    best[worstIndex] = { distance, shell: candidate };
+    worstDistance = -1;
+    for (let index = 0; index < best.length; index += 1) {
+      if (best[index].distance > worstDistance) {
+        worstDistance = best[index].distance;
+        worstIndex = index;
+      }
+    }
+  }
+  best.sort((a, b) => a.distance - b.distance);
+  return best.map((item) => ({
+    distance: Math.sqrt(item.distance),
+    shell: item.shell
+  }));
+}
 function nearestContourNeighbors(shell) {
   if (!shell) return [];
   if (state.neighborCache.has(shell.id)) return state.neighborCache.get(shell.id);
@@ -2674,12 +2771,12 @@ function nearestContourNeighbors(shell) {
   state.neighborCache.set(shell.id, neighbors);
   return neighbors;
 }
-function renderNeighbors(shell, token = state.neighborToken) {
+function renderNeighborItems(items) {
+  const key = items.map((item) => `${item.shell.id}:${item.distance.toFixed(3)}`).join("|");
+  if (state.neighborRenderKey === key) return;
+  state.neighborRenderKey = key;
   els.neighborsList.innerHTML = "";
-  if (!shell || token !== state.neighborToken) return;
-  const best = nearestContourNeighbors(shell);
-  if (token !== state.neighborToken) return;
-  for (const item of best) {
+  for (const item of items) {
     const button = document.createElement("button");
     button.className = "neighbor-button";
     button.title = `${item.shell.species} (${formatNumber(item.distance, 3)})`;
@@ -2696,11 +2793,25 @@ function renderNeighbors(shell, token = state.neighborToken) {
     els.neighborsList.append(button);
   }
 }
-function scheduleRenderNeighbors(shell, delay = 2500) {
+function renderNeighbors(shell, token = state.neighborToken) {
+  if (!shell || token !== state.neighborToken) {
+    state.neighborRenderKey = "";
+    els.neighborsList.innerHTML = "";
+    return;
+  }
+  renderNeighborItems(nearestContourNeighbors(shell));
+}
+function renderNeighborsForPc(values, items = null) {
+  state.neighborToken += 1;
+  window.clearTimeout(state.neighborTimer);
+  renderNeighborItems(items || nearestContourNeighborsForPc(values, { axes: activePcaNeighborAxes() }));
+}
+function scheduleRenderNeighbors(shell, delay = 0) {
   state.neighborToken += 1;
   const token = state.neighborToken;
   window.clearTimeout(state.neighborTimer);
   if (!shell) {
+    state.neighborRenderKey = "";
     els.neighborsList.innerHTML = "";
     return;
   }
@@ -2917,17 +3028,117 @@ function nearestShell(screenX, screenY) {
   }
   return bestDistance <= 14 * 14 ? best : null;
 }
+function nearestScatterNeighborItems(screenX, screenY, values, limit = 8) {
+  const size = resizeCanvas(els.scatter, scatterCtx);
+  const hitCache = scatterHitPoints(size);
+  if (!hitCache.shells.length) return [];
+  const cellX = Math.floor(screenX / hitCache.cellSize);
+  const cellY = Math.floor(screenY / hitCache.cellSize);
+  const best = [];
+  const seen2 = /* @__PURE__ */ new Set();
+  let worstIndex = -1;
+  let worstDistance = -1;
+  const maxRadius = Math.ceil(Math.max(size.width, size.height) / hitCache.cellSize);
+  for (let radius = 0; radius <= maxRadius; radius += 1) {
+    for (let y = cellY - radius; y <= cellY + radius; y += 1) {
+      for (let x = cellX - radius; x <= cellX + radius; x += 1) {
+        if (radius && x > cellX - radius && x < cellX + radius && y > cellY - radius && y < cellY + radius) continue;
+        const bucket = hitCache.grid.get(`${x},${y}`);
+        if (!bucket) continue;
+        for (const index of bucket) {
+          if (seen2.has(index)) continue;
+          seen2.add(index);
+          const dx = hitCache.points[index * 2] - screenX;
+          const dy = hitCache.points[index * 2 + 1] - screenY;
+          const screenDistance = dx * dx + dy * dy;
+          if (best.length < limit) {
+            best.push({ screenDistance, shell: hitCache.shells[index] });
+            if (screenDistance > worstDistance) {
+              worstDistance = screenDistance;
+              worstIndex = best.length - 1;
+            }
+            continue;
+          }
+          if (screenDistance >= worstDistance) continue;
+          best[worstIndex] = { screenDistance, shell: hitCache.shells[index] };
+          worstDistance = -1;
+          for (let bestIndex = 0; bestIndex < best.length; bestIndex += 1) {
+            if (best[bestIndex].screenDistance > worstDistance) {
+              worstDistance = best[bestIndex].screenDistance;
+              worstIndex = bestIndex;
+            }
+          }
+        }
+      }
+    }
+    if (best.length >= limit && radius >= 2) break;
+  }
+  best.sort((a, b) => a.screenDistance - b.screenDistance);
+  return best.map((item) => ({
+    distance: Math.sqrt(contourPcDistanceSqToValues(item.shell, values, activePcaNeighborAxes())),
+    shell: item.shell
+  }));
+}
+function clampPcValue(axisIndex, value) {
+  const range = axisRange(axisIndex);
+  if (!range) return value;
+  return Math.max(range.p01, Math.min(range.p99, value));
+}
+function assignPointAxes(values, point) {
+  if (state.xAxis >= 0 && state.xAxis < values.length) values[state.xAxis] = clampPcValue(state.xAxis, point.x);
+  if (state.yAxis >= 0 && state.yAxis < values.length && state.yAxis !== state.xAxis) {
+    values[state.yAxis] = clampPcValue(state.yAxis, point.y);
+  }
+}
+function pcPreviewFromPoint(point, neighborItems = null) {
+  var _a, _b;
+  const count = Math.max(((_a = state.model) == null ? void 0 : _a.contour_component_count) || 0, state.pcValues.length, contourAxisCount());
+  const provisional = Array.from({ length: count }, () => 0);
+  assignPointAxes(provisional, point);
+  const neighbors = (neighborItems == null ? void 0 : neighborItems.length) ? neighborItems : nearestContourNeighborsForPc(provisional, { axes: activePcaNeighborAxes() });
+  const source = (_b = neighbors[0]) == null ? void 0 : _b.shell;
+  const values = Array.from({ length: count }, (_, index) => {
+    var _a2;
+    return clampPcValue(index, ((_a2 = source == null ? void 0 : source.contour_pc) == null ? void 0 : _a2[index]) || 0);
+  });
+  assignPointAxes(values, point);
+  return { values, neighbors };
+}
+function applyPcValues(values) {
+  values.forEach((value, index) => {
+    state.pcValues[index] = value;
+    updatePcControl(index, value);
+  });
+  reconstructFromPc();
+}
 function setTargetFromEvent(event) {
+  var _a;
   const rect = els.scatter.getBoundingClientRect();
   const size = resizeCanvas(els.scatter, scatterCtx);
-  const point = screenToWorld(event.clientX - rect.left, event.clientY - rect.top, size);
-  state.pcValues[state.xAxis] = point.x;
-  state.pcValues[state.yAxis] = point.y;
-  updatePcControl(state.xAxis, point.x);
-  updatePcControl(state.yAxis, point.y);
-  reconstructFromPc();
+  const screenX = event.clientX - rect.left;
+  const screenY = event.clientY - rect.top;
+  const point = screenToWorld(screenX, screenY, size);
+  const provisional = Array.from({ length: Math.max(((_a = state.model) == null ? void 0 : _a.contour_component_count) || 0, state.pcValues.length, contourAxisCount()) }, () => 0);
+  assignPointAxes(provisional, point);
+  const fastNeighbors = nearestScatterNeighborItems(screenX, screenY, provisional);
+  const preview = pcPreviewFromPoint(point, fastNeighbors);
+  applyPcValues(preview.values);
+  renderNeighborsForPc(preview.values, preview.neighbors);
   scheduleDraw();
   scheduleHashUpdate();
+}
+function queuePcaPreview(event) {
+  state.previewEvent = {
+    clientX: event.clientX,
+    clientY: event.clientY
+  };
+  if (state.previewFrame) return;
+  state.previewFrame = window.requestAnimationFrame(() => {
+    state.previewFrame = 0;
+    const next = state.previewEvent;
+    if (!next) return;
+    setTargetFromEvent(next);
+  });
 }
 function startViewportPan(event) {
   const rect = els.scatter.getBoundingClientRect();
@@ -3664,13 +3875,17 @@ function setupEvents() {
       els.pointTooltip.hidden = true;
       return;
     }
+    queuePcaPreview(event);
     queuePointTooltip(event);
   });
   for (const eventName of ["pointerup", "pointerleave", "pointercancel"]) {
     els.scatter.addEventListener(eventName, (event) => {
       state.draggingTarget = false;
       stopViewportPan();
-      if (eventName !== "pointerup") els.pointTooltip.hidden = true;
+      if (eventName !== "pointerup") {
+        state.previewEvent = null;
+        els.pointTooltip.hidden = true;
+      }
     });
   }
   els.scatter.addEventListener("auxclick", (event) => {
@@ -3739,8 +3954,10 @@ async function init() {
   const initialHash = parseHashState();
   if (colorModes.includes(initialHash.get("color"))) state.colorMode = initialHash.get("color");
   const axisCount = axisOptionCount();
-  const x = Number(initialHash.get("x"));
-  const y = Number(initialHash.get("y"));
+  const rawX = initialHash.get("x");
+  const rawY = initialHash.get("y");
+  const x = rawX == null ? NaN : Number(rawX);
+  const y = rawY == null ? NaN : Number(rawY);
   if (Number.isInteger(x) && x >= 0 && x < axisCount) state.xAxis = x;
   if (Number.isInteger(y) && y >= 0 && y < axisCount) state.yAxis = y;
   state.viewport = initialViewport(state.xAxis, state.yAxis);

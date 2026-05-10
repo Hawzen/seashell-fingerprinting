@@ -801,7 +801,20 @@ def run_browser_check(
               await page.waitForTimeout(450);
               const afterHash = await page.textContent('#projectedHash');
               if (!afterHash || afterHash === beforeHash) throw new Error(`map generation failed: ${{beforeHash}} -> ${{afterHash}}`);
+              const hoverBefore = await page.evaluate(() => ({{
+                hash: document.querySelector('#projectedHash')?.textContent || '',
+                neighbors: Array.from(document.querySelectorAll('#neighborsList .neighbor-button')).map((button) => button.getAttribute('title') || '').join('|'),
+              }}));
               await page.mouse.move(scatterBox.x + scatterBox.width * 0.42, scatterBox.y + scatterBox.height * 0.38);
+              await page.waitForFunction(
+                (previous) => {{
+                  const hash = document.querySelector('#projectedHash')?.textContent || '';
+                  const neighbors = Array.from(document.querySelectorAll('#neighborsList .neighbor-button')).map((button) => button.getAttribute('title') || '').join('|');
+                  return hash && hash !== previous.hash && neighbors && neighbors !== previous.neighbors && document.querySelectorAll('#neighborsList .neighbor-button').length >= 4;
+                }},
+                hoverBefore,
+                {{ timeout: 3000 }}
+              );
               await page.mouse.down();
               await page.waitForTimeout(90);
               await page.mouse.move(scatterBox.x + scatterBox.width * 0.62, scatterBox.y + scatterBox.height * 0.56, {{ steps: 5 }});
