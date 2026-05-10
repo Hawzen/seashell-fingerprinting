@@ -1,6 +1,6 @@
 // @ts-nocheck
 
-const repoBase = new URL("../", import.meta.url).pathname;
+const repoBase = new URL(/* @vite-ignore */ "../", import.meta.url).pathname;
 const publicBase = `${repoBase}public/`;
 
 const colorModes = ["locality", "species", "conservation", "shell", "pattern", "lightness", "concavity"];

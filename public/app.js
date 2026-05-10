@@ -513,7 +513,11 @@ void __vitePreload(async () => {
 }, true ? void 0 : void 0).then(({
   startShellspace: startShellspace2
 }) => startShellspace2());
-const repoBase = new URL("../", import.meta.url).pathname;
+const repoBase = new URL(
+  /* @vite-ignore */
+  "../",
+  import.meta.url
+).pathname;
 const publicBase = `${repoBase}public/`;
 const colorModes = ["locality", "species", "conservation", "shell", "pattern", "lightness", "concavity"];
 const starStorageKey = "shellspace-starred";
