@@ -372,7 +372,7 @@ button:hover {
   padding: 0;
   border: 1px solid rgba(31, 38, 40, 0.16);
   border-radius: 8px;
-  background: rgba(255, 253, 247, 0.98);
+  background: var(--panel);
   box-shadow: 0 22px 54px rgba(31, 36, 42, 0.15);
   transform-origin: left top;
   animation: filter-pop 170ms cubic-bezier(0.2, 0.8, 0.22, 1) both;
@@ -392,8 +392,13 @@ button:hover {
   z-index: 2;
   padding: 16px 18px 13px;
   border-bottom: 1px solid rgba(31, 38, 40, 0.1);
-  background: rgba(255, 253, 247, 0.96);
+  background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(12px);
+}
+
+.filters-popover > header h2 {
+  font-size: 20px;
+  line-height: 1.1;
 }
 
 .filters-popover header button {
@@ -495,43 +500,42 @@ dt {
 
 .color-filter-panel {
   display: grid;
-  gap: 9px;
+  gap: 8px;
 }
 
 .color-swatch-filter {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 7px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .color-swatch-filter button {
   min-width: 0;
-  min-height: 46px;
-  padding: 7px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  background: rgba(255, 253, 247, 0.82);
+  min-height: 44px;
+  padding: 0;
+  border-color: rgba(31, 38, 40, 0.16);
+  border-radius: 5px;
+  background: var(--swatch);
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
 
 .color-swatch-dot {
-  flex: 0 0 30px;
-  width: 30px;
-  height: 30px;
-  border: 1px solid rgba(31, 38, 40, 0.18);
-  border-radius: 999px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.56), transparent),
-    var(--swatch);
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.36);
+  display: none;
+}
+
+.color-swatch-filter button:hover,
+.color-swatch-filter button:focus-visible {
+  border-color: rgba(31, 38, 40, 0.48);
+  box-shadow: 0 0 0 2px rgba(31, 38, 40, 0.08);
+  outline: 0;
 }
 
 .color-swatch-filter button[aria-pressed="true"] {
-  border-color: rgba(31, 117, 111, 0.82);
-  background: rgba(31, 117, 111, 0.1);
+  border-color: #1f2628;
+  background: var(--swatch);
   box-shadow:
-    inset 0 0 0 1px rgba(31, 117, 111, 0.16);
+    0 0 0 2px var(--panel),
+    0 0 0 4px rgba(31, 117, 111, 0.72);
 }
 
 .filter-actions {
@@ -539,7 +543,7 @@ dt {
   bottom: 0;
   padding: 13px 18px 16px;
   border-top: 1px solid rgba(31, 38, 40, 0.1);
-  background: rgba(255, 253, 247, 0.96);
+  background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(12px);
 }
 
