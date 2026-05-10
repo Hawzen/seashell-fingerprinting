@@ -1432,7 +1432,7 @@ function originFilterData() {
   }
   state.originFilterOptionsCache = {
     regions: [...regions.values()].sort((a, b) => a.label.localeCompare(b.label)),
-    countries: [...countries.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    countries: [...countries.values()].sort((a, b) => a.label.localeCompare(b.label) || a.code.localeCompare(b.code))
   };
   return state.originFilterOptionsCache;
 }
