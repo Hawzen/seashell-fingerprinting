@@ -174,7 +174,7 @@ def load_rgb_image(path: Path, max_size: int) -> tuple[np.ndarray, tuple[int, in
 #
 # Owns:
 #   - dominant background-color estimation from the border
-#   - flood-fill background recovery from the outside of the image
+#   - edge-gated background recovery from the outside of the image
 #   - inversion into a shell mask
 #   - keeping the largest connected shell component
 #
@@ -214,63 +214,69 @@ def dominant_border_color(rgb: np.ndarray, bin_size: int = 8) -> np.ndarray:
     return members.mean(axis=0).astype(np.float32)
 
 
-def edge_seed_points(rgb: np.ndarray, background_color: np.ndarray, tolerance: int) -> list[tuple[int, int]]:
-    """Return border points that look like the dominant outside background."""
-    h, w = rgb.shape[:2]
-    step = max(1, min(h, w) // 160)
-    candidates: list[tuple[int, int]] = []
+def color_distance_from_background(rgb: np.ndarray, background_color: np.ndarray) -> np.ndarray:
+    diff = rgb.astype(np.float32) - background_color.reshape(1, 1, 3)
+    return np.sqrt(np.sum(diff * diff, axis=2))
 
-    for x in range(0, w, step):
-        candidates.append((x, 0))
-        candidates.append((x, h - 1))
-    for y in range(0, h, step):
-        candidates.append((0, y))
-        candidates.append((w - 1, y))
 
-    limit = max(float(tolerance) * 2.0, 32.0)
-    seeds = []
-    for x, y in candidates:
-        distance = float(np.linalg.norm(rgb[y, x].astype(np.float32) - background_color))
-        if distance <= limit:
-            seeds.append((x, y))
+def edge_barrier_mask(rgb: np.ndarray, background_distance: np.ndarray, tolerance: int) -> np.ndarray:
+    """Create thin walls where outside background should stop growing."""
+    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+    gray_blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    distance_blur = cv2.GaussianBlur(
+        np.clip(background_distance, 0, 255).astype(np.uint8),
+        (5, 5),
+        0,
+    )
 
-    if seeds:
-        return seeds
-    return [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]
+    low = max(5, int(tolerance * 0.55))
+    high = max(low + 15, int(tolerance * 1.8))
+    gray_edges = cv2.Canny(gray_blur, low, high)
+    distance_edges = cv2.Canny(distance_blur, low, high)
+    edges = (gray_edges > 0) | (distance_edges > 0)
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    edges = cv2.morphologyEx(edges.astype(np.uint8), cv2.MORPH_CLOSE, kernel, iterations=1)
+    edges = cv2.dilate(edges, kernel, iterations=1).astype(bool)
+
+    # Border pixels must stay seedable; the edge wall starts inside the image.
+    edges[0, :] = False
+    edges[-1, :] = False
+    edges[:, 0] = False
+    edges[:, -1] = False
+    return edges
 
 
 def flood_background_mask(rgb: np.ndarray, tolerance: int) -> tuple[np.ndarray, np.ndarray]:
-    """Photoshop-fill-bucket-style background detection from the image edge."""
+    """Photoshop-fill-bucket-style background detection with edge walls."""
     background_color = dominant_border_color(rgb)
-    seeds = edge_seed_points(rgb, background_color, tolerance)
+    background_distance = color_distance_from_background(rgb, background_color)
+    edge_walls = edge_barrier_mask(rgb, background_distance, tolerance)
 
-    h, w = rgb.shape[:2]
-    mask = np.zeros((h + 2, w + 2), dtype=np.uint8)
-    image = rgb.copy()
-    flags = (
-        4
-        | cv2.FLOODFILL_FIXED_RANGE
-        | cv2.FLOODFILL_MASK_ONLY
-        | (255 << 8)
-    )
-    lo_diff = (tolerance, tolerance, tolerance)
-    up_diff = (tolerance, tolerance, tolerance)
+    # Candidate background is deliberately generous; edge walls prevent it from
+    # leaking into dark shell markings that are connected only visually, not by
+    # outside background.
+    background_limit = max(float(tolerance) * 2.4, 48.0)
+    background_candidate = background_distance <= background_limit
+    fillable = background_candidate & ~edge_walls
 
-    for seed in seeds:
-        x, y = seed
-        if mask[y + 1, x + 1] != 0:
-            continue
-        cv2.floodFill(
-            image,
-            mask,
-            seedPoint=(x, y),
-            newVal=(0, 0, 0),
-            loDiff=lo_diff,
-            upDiff=up_diff,
-            flags=flags,
+    labels_count, labels = cv2.connectedComponents(fillable.astype(np.uint8), 8)
+    if labels_count <= 1:
+        return np.zeros(rgb.shape[:2], dtype=bool), background_color
+
+    border_labels = np.unique(
+        np.concatenate(
+            [
+                labels[0, :],
+                labels[-1, :],
+                labels[:, 0],
+                labels[:, -1],
+            ]
         )
-
-    return mask[1:-1, 1:-1].astype(bool), background_color
+    )
+    border_labels = border_labels[border_labels != 0]
+    background_mask = np.isin(labels, border_labels)
+    return background_mask, background_color
 
 
 def fill_mask_holes(mask: np.ndarray) -> np.ndarray:
