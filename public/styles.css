@@ -46,7 +46,7 @@ p {
 h1 {
   font-family: Fraunces, Georgia, "Times New Roman", serif;
   font-size: clamp(22px, 3vw, 34px);
-  line-height: 1;
+  line-height: 1.16;
   letter-spacing: 0;
   color: #172325;
 }
@@ -86,8 +86,10 @@ button:hover {
 }
 
 .topbar {
+  position: relative;
+  z-index: 40;
   min-height: 92px;
-  padding: 20px 20px 12px;
+  padding: 32px 20px 12px;
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
@@ -180,9 +182,9 @@ button:hover {
 
 .starred-shell {
   position: relative;
-  flex: 0 0 var(--starred-thumb-width, 58px);
-  width: var(--starred-thumb-width, 58px);
-  height: 58px;
+  flex: 0 0 var(--starred-thumb-width, 70px);
+  width: var(--starred-thumb-width, 70px);
+  height: 70px;
   min-width: 0;
   padding: 0;
   overflow: visible;

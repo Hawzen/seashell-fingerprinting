@@ -2518,13 +2518,13 @@ function drawCroppedOriginalShellImage(ctx, shell, image, frameWidth, frameHeigh
   return frame;
 }
 function starredThumbSize(crop) {
-  const cssHeight = 58;
+  const cssHeight = 70;
   if (!(crop == null ? void 0 : crop.width) || !(crop == null ? void 0 : crop.height)) {
-    return { cssWidth: 58, pixelWidth: 136, pixelHeight: 136 };
+    return { cssWidth: 70, pixelWidth: 168, pixelHeight: 168 };
   }
   const ratio = crop.width / Math.max(1, crop.height);
-  const cssWidth = Math.round(Math.max(26, Math.min(82, cssHeight * ratio)));
-  const pixelHeight = 144;
+  const cssWidth = Math.round(Math.max(32, Math.min(98, cssHeight * ratio)));
+  const pixelHeight = 172;
   return {
     cssWidth,
     pixelWidth: Math.round(cssWidth / cssHeight * pixelHeight),

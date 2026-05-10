@@ -252,7 +252,7 @@ def verify_entrypoint() -> None:
     ]:
         if marker not in styles:
             raise AssertionError(f"Loading animation styles are missing {marker!r}")
-    for marker in ["gap: 1px;", "var(--starred-thumb-width, 58px)", "min-width: 0;", "--dock-scale", "--dock-lift"]:
+    for marker in ["gap: 1px;", "var(--starred-thumb-width, 70px)", "min-width: 0;", "--dock-scale", "--dock-lift"]:
         if marker not in styles:
             raise AssertionError("Starred shelf spacing should stay tight and uniform")
     app = Path("public/app.js").read_text(encoding="utf-8")
