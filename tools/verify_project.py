@@ -795,12 +795,6 @@ def run_browser_check(
               const scatterBox = await page.locator('#scatterCanvas').boundingBox();
               if (!scatterBox) throw new Error('scatter canvas has no box');
               const beforeHash = await page.textContent('#projectedHash');
-              await page.fill('#searchBox', 'no-such-shell-filter-value');
-              await page.waitForTimeout(200);
-              await page.mouse.click(scatterBox.x + scatterBox.width * 0.35, scatterBox.y + scatterBox.height * 0.45);
-              await page.waitForTimeout(450);
-              const afterHash = await page.textContent('#projectedHash');
-              if (!afterHash || afterHash === beforeHash) throw new Error(`map generation failed: ${{beforeHash}} -> ${{afterHash}}`);
               const hoverBefore = await page.evaluate(() => ({{
                 hash: document.querySelector('#projectedHash')?.textContent || '',
                 neighbors: Array.from(document.querySelectorAll('#neighborsList .neighbor-button')).map((button) => button.getAttribute('title') || '').join('|'),
@@ -808,13 +802,24 @@ def run_browser_check(
               await page.mouse.move(scatterBox.x + scatterBox.width * 0.42, scatterBox.y + scatterBox.height * 0.38);
               await page.waitForFunction(
                 (previous) => {{
-                  const hash = document.querySelector('#projectedHash')?.textContent || '';
                   const neighbors = Array.from(document.querySelectorAll('#neighborsList .neighbor-button')).map((button) => button.getAttribute('title') || '').join('|');
-                  return hash && hash !== previous.hash && neighbors && neighbors !== previous.neighbors && document.querySelectorAll('#neighborsList .neighbor-button').length >= 4;
+                  return neighbors && neighbors !== previous.neighbors && document.querySelectorAll('#neighborsList .neighbor-button').length >= 4;
                 }},
                 hoverBefore,
                 {{ timeout: 3000 }}
               );
+              const hoverHash = await page.textContent('#projectedHash');
+              if (hoverHash !== beforeHash) {{
+                throw new Error(`hover generated a shell: ${{beforeHash}} -> ${{hoverHash}}`);
+              }}
+              await page.fill('#searchBox', 'no-such-shell-filter-value');
+              await page.waitForTimeout(200);
+              await page.mouse.click(scatterBox.x + scatterBox.width * 0.35, scatterBox.y + scatterBox.height * 0.45);
+              await page.waitForTimeout(250);
+              const afterClickHash = await page.textContent('#projectedHash');
+              if (afterClickHash !== hoverHash) {{
+                throw new Error(`empty click generated a shell: ${{hoverHash}} -> ${{afterClickHash}}`);
+              }}
               await page.mouse.down();
               await page.waitForTimeout(90);
               await page.mouse.move(scatterBox.x + scatterBox.width * 0.62, scatterBox.y + scatterBox.height * 0.56, {{ steps: 5 }});
@@ -823,8 +828,8 @@ def run_browser_check(
               await page.mouse.up();
               await page.waitForTimeout(220);
               const afterReleaseHash = await page.textContent('#projectedHash');
-              if (!beforeReleaseHash || beforeReleaseHash === afterHash || afterReleaseHash !== beforeReleaseHash) {{
-                throw new Error(`drag generation unstable: ${{JSON.stringify({{ afterHash, beforeReleaseHash, afterReleaseHash }})}}`);
+              if (!beforeReleaseHash || beforeReleaseHash === afterClickHash || afterReleaseHash !== beforeReleaseHash) {{
+                throw new Error(`drag generation unstable: ${{JSON.stringify({{ afterClickHash, beforeReleaseHash, afterReleaseHash }})}}`);
               }}
               await page.fill('#searchBox', '');
               await page.waitForTimeout(250);

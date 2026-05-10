@@ -67,6 +67,7 @@ const state = {
   tooltipEvent: null,
   tooltipLastAt: 0,
   draggingTarget: false,
+  targetDragStart: null,
   panningViewport: null,
   walkingPca: false,
   walkFrame: 0,
@@ -2769,7 +2770,9 @@ function pcPreviewFromPoint(point, neighborItems = null) {
   const count = Math.max(state.model?.contour_component_count || 0, state.pcValues.length, contourAxisCount());
   const provisional = Array.from({ length: count }, () => 0);
   assignPointAxes(provisional, point);
-  const neighbors = neighborItems?.length ? neighborItems : nearestContourNeighborsForPc(provisional, { axes: activePcaNeighborAxes() });
+  const neighbors = Array.isArray(neighborItems)
+    ? neighborItems
+    : nearestContourNeighborsForPc(provisional, { axes: activePcaNeighborAxes() });
   const source = neighbors[0]?.shell;
   const values = Array.from({ length: count }, (_, index) => clampPcValue(index, source?.contour_pc?.[index] || 0));
   assignPointAxes(values, point);
@@ -2800,7 +2803,24 @@ function setTargetFromEvent(event) {
   scheduleHashUpdate();
 }
 
-function queuePcaPreview(event) {
+function renderNearestFromMouseEvent(event) {
+  const rect = els.scatter.getBoundingClientRect();
+  const size = resizeCanvas(els.scatter, scatterCtx);
+  const screenX = event.clientX - rect.left;
+  const screenY = event.clientY - rect.top;
+  const point = screenToWorld(screenX, screenY, size);
+  const values = Array.from({ length: Math.max(state.model?.contour_component_count || 0, state.pcValues.length, contourAxisCount()) }, () => 0);
+  assignPointAxes(values, point);
+  const fastNeighbors = nearestScatterNeighborItems(screenX, screenY, values);
+  renderNeighborsForPc(
+    values,
+    fastNeighbors.length
+      ? fastNeighbors
+      : nearestContourNeighborsForPc(values, { axes: activePcaNeighborAxes() }),
+  );
+}
+
+function queueMouseNeighbors(event) {
   state.previewEvent = {
     clientX: event.clientX,
     clientY: event.clientY,
@@ -2810,7 +2830,7 @@ function queuePcaPreview(event) {
     state.previewFrame = 0;
     const next = state.previewEvent;
     if (!next) return;
-    setTargetFromEvent(next);
+    renderNearestFromMouseEvent(next);
   });
 }
 
@@ -2823,6 +2843,7 @@ function startViewportPan(event) {
     viewport: { ...state.viewport },
   };
   state.draggingTarget = false;
+  state.targetDragStart = null;
   els.scatter.classList.add("is-panning");
   els.pointTooltip.hidden = true;
 }
@@ -3575,7 +3596,13 @@ function setupEvents() {
     if (shell) selectShell(shell);
     else {
       state.draggingTarget = true;
-      setTargetFromEvent(event);
+      state.targetDragStart = {
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        active: false,
+      };
+      els.pointTooltip.hidden = true;
     }
   });
 
@@ -3587,17 +3614,24 @@ function setupEvents() {
     }
     if (state.draggingTarget) {
       event.preventDefault();
+      const start = state.targetDragStart;
+      if (start && !start.active) {
+        const distance = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY);
+        if (distance < 4) return;
+        start.active = true;
+      }
       setTargetFromEvent(event);
       els.pointTooltip.hidden = true;
       return;
     }
-    queuePcaPreview(event);
+    queueMouseNeighbors(event);
     queuePointTooltip(event);
   });
 
   for (const eventName of ["pointerup", "pointerleave", "pointercancel"]) {
     els.scatter.addEventListener(eventName, (event) => {
       state.draggingTarget = false;
+      state.targetDragStart = null;
       stopViewportPan();
       if (eventName !== "pointerup") {
         state.previewEvent = null;
