@@ -78,6 +78,7 @@ button {
   background: var(--panel);
   color: var(--ink);
   cursor: pointer;
+  font-weight: 400;
 }
 
 button:hover {
@@ -349,12 +350,12 @@ button:hover {
   padding: 8px 13px;
   border-color: rgba(40, 122, 116, 0.35);
   font-size: 14px;
-  font-weight: 700;
 }
 
 .filters-toggle.is-active {
   border-color: var(--teal);
-  background: rgba(40, 122, 116, 0.1);
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px rgba(31, 117, 111, 0.18);
 }
 
 .filters-popover {
@@ -475,9 +476,8 @@ dt {
   min-height: 44px;
   padding: 8px 10px;
   color: #334246;
-  background: rgba(255, 253, 247, 0.88);
+  background: var(--panel);
   font-size: 15px;
-  font-weight: 650;
   transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
 
@@ -492,10 +492,11 @@ dt {
 .filter-levels button[aria-pressed="true"],
 .rarity-filter-options button[aria-pressed="true"] {
   border-color: rgba(31, 117, 111, 0.8);
-  background: rgba(31, 117, 111, 0.12);
-  color: #174e4b;
-  font-weight: 700;
-  box-shadow: inset 0 0 0 1px rgba(31, 117, 111, 0.18);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow:
+    inset 0 0 0 1px rgba(31, 117, 111, 0.18),
+    0 0 0 2px rgba(31, 117, 111, 0.08);
 }
 
 .color-filter-panel {
@@ -634,7 +635,7 @@ select:focus {
 
 .upload-shell {
   border-color: rgba(198, 93, 75, 0.42);
-  background: rgba(198, 93, 75, 0.09);
+  background: var(--panel);
   color: #783b30;
 }
 
