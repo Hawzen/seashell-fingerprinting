@@ -276,6 +276,13 @@ def flood_background_mask(rgb: np.ndarray, tolerance: int) -> tuple[np.ndarray, 
     )
     border_labels = border_labels[border_labels != 0]
     background_mask = np.isin(labels, border_labels)
+
+    # Edge walls are only barriers for the fill. If a wall touches confirmed
+    # outside background, classify that wall pixel as background too; otherwise
+    # thin Canny traces in the black field become false shell protrusions.
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    background_neighbors = cv2.dilate(background_mask.astype(np.uint8), kernel, iterations=1).astype(bool)
+    background_mask = background_mask | (edge_walls & background_neighbors)
     return background_mask, background_color
 
 
@@ -367,10 +374,104 @@ def contour_from_mask(mask: np.ndarray) -> np.ndarray:
 def contour_metrics(points: np.ndarray) -> dict[str, Any]:
     area = abs(float(cv2.contourArea(points.astype(np.float32))))
     perimeter = float(cv2.arcLength(points.astype(np.float32), closed=True))
+    hull = cv2.convexHull(points.astype(np.float32))
+    hull_area = max(abs(float(cv2.contourArea(hull))), 1.0)
+    x, y, width, height = cv2.boundingRect(points.astype(np.float32))
+    aspect = max(width / max(1, height), height / max(1, width))
     return {
         "contour_points": int(len(points)),
         "contour_area": round(area, 3),
         "contour_perimeter": round(perimeter, 3),
+        "contour_solidity": round(float(area / hull_area), 6),
+        "contour_concavity": round(float(max(0.0, 1.0 - area / hull_area)), 6),
+        "aspect_ratio": round(float(aspect), 6),
+    }
+
+
+def clamp01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+def shell_color_texture_metrics(rgb: np.ndarray, mask: np.ndarray) -> dict[str, Any]:
+    """Summarize shell color/pattern using only masked shell pixels."""
+    pixels = rgb[mask]
+    if len(pixels) == 0:
+        raise ValueError("cannot compute color metrics from an empty mask")
+
+    rgb_float = pixels.astype(np.float32) / 255.0
+    lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
+    lab_shell = lab[mask]
+    lightness = lab_shell[:, 0] / 255.0
+    lab_a = (lab_shell[:, 1] - 128.0) / 127.0
+    lab_b = (lab_shell[:, 2] - 128.0) / 127.0
+    chroma = np.sqrt(lab_a * lab_a + lab_b * lab_b)
+
+    max_rgb = np.max(rgb_float, axis=1)
+    min_rgb = np.min(rgb_float, axis=1)
+    saturation = np.divide(
+        max_rgb - min_rgb,
+        np.maximum(max_rgb, 1e-6),
+        out=np.zeros_like(max_rgb),
+        where=max_rgb > 0,
+    )
+    hue = np.arctan2(
+        np.sqrt(3.0) * (rgb_float[:, 1] - rgb_float[:, 2]),
+        2.0 * rgb_float[:, 0] - rgb_float[:, 1] - rgb_float[:, 2],
+    )
+    hue_weight = np.maximum(saturation, 0.05)
+
+    luma_image = (
+        0.2126 * rgb[:, :, 0].astype(np.float32)
+        + 0.7152 * rgb[:, :, 1].astype(np.float32)
+        + 0.0722 * rgb[:, :, 2].astype(np.float32)
+    ) / 255.0
+    luma_shell = luma_image[mask]
+    sobel_x = cv2.Sobel(luma_image, cv2.CV_32F, 1, 0, ksize=3)
+    sobel_y = cv2.Sobel(luma_image, cv2.CV_32F, 0, 1, ksize=3)
+    gradient = np.sqrt(sobel_x * sobel_x + sobel_y * sobel_y)[mask]
+    blur = cv2.GaussianBlur(luma_image, (5, 5), 0)
+    residual = (luma_image - blur)[mask]
+
+    luma_std = float(np.std(luma_shell))
+    chroma_std = float(np.std(chroma))
+    saturation_std = float(np.std(saturation))
+    residual_std = float(np.std(residual))
+    texture_iqr = float(np.percentile(luma_shell, 75) - np.percentile(luma_shell, 25))
+    gradient_mean = float(np.mean(gradient))
+    pattern_strength = clamp01(
+        (
+            luma_std * 1.7
+            + chroma_std * 2.2
+            + saturation_std * 0.9
+            + residual_std * 10.0
+            + texture_iqr * 1.2
+            + clamp01(gradient_mean / 1.5)
+        )
+        / 6.0
+    )
+    pattern_contrast = clamp01((luma_std * 2.0 + residual_std * 12.0 + texture_iqr * 1.3) / 3.0)
+    pattern_chroma = clamp01((chroma_std * 2.6 + saturation_std * 1.2) / 2.0)
+
+    return {
+        "color_r_mean": round(float(np.mean(rgb_float[:, 0])), 6),
+        "color_g_mean": round(float(np.mean(rgb_float[:, 1])), 6),
+        "color_b_mean": round(float(np.mean(rgb_float[:, 2])), 6),
+        "color_l_mean": round(float(np.mean(lightness)), 6),
+        "color_l_std": round(luma_std, 6),
+        "color_a_mean": round(float(np.mean(lab_a)), 6),
+        "color_b_lab_mean": round(float(np.mean(lab_b)), 6),
+        "color_chroma_mean": round(float(np.mean(chroma)), 6),
+        "color_chroma_std": round(chroma_std, 6),
+        "color_saturation_mean": round(float(np.mean(saturation)), 6),
+        "color_saturation_std": round(saturation_std, 6),
+        "color_hue_sin": round(float(np.sum(np.sin(hue) * hue_weight) / max(float(np.sum(hue_weight)), 1e-6)), 6),
+        "color_hue_cos": round(float(np.sum(np.cos(hue) * hue_weight) / max(float(np.sum(hue_weight)), 1e-6)), 6),
+        "texture_gradient_mean": round(gradient_mean, 6),
+        "texture_residual_std": round(residual_std, 6),
+        "texture_luma_iqr": round(texture_iqr, 6),
+        "color_pattern_strength": round(pattern_strength, 6),
+        "color_pattern_contrast": round(pattern_contrast, 6),
+        "color_pattern_chroma": round(pattern_chroma, 6),
     }
 
 
@@ -487,8 +588,17 @@ def normalize_contour(points: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
     return normalized, {
         "normalization_centroid": [round(float(centroid.real), 6), round(float(-centroid.imag), 6)],
         "normalization_scale": round(scale, 6),
+        "mean_radius": round(scale, 6),
         "normalization_rotation_degrees": round(math.degrees(rotation), 6),
     }
+
+
+def normalized_contour_roughness(normalized_contour: np.ndarray) -> dict[str, float]:
+    previous_points = np.roll(normalized_contour, 1, axis=0)
+    next_points = np.roll(normalized_contour, -1, axis=0)
+    residual = normalized_contour - (previous_points + next_points) / 2.0
+    roughness = float(np.mean(np.linalg.norm(residual, axis=1)))
+    return {"roughness": round(roughness, 6)}
 
 
 # =============================================================================
@@ -667,19 +777,25 @@ def parse_label(relative_path: Path) -> dict[str, str]:
     parent = relative_path.parent.name if relative_path.parent != Path(".") else ""
 
     tokens = re.split(r"[_\-\s]+", stem)
-    specimen = tokens[-1] if tokens else stem
     view = ""
-    if tokens and re.fullmatch(r"[A-Za-z]?\d+[A-Za-z]?", tokens[-1]):
-        view = tokens[-1]
-        specimen = tokens[-2] if len(tokens) >= 2 else stem
+    specimen = ""
+    species_tokens = tokens[:]
 
-    species_source = parent if parent else stem
+    if len(tokens) >= 3 and re.fullmatch(r"[A-Za-z]", tokens[-1]) and re.fullmatch(r"\d+[A-Za-z]?", tokens[-2]):
+        view = tokens[-1].upper()
+        specimen = tokens[-2]
+        species_tokens = tokens[:-2]
+    elif len(tokens) >= 2 and re.fullmatch(r"\d+[A-Za-z]?", tokens[-1]):
+        specimen = tokens[-1]
+        species_tokens = tokens[:-1]
+
+    species_source = parent if parent else " ".join(species_tokens)
     species = species_source.replace("_", " ").replace("-", " ").strip()
     name = species if species else stem
     return {
         "name": name,
         "species": species,
-        "specimen": specimen,
+        "specimen": specimen or stem,
         "view": view,
     }
 
@@ -807,6 +923,7 @@ def process_image_job(job: tuple[Path, Path, int, int, int, int]) -> dict[str, A
         sampled = resample_closed_contour(contour, samples=samples)
         normalized, normalization_info = normalize_contour(sampled)
         fingerprint = fft_fingerprint(normalized, harmonics=harmonics)
+        color_info = shell_color_texture_metrics(rgb, mask)
 
         processing_height, processing_width = rgb.shape[:2]
         record = {
@@ -819,6 +936,8 @@ def process_image_job(job: tuple[Path, Path, int, int, int, int]) -> dict[str, A
             **mask_info,
             **contour_metrics(contour),
             **normalization_info,
+            **normalized_contour_roughness(normalized),
+            **color_info,
         }
         return {
             "ok": True,

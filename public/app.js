@@ -497,8 +497,7 @@ function cleanChildren(parent, current, marker, replacement) {
   } else parent.insertBefore(node, marker);
   return [node];
 }
-var _tmpl$ = /* @__PURE__ */ template(`<header class=topbar><div class=brand-block><h1>Shellspace</h1><p class=tagline>Every shell is a fingerprint — Shellspace is the atlas.</p><p id=statusLine>Loading shell model</p></div><div id=starredBand class=starred-band aria-label="Starred shells"></div><div id=starBurst class=star-burst aria-hidden=true></div><div class=top-actions><button id=zoomOut title="Zoom out">-</button><button id=zoomIn title="Zoom in">+</button><button id=resetView title="Reset map view">Reset`), _tmpl$2 = /* @__PURE__ */ template(`<main class=workspace><aside class="panel controls-panel"><section class="panel-section search-section"><div class=search-row><label class=field><span>Search</span><input id=searchBox type=search placeholder="Species or Shellprint"></label><button id=filtersToggle class=filters-toggle title="Open filters"aria-expanded=false>Filters</button></div><div id=filtersPanel class=filters-popover hidden><header><h2>Filters</h2><button id=closeFilters title="Close filters"aria-label="Close filters">x</button></header><div id=filterControls class=filter-controls></div><div class=filter-actions><button id=resetTraitFilters title="Reset filters">Reset</button></div></div><button id=randomShell title="Select a random shell">Surprise me</button><button id=uploadShell class=upload-shell title="Bring your own shell">+ Bring your own shell</button><input id=uploadInput type=file accept=image/* hidden><div class=section-title><h2>Map</h2></div><div class=axis-grid><label><span>X</span><select id=xAxisSelect></select></label><label><span>Y</span><select id=yAxisSelect></select></label></div><label class=field><span>Color</span><select id=colorModeSelect><option value=locality>Location</option><option value=species>Species</option><option value=conservation>Conservation</option><option value=shell>Shell color</option><option value=pattern>Pattern</option><option value=lightness>Lightness</option><option value=concavity>Concavity</option></select></label></section><section class="panel-section physical-shell"><div class=section-title><h2>Physical Shell <span id=physicalHash class="fingerprint-chip compact">------</span></h2><button id=starShell class=star-button title="Star this shape"aria-label="Star this shape"aria-pressed=false><svg class=star-icon viewBox="0 0 24 24"aria-hidden=true><path class=star-shape d="M12 2.8l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.6l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9L12 2.8z"></path></svg></button></div><div class=source-frame><div id=sourceSpinner class=source-spinner hidden></div><canvas id=sourceThumb width=420 height=300></canvas><img id=sourceImage alt hidden></div><div id=selectedName class=selected-name>None</div><dl id=selectedDetails></dl></section></aside><section class=scatter-panel aria-label="PCA scatter plot"><canvas id=scatterCanvas></canvas><div id=pointTooltip class=point-tooltip hidden></div></section><aside class="panel lab-panel"><section class="panel-section projected-lab"><div class=generated-shape><div class=section-title><h2>Projected Shell <span id=projectedHash class="fingerprint-chip compact">------</span></h2></div><div class=projection-frame><canvas id=outlineCanvas width=420 height=420></canvas><button id=exportSvg class=svg-export title="Export generated shell as SVG">SVG</button></div></div><div class=color-palette><h2>Palette</h2><div id=paletteSwatches class=palette-swatches></div></div><div class=slider-stack><div class=section-title><h2>Contour PCs</h2><div class=title-actions><button id=meanShape title="Reset contour coordinates">Mean</button><button id=walkPca title="Animate through contour PCA space">Walk</button></div></div><div id=pcControls></div></div></section><section class="panel-section neighbors"><div class=section-title><h2>Nearest Shells</h2></div><div id=neighborsList>`), _tmpl$3 = /* @__PURE__ */ template(`<div id=loadingOverlay class=loading-overlay><div class=rpg-loader aria-hidden=true><div class=loader-shadow></div><div class=loader-aura></div><div class="loader-shell loader-shell-top"><span class="shell-rib rib-1"></span><span class="shell-rib rib-2"></span><span class="shell-rib rib-3"></span><span class="shell-rib rib-4"></span><span class="shell-rib rib-5"></span><span class=shell-lip></span></div><div class="loader-shell loader-shell-bottom"><span class="shell-rib rib-1"></span><span class="shell-rib rib-2"></span><span class="shell-rib rib-3"></span><span class="shell-rib rib-4"></span><span class="shell-rib rib-5"></span><span class=shell-lip></span></div><div class=loader-pearl><span class="pearl-spark spark-1"></span><span class="pearl-spark spark-2"></span><span class="pearl-spark spark-3"></span></div></div><p id=loadingText>Opening shell data`), _tmpl$4 = /* @__PURE__ */ template(`<div id=missingData class=missing-data hidden><div><h2>Processed Data Missing</h2><p>Build processed data, export static data, then refresh the app.</p><code>make fingerprints
-make export-data`);
+var _tmpl$ = /* @__PURE__ */ template(`<header class=topbar><div class=brand-block><h1>Shellspace</h1><p class=tagline>Every shell is a fingerprint — Shellspace is the atlas.</p><p id=statusLine>Loading shell model</p></div><div id=starredBand class=starred-band aria-label="Starred shells"></div><div id=starBurst class=star-burst aria-hidden=true></div><div class=top-actions><button id=zoomOut title="Zoom out">-</button><button id=zoomIn title="Zoom in">+</button><button id=resetView title="Reset map view">Reset`), _tmpl$2 = /* @__PURE__ */ template(`<main class=workspace><aside class="panel controls-panel"><section class="panel-section search-section"><div class=search-row><label class=field><span>Search</span><input id=searchBox type=search placeholder="Species or Shellprint"></label><button id=filtersToggle class=filters-toggle title="Open filters"aria-expanded=false>Filters</button></div><div id=filtersPanel class=filters-popover hidden><header><h2>Filters</h2><button id=closeFilters title="Close filters"aria-label="Close filters">x</button></header><div id=filterControls class=filter-controls></div><div class=filter-actions><button id=resetTraitFilters title="Reset filters">Reset</button></div></div><button id=randomShell title="Select a random shell">Surprise me</button><button id=uploadShell class=upload-shell title="Bring your own shell">+ Bring your own shell</button><input id=uploadInput type=file accept=image/* hidden><div class=section-title><h2>Map</h2></div><div class=axis-grid><label><span>X</span><select id=xAxisSelect></select></label><label><span>Y</span><select id=yAxisSelect></select></label></div><label class=field><span>Color</span><select id=colorModeSelect><option value=locality>Location</option><option value=species>Species</option><option value=conservation>Conservation</option><option value=shell>Shell color</option><option value=pattern>Pattern</option><option value=lightness>Lightness</option><option value=concavity>Concavity</option></select></label></section><section class="panel-section physical-shell"><div class=section-title><h2>Physical Shell <span id=physicalHash class="fingerprint-chip compact">------</span></h2><button id=starShell class=star-button title="Star this shape"aria-label="Star this shape"aria-pressed=false><svg class=star-icon viewBox="0 0 24 24"aria-hidden=true><path class=star-shape d="M12 2.8l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.6l-5.8 3.1 1.1-6.5-4.7-4.6 6.5-.9L12 2.8z"></path></svg></button></div><div class=source-frame><div id=sourceSpinner class=source-spinner hidden></div><canvas id=sourceThumb width=420 height=300></canvas><img id=sourceImage alt hidden></div><div id=selectedName class=selected-name>None</div><dl id=selectedDetails></dl></section></aside><section class=scatter-panel aria-label="PCA scatter plot"><canvas id=scatterCanvas></canvas><div id=pointTooltip class=point-tooltip hidden></div></section><aside class="panel lab-panel"><section class="panel-section projected-lab"><div class=generated-shape><div class=section-title><h2>Projected Shell <span id=projectedHash class="fingerprint-chip compact">------</span></h2></div><div class=projection-frame><canvas id=outlineCanvas width=420 height=420></canvas><button id=exportSvg class=svg-export title="Export generated shell as SVG">SVG</button></div></div><div class=color-palette><h2>Palette</h2><div id=paletteSwatches class=palette-swatches></div></div><div class=slider-stack><div class=section-title><h2>Contour PCs</h2><div class=title-actions><button id=meanShape title="Reset contour coordinates">Mean</button><button id=walkPca title="Animate through contour PCA space">Walk</button></div></div><div id=pcControls></div></div></section><section class="panel-section neighbors"><div class=section-title><h2>Nearest Shells</h2></div><div id=neighborsList>`), _tmpl$3 = /* @__PURE__ */ template(`<div id=loadingOverlay class=loading-overlay><div class=rpg-loader aria-hidden=true><div class=loader-shadow></div><div class=loader-aura></div><div class="loader-shell loader-shell-top"><span class="shell-rib rib-1"></span><span class="shell-rib rib-2"></span><span class="shell-rib rib-3"></span><span class="shell-rib rib-4"></span><span class="shell-rib rib-5"></span><span class=shell-lip></span></div><div class="loader-shell loader-shell-bottom"><span class="shell-rib rib-1"></span><span class="shell-rib rib-2"></span><span class="shell-rib rib-3"></span><span class="shell-rib rib-4"></span><span class="shell-rib rib-5"></span><span class=shell-lip></span></div><div class=loader-pearl><span class="pearl-spark spark-1"></span><span class="pearl-spark spark-2"></span><span class="pearl-spark spark-3"></span></div></div><p id=loadingText>Opening shell data`), _tmpl$4 = /* @__PURE__ */ template(`<div id=missingData class=missing-data hidden><div><h2>Processed Data Missing</h2><p>Build FFT fingerprints, export static data, then refresh the app.</p><code>make fingerprints export-static`);
 function AppShell() {
   return [_tmpl$(), _tmpl$2(), _tmpl$3(), _tmpl$4()];
 }
@@ -586,6 +585,7 @@ const state = {
   tooltipEvent: null,
   tooltipLastAt: 0,
   holdingNearest: false,
+  pendingSelectShell: null,
   targetFrame: 0,
   targetEvent: null,
   targetNeighborTimer: 0,
@@ -615,8 +615,6 @@ const state = {
   neighborTimer: 0,
   neighborToken: 0,
   neighborRenderKey: "",
-  previewFrame: 0,
-  previewEvent: null,
   pointColorCache: /* @__PURE__ */ new Map(),
   paletteCache: /* @__PURE__ */ new Map(),
   originFilterOptionsCache: null
@@ -1643,12 +1641,11 @@ function centerViewportOnShell(shell) {
 function selectRandomShell() {
   const source = state.filtered.length ? state.filtered : state.shells;
   if (!source.length) return;
-  const shell = randomShellFromSource(source);
+  const shell = popReadySurpriseShell(source) || randomShellFromSource(source);
   if (!shell) return;
   centerViewportOnShell(shell);
-  selectShell(shell);
+  selectShell(shell, { preferFastSource: true, renderNearest: false });
   scheduleDraw(420);
-  primeSurpriseQueue(source);
 }
 function iucnSearchUrl(species) {
   const encoded = encodeURIComponent(species || "");
@@ -2249,9 +2246,9 @@ function resetSurpriseQueue() {
   state.surprisePrimeTimer = 0;
 }
 function queueRandomSurpriseShell(source) {
-  const queuedIds = new Set(state.surpriseQueue.map((entry2) => {
+  const queuedIds = new Set(state.surpriseQueue.map((entry) => {
     var _a;
-    return (_a = entry2.shell) == null ? void 0 : _a.id;
+    return (_a = entry.shell) == null ? void 0 : _a.id;
   }));
   let shell = null;
   for (let attempt = 0; attempt < 12; attempt += 1) {
@@ -2263,15 +2260,9 @@ function queueRandomSurpriseShell(source) {
   if (!shell) shell = randomShellFromSource(source);
   if (!shell) return;
   const page = thumbnailPageForShell(shell);
-  const entry = { shell, page, ready: page == null || state.loadedThumbnailPages.has(page) };
-  state.surpriseQueue.push(entry);
-  if (page != null && !entry.ready) {
-    loadThumbnailPage(page).then((image) => {
-      entry.ready = Boolean(image);
-    });
-  }
+  state.surpriseQueue.push({ shell, page, ready: true });
 }
-function primeSurpriseQueue(source = state.filtered, targetSize = 3) {
+function primeSurpriseQueue(source = state.filtered, targetSize = 12, delay = 80) {
   if (!source.length) return;
   if (state.surpriseQueueSource !== source) {
     state.surpriseQueue = [];
@@ -2282,7 +2273,18 @@ function primeSurpriseQueue(source = state.filtered, targetSize = 3) {
     scheduleIdleWork(() => {
       while (state.surpriseQueue.length < targetSize) queueRandomSurpriseShell(source);
     }, 500);
-  }, 80);
+  }, delay);
+}
+function popReadySurpriseShell(source) {
+  var _a;
+  if (state.surpriseQueueSource !== source || !state.surpriseQueue.length) return null;
+  for (let index = 0; index < state.surpriseQueue.length; index += 1) {
+    const entry = state.surpriseQueue[index];
+    if (!(entry == null ? void 0 : entry.shell) || entry.shell.id === ((_a = state.selected) == null ? void 0 : _a.id)) continue;
+    state.surpriseQueue.splice(index, 1);
+    return entry.shell;
+  }
+  return null;
 }
 function thumbnailWarmOrder() {
   var _a, _b;
@@ -2441,7 +2443,7 @@ function transparentBlackPixels(ctx, x, y, width, height) {
   const data = imageData.data;
   const black = new Uint8Array(pixelWidth * pixelHeight);
   for (let pixel = 0, index = 0; index < data.length; pixel += 1, index += 4) {
-    black[pixel] = data[index + 3] >= 16 && data[index] < 18 && data[index + 1] < 18 && data[index + 2] < 18 ? 1 : 0;
+    black[pixel] = data[index + 3] >= 16 && data[index] < 30 && data[index + 1] < 30 && data[index + 2] < 30 ? 1 : 0;
   }
   const queue = [];
   const push = (pixel) => {
@@ -2466,7 +2468,8 @@ function transparentBlackPixels(ctx, x, y, width, height) {
     if (py > 0) push(pixel - pixelWidth);
     if (py + 1 < pixelHeight) push(pixel + pixelWidth);
   }
-  for (const pixel of queue) {
+  for (let pixel = 0; pixel < black.length; pixel += 1) {
+    if (!black[pixel]) continue;
     const index = pixel * 4;
     data[index + 3] = 0;
   }
@@ -2679,7 +2682,7 @@ function drawSourceFallback(shell, size) {
   if (els.sourceSpinner) els.sourceSpinner.hidden = true;
   renderPalette(false);
 }
-async function renderSourceShell(shell) {
+async function renderSourceShell(shell, { preferFastSource = false } = {}) {
   if (!shell) return;
   const token = ++state.sourceToken;
   window.clearTimeout(state.sourceLoadTimer);
@@ -2694,6 +2697,21 @@ async function renderSourceShell(shell) {
   drawSourceFallback(shell, size);
   const source = thumbnailSourceRect(shell);
   state.sourceLoadTimer = window.setTimeout(async () => {
+    if (preferFastSource && source && state.loadedThumbnailPages.has(source.page)) {
+      if (token !== state.sourceToken || state.selected !== shell) return;
+      const image2 = await loadThumbnailPage(source.page);
+      if (token !== state.sourceToken || state.selected !== shell) return;
+      sourceThumbCtx.clearRect(0, 0, size.width, size.height);
+      const frame2 = drawCroppedLoadedShellImage(sourceThumbCtx, shell, source, image2, size.width, size.height) || drawLoadedThumbnailImage(sourceThumbCtx, shell, source, image2, size.width, size.height);
+      if (frame2) {
+        state.sourceFrame = frame2;
+        state.sourceMode = "atlas";
+        if (els.sourceSpinner) els.sourceSpinner.hidden = true;
+        renderPalette(true);
+        return;
+      }
+    }
+    if (preferFastSource) return;
     const original = await loadOriginalImage(shell);
     if (token !== state.sourceToken || state.selected !== shell) return;
     if (original) {
@@ -2720,7 +2738,7 @@ async function renderSourceShell(shell) {
       return;
     }
     drawSourceFallback(shell, size);
-  }, 320);
+  }, preferFastSource ? 16 : 320);
 }
 function contourPcDistanceSq(shell, candidate) {
   var _a, _b;
@@ -2869,6 +2887,11 @@ function clearTargetNearestNeighbors() {
   state.targetNeighborTimer = 0;
   state.targetNeighborValues = null;
 }
+function finishPendingScatterSelection() {
+  const shell = state.pendingSelectShell;
+  state.pendingSelectShell = null;
+  if (shell) selectShell(shell, { preferFastSource: true });
+}
 function scheduleRenderNeighbors(shell, delay = 0) {
   state.neighborToken += 1;
   const token = state.neighborToken;
@@ -2905,7 +2928,6 @@ function updateStarButton() {
 }
 function toggleStarredShell() {
   if (!state.selected) return;
-  const selectedForNeighbors = state.selected;
   window.clearTimeout(state.neighborTimer);
   const id = state.selected.id;
   const active = isStarred(state.selected);
@@ -2922,7 +2944,6 @@ function toggleStarredShell() {
   updateStarButton();
   renderStarred();
   window.setTimeout(saveStarred, 0);
-  scheduleRenderNeighbors(selectedForNeighbors, 900);
 }
 function triggerStarBurst() {
   var _a;
@@ -3072,7 +3093,7 @@ function resetStarredDock() {
     button.style.setProperty("--dock-z", "0");
   }
 }
-function selectShell(shell, { renderNearest = true } = {}) {
+function selectShell(shell, { renderNearest = true, preferFastSource = false } = {}) {
   var _a;
   if (!shell) return;
   if (state.walkingPca) stopPcaWalk(false);
@@ -3113,7 +3134,7 @@ function selectShell(shell, { renderNearest = true } = {}) {
     els.selectedDetails.append(dt, dd);
   }
   state.sourceFrame = null;
-  renderSourceShell(shell);
+  renderSourceShell(shell, { preferFastSource });
   if (renderNearest) scheduleRenderNeighbors(shell);
   else els.neighborsList.innerHTML = "";
   drawOutline();
@@ -3247,7 +3268,7 @@ function setTargetFromEvent(event, { updateControls = false } = {}) {
   const point = screenToWorld(screenX, screenY, size);
   const count = Math.max(((_a = state.model) == null ? void 0 : _a.contour_component_count) || 0, state.pcValues.length, contourAxisCount());
   if ((_b = state.targetDragStart) == null ? void 0 : _b.ignoreRealShells) {
-    const values = Array.from({ length: count }, (_, index) => clampPcValue(index, state.pcValues[index] || 0));
+    const values = Array.from({ length: count }, () => 0);
     assignPointAxes(values, point);
     applyPcValues(values, { updateControls });
     if (!updateControls) syncActivePcControls(values);
@@ -3289,34 +3310,6 @@ function flushTargetDragPreview() {
   if (next && ((_a = state.targetDragStart) == null ? void 0 : _a.active)) setTargetFromEvent(next);
   syncPcControls();
 }
-function renderNearestFromMouseEvent(event) {
-  var _a;
-  const rect = els.scatter.getBoundingClientRect();
-  const size = resizeCanvas(els.scatter, scatterCtx);
-  const screenX = event.clientX - rect.left;
-  const screenY = event.clientY - rect.top;
-  const point = screenToWorld(screenX, screenY, size);
-  const values = Array.from({ length: Math.max(((_a = state.model) == null ? void 0 : _a.contour_component_count) || 0, state.pcValues.length, contourAxisCount()) }, () => 0);
-  assignPointAxes(values, point);
-  const fastNeighbors = nearestScatterNeighborItems(screenX, screenY, values);
-  renderNeighborsForPc(
-    values,
-    fastNeighbors.length ? fastNeighbors : nearestContourNeighborsForPc(values, { axes: activePcaNeighborAxes() })
-  );
-}
-function queueMouseNeighbors(event) {
-  state.previewEvent = {
-    clientX: event.clientX,
-    clientY: event.clientY
-  };
-  if (state.previewFrame) return;
-  state.previewFrame = window.requestAnimationFrame(() => {
-    state.previewFrame = 0;
-    const next = state.previewEvent;
-    if (!next) return;
-    renderNearestFromMouseEvent(next);
-  });
-}
 function startViewportPan(event) {
   const rect = els.scatter.getBoundingClientRect();
   state.panningViewport = {
@@ -3328,6 +3321,7 @@ function startViewportPan(event) {
   state.draggingTarget = false;
   state.targetDragStart = null;
   state.targetEvent = null;
+  state.pendingSelectShell = null;
   clearTargetNearestNeighbors();
   if (state.targetFrame) {
     window.cancelAnimationFrame(state.targetFrame);
@@ -3993,7 +3987,7 @@ function resetToMeanShape() {
   setPcValues(Array.from({ length: state.model.contour_component_count || contourAxisCount() }, () => 0));
 }
 function setupEvents() {
-  var _a, _b, _c, _d, _e, _f;
+  var _a, _b, _c, _d, _e, _f, _g;
   els.search.addEventListener("input", updateFilter);
   (_a = els.filtersToggle) == null ? void 0 : _a.addEventListener("click", () => {
     var _a2;
@@ -4019,11 +4013,12 @@ function setupEvents() {
   els.uploadInput.addEventListener("change", handleUploadShell);
   els.exportSvg.addEventListener("click", exportGeneratedSvg);
   (_d = els.starredBand) == null ? void 0 : _d.addEventListener("pointermove", updateStarredDock);
-  (_e = els.starredBand) == null ? void 0 : _e.addEventListener("pointerleave", () => {
+  (_e = els.starredBand) == null ? void 0 : _e.addEventListener("mousemove", updateStarredDock);
+  (_f = els.starredBand) == null ? void 0 : _f.addEventListener("pointerleave", () => {
     resetStarredDock();
     queueStarredImageHydration(1200);
   });
-  (_f = els.starredBand) == null ? void 0 : _f.addEventListener("pointercancel", resetStarredDock);
+  (_g = els.starredBand) == null ? void 0 : _g.addEventListener("pointercancel", resetStarredDock);
   els.zoomIn.addEventListener("click", () => zoom(0.72));
   els.zoomOut.addEventListener("click", () => zoom(1.38));
   els.resetView.addEventListener("click", () => {
@@ -4048,10 +4043,10 @@ function setupEvents() {
     }
     if (event.button !== 0) return;
     state.holdingNearest = true;
-    els.scatter.setPointerCapture(event.pointerId);
     const rect = els.scatter.getBoundingClientRect();
     const shell = nearestShell(event.clientX - rect.left, event.clientY - rect.top);
-    if (shell) selectShell(shell);
+    state.pendingSelectShell = shell;
+    if (shell) scheduleRenderNeighbors(shell, 16);
     else {
       state.draggingTarget = true;
       state.targetDragStart = {
@@ -4071,7 +4066,6 @@ function setupEvents() {
       return;
     }
     if (state.draggingTarget) {
-      event.preventDefault();
       const start = state.targetDragStart;
       if (start && !start.active) {
         const distance = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY);
@@ -4083,22 +4077,53 @@ function setupEvents() {
       return;
     }
     if (state.holdingNearest) {
-      queueMouseNeighbors(event);
       els.pointTooltip.hidden = true;
       return;
     }
     queuePointTooltip(event);
   });
+  els.scatter.addEventListener("mousedown", (event) => {
+    if (event.button !== 0 || state.draggingTarget || state.holdingNearest || state.panningViewport) return;
+    state.holdingNearest = true;
+    const rect = els.scatter.getBoundingClientRect();
+    const shell = nearestShell(event.clientX - rect.left, event.clientY - rect.top);
+    state.pendingSelectShell = shell;
+    if (shell) scheduleRenderNeighbors(shell, 16);
+    else {
+      state.draggingTarget = true;
+      state.targetDragStart = {
+        pointerId: -1,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        active: false,
+        ignoreRealShells: true
+      };
+      els.pointTooltip.hidden = true;
+    }
+  });
+  els.scatter.addEventListener("mousemove", (event) => {
+    if (!state.draggingTarget || (event.buttons & 1) !== 1) return;
+    const start = state.targetDragStart;
+    if (start && !start.active) {
+      const distance = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY);
+      if (distance < 4) return;
+      start.active = true;
+    }
+    queueTargetFromEvent(event);
+    els.pointTooltip.hidden = true;
+  });
   for (const eventName of ["pointerup", "pointercancel"]) {
     els.scatter.addEventListener(eventName, (event) => {
       var _a2, _b2;
       flushTargetDragPreview();
+      const pendingSelect = eventName === "pointerup";
       state.holdingNearest = false;
       state.draggingTarget = false;
       state.targetDragStart = null;
       state.targetEvent = null;
       stopViewportPan();
-      state.previewEvent = null;
+      if (pendingSelect) finishPendingScatterSelection();
+      else state.pendingSelectShell = null;
       try {
         if ((_b2 = (_a2 = els.scatter).hasPointerCapture) == null ? void 0 : _b2.call(_a2, event.pointerId)) els.scatter.releasePointerCapture(event.pointerId);
       } catch (error) {
@@ -4106,9 +4131,17 @@ function setupEvents() {
       if (eventName !== "pointerup") els.pointTooltip.hidden = true;
     });
   }
+  window.addEventListener("mouseup", () => {
+    if (!state.holdingNearest && !state.draggingTarget) return;
+    flushTargetDragPreview();
+    state.holdingNearest = false;
+    state.draggingTarget = false;
+    state.targetDragStart = null;
+    state.targetEvent = null;
+    finishPendingScatterSelection();
+  });
   els.scatter.addEventListener("pointerleave", () => {
     if (state.draggingTarget || state.panningViewport) return;
-    state.previewEvent = null;
     els.pointTooltip.hidden = true;
   });
   els.scatter.addEventListener("auxclick", (event) => {

@@ -1,22 +1,16 @@
 PYTHON ?= python3
-JS_RUNNER ?= bun
+JS_RUNNER ?= npm
 PORT ?= 8010
-MAX_SIZE ?= 400
-SMOOTH_WINDOW ?= 5
-CONTOUR_POINTS ?= 256
-CONTOUR_SCALE ?= 16
-WORKERS ?= 8
-THUMBNAIL_SIZE ?= 224
-THUMBNAIL_QUALITY ?= 45
-THUMBNAIL_FORMAT ?= avif
-
-.PHONY: fingerprints export-data localities species-traits frontend-build frontend-typecheck smoke verify verify-browser verify-perf dev serve
+.PHONY: fingerprints export-static audit localities species-traits frontend-build frontend-typecheck smoke verify verify-browser verify-perf dev serve
 
 fingerprints:
-	$(PYTHON) tools/build_fingerprints.py --dataset dataset --output processed --max-size $(MAX_SIZE) --smooth-window $(SMOOTH_WINDOW) --center centroid --contour-points $(CONTOUR_POINTS)
+	$(PYTHON) tools/build_fft_fingerprints.py --dataset dataset --output processed_fft
 
-export-data:
-	$(PYTHON) tools/export_static_data.py --dataset dataset --processed processed --output public/data --contour-points $(CONTOUR_POINTS) --contour-scale $(CONTOUR_SCALE) --contour-workers $(WORKERS) --thumbnail-size $(THUMBNAIL_SIZE) --thumbnail-quality $(THUMBNAIL_QUALITY) --thumbnail-format $(THUMBNAIL_FORMAT)
+export-static:
+	$(PYTHON) tools/export_fft_static_data.py --processed processed_fft --output public/data
+
+audit:
+	$(PYTHON) tools/audit_fft_fingerprints.py --dataset dataset --processed processed_fft --output processed_fft/audit_contact_sheet.jpg
 
 localities:
 	$(PYTHON) tools/build_localities.py --offline

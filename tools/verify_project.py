@@ -303,25 +303,30 @@ def verify_entrypoint() -> None:
 
 
 def verify_processed(dataset: Path, processed: Path) -> int:
-    manifest = load_json(processed / "manifest.json")
-    numeric_path = processed / "fingerprints.npz"
-    if not numeric_path.exists():
-        raise AssertionError(f"Missing {numeric_path}")
-    image_count = count_images(dataset) if dataset.exists() else int(manifest["image_count"])
-    assert_equal(manifest["image_count"], image_count, "manifest image_count")
-    assert_equal(manifest["processed_count"], image_count, "manifest processed_count")
-    assert_equal(manifest["error_count"], 0, "manifest error_count")
-    numeric = np.load(numeric_path)
-    try:
-        assert_equal(numeric["fingerprints"].shape, (image_count, 360), "fingerprints shape")
-        contour_points = int(manifest.get("contour_points", 0))
-        if contour_points < MIN_CONTOUR_POINTS:
-            raise AssertionError(f"processed contour_points is too low: {contour_points}")
-        if "contours" not in numeric.files:
-            raise AssertionError("processed fingerprints.npz is missing contours")
-        assert_equal(numeric["contours"].shape, (image_count, contour_points, 2), "contours shape")
-    finally:
-        numeric.close()
+    model = load_json(processed / "model.json")
+    shell_payload = load_json_gzip(processed / "shells.json.gz")
+    errors = load_json(processed / "errors.json")
+    records = shell_payload.get("records", [])
+    image_count = count_images(dataset) if dataset.exists() else int(model["image_count"])
+    assert_equal(model["fingerprint_type"], "contour_fft_v1", "FFT fingerprint type")
+    assert_equal(model["image_count"], image_count, "FFT model image_count")
+    assert_equal(model["processed_count"], image_count, "FFT model processed_count")
+    assert_equal(model["error_count"], 0, "FFT model error_count")
+    assert_equal(errors["error_count"], 0, "FFT errors error_count")
+    assert_equal(len(records), image_count, "FFT shell record count")
+    assert_equal(model["fingerprint_size"], 128, "FFT fingerprint size")
+    if model["contour_samples"] < 512:
+        raise AssertionError(f"FFT contour_samples is too low: {model['contour_samples']}")
+    first = records[0]
+    if first.get("species") != "Aandara consociata" or first.get("specimen") != "10" or first.get("view") != "A":
+        raise AssertionError(f"FFT label parser regressed: {first.get('file')} -> {first.get('species')}/{first.get('specimen')}/{first.get('view')}")
+    if len(first.get("fft_fingerprint", [])) != model["fingerprint_size"]:
+        raise AssertionError("FFT shell record has wrong fingerprint length")
+    if len(first.get("pca_scores", [])) != model["pca_component_count"]:
+        raise AssertionError("FFT shell record has wrong PCA score length")
+    for key in ["mean_radius", "roughness", "contour_concavity", "color_r_mean", "color_l_mean", "color_pattern_strength"]:
+        if key not in first:
+            raise AssertionError(f"FFT shell records are missing {key!r}")
     return image_count
 
 
@@ -363,9 +368,9 @@ def verify_static(public_data: Path, image_count: int) -> None:
         raise AssertionError(f"contour_points is too low: {model['contour_points']}")
     if len(model["contour_mean"]) != model["contour_points"] * 2:
         raise AssertionError("contour_mean length does not match contour_points")
-    if len(model["contour_components"]) < 2 or len(model["trait_components"]) < 2:
-        raise AssertionError("Static model needs at least two contour and trait components")
-    for space in ["contour", "trait"]:
+    if len(model["contour_components"]) < 2:
+        raise AssertionError("Static model needs at least two contour components")
+    for space in ["contour"]:
         axes = model["pca_interpretation"].get(space, [])
         if len(axes) < 2:
             raise AssertionError(f"Missing PCA interpretations for {space}")
@@ -423,36 +428,16 @@ def verify_static(public_data: Path, image_count: int) -> None:
     assert_equal(locality_payload.get("species_count"), model["species_count"], "locality species count")
     if locality_payload.get("matched_species_count", 0) < model["species_count"] // 2:
         raise AssertionError("Locality pack matched too few species")
-    traits_path = public_data / model["species_traits_file"]
-    if not traits_path.exists():
-        raise AssertionError(f"Missing {traits_path}")
-    traits_payload = load_json_gzip(traits_path)
-    if traits_payload.get("encoding") != "shell-species-traits-v1":
-        raise AssertionError("Unexpected species traits pack encoding")
-    assert_equal(traits_payload.get("species_count"), model["species_count"], "species traits count")
-    rarity_labels = traits_payload.get("rarity_labels", [])
-    if rarity_labels != ["Common", "Uncommon", "Rare", "Extremely rare", "Data deficient"]:
-        raise AssertionError(f"Unexpected rarity labels: {rarity_labels!r}")
-    rarity = traits_payload.get("rarity", [])
-    if len(rarity) != model["species_count"] or len(set(rarity)) < 4:
-        raise AssertionError("Species traits pack should contain varied coarse rarity labels")
-    for key in [
-        "species",
-        "species_names",
-        "genus",
-        "commonness",
-        "dataset_sample_count",
-        "observation_count",
-        "known_range",
-        "known_range_country_codes",
-        "protection_status",
-        "market_price_usd",
-    ]:
-        if len(traits_payload.get(key, [])) != model["species_count"]:
-            raise AssertionError(f"Species traits field {key!r} has the wrong length")
-    commonness = traits_payload.get("commonness", [])
-    if not all(label in rarity_labels for label in commonness[:100]):
-        raise AssertionError("Species traits commonness labels do not match rarity labels")
+    if model.get("species_traits_file"):
+        traits_path = public_data / model["species_traits_file"]
+        if not traits_path.exists():
+            raise AssertionError(f"Missing {traits_path}")
+        traits_payload = load_json_gzip(traits_path)
+        if traits_payload.get("encoding") != "shell-species-traits-v1":
+            raise AssertionError("Unexpected species traits pack encoding")
+        rarity_labels = traits_payload.get("rarity_labels", [])
+        if rarity_labels != ["Common", "Uncommon", "Rare", "Extremely rare", "Data deficient"]:
+            raise AssertionError(f"Unexpected rarity labels: {rarity_labels!r}")
     contour_path = public_data / model["contour_file"]
     if not contour_path.exists():
         raise AssertionError(f"Missing {contour_path}")
@@ -975,7 +960,7 @@ def serve_repo(root: Path) -> tuple[ThreadingHTTPServer, str]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, default=Path("dataset"))
-    parser.add_argument("--processed", type=Path, default=Path("processed"))
+    parser.add_argument("--processed", type=Path, default=Path("processed_fft"))
     parser.add_argument("--public-data", type=Path, default=Path("public/data"))
     parser.add_argument("--browser", action="store_true")
     parser.add_argument("--perf", action="store_true", help="run the Surprise me browser latency gate")

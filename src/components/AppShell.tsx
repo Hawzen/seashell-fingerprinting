@@ -160,8 +160,8 @@ export function AppShell() {
       <div id="missingData" class="missing-data" hidden>
         <div>
           <h2>Processed Data Missing</h2>
-          <p>Build processed data, export static data, then refresh the app.</p>
-          <code>{`make fingerprints\nmake export-data`}</code>
+          <p>Build FFT fingerprints, export static data, then refresh the app.</p>
+          <code>make fingerprints export-static</code>
         </div>
       </div>
     </>

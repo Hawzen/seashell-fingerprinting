@@ -71,6 +71,7 @@ const state = {
   tooltipEvent: null,
   tooltipLastAt: 0,
   holdingNearest: false,
+  pendingSelectShell: null,
   targetFrame: 0,
   targetEvent: null,
   targetNeighborTimer: 0,
@@ -100,8 +101,6 @@ const state = {
   neighborTimer: 0,
   neighborToken: 0,
   neighborRenderKey: "",
-  previewFrame: 0,
-  previewEvent: null,
   pointColorCache: new Map(),
   paletteCache: new Map(),
   originFilterOptionsCache: null,
@@ -1213,12 +1212,11 @@ function centerViewportOnShell(shell) {
 function selectRandomShell() {
   const source = state.filtered.length ? state.filtered : state.shells;
   if (!source.length) return;
-  const shell = randomShellFromSource(source);
+  const shell = popReadySurpriseShell(source) || randomShellFromSource(source);
   if (!shell) return;
   centerViewportOnShell(shell);
-  selectShell(shell);
+  selectShell(shell, { preferFastSource: true, renderNearest: false });
   scheduleDraw(420);
-  primeSurpriseQueue(source);
 }
 
 function iucnSearchUrl(species) {
@@ -1895,16 +1893,10 @@ function queueRandomSurpriseShell(source) {
   if (!shell) shell = randomShellFromSource(source);
   if (!shell) return;
   const page = thumbnailPageForShell(shell);
-  const entry = { shell, page, ready: page == null || state.loadedThumbnailPages.has(page) };
-  state.surpriseQueue.push(entry);
-  if (page != null && !entry.ready) {
-    loadThumbnailPage(page).then((image) => {
-      entry.ready = Boolean(image);
-    });
-  }
+  state.surpriseQueue.push({ shell, page, ready: true });
 }
 
-function primeSurpriseQueue(source = state.filtered, targetSize = 3) {
+function primeSurpriseQueue(source = state.filtered, targetSize = 12, delay = 80) {
   if (!source.length) return;
   if (state.surpriseQueueSource !== source) {
     state.surpriseQueue = [];
@@ -1915,7 +1907,18 @@ function primeSurpriseQueue(source = state.filtered, targetSize = 3) {
     scheduleIdleWork(() => {
       while (state.surpriseQueue.length < targetSize) queueRandomSurpriseShell(source);
     }, 500);
-  }, 80);
+  }, delay);
+}
+
+function popReadySurpriseShell(source) {
+  if (state.surpriseQueueSource !== source || !state.surpriseQueue.length) return null;
+  for (let index = 0; index < state.surpriseQueue.length; index += 1) {
+    const entry = state.surpriseQueue[index];
+    if (!entry?.shell || entry.shell.id === state.selected?.id) continue;
+    state.surpriseQueue.splice(index, 1);
+    return entry.shell;
+  }
+  return null;
 }
 
 function thumbnailWarmOrder() {
@@ -2084,7 +2087,7 @@ function transparentBlackPixels(ctx, x, y, width, height) {
   const data = imageData.data;
   const black = new Uint8Array(pixelWidth * pixelHeight);
   for (let pixel = 0, index = 0; index < data.length; pixel += 1, index += 4) {
-    black[pixel] = data[index + 3] >= 16 && data[index] < 18 && data[index + 1] < 18 && data[index + 2] < 18 ? 1 : 0;
+    black[pixel] = data[index + 3] >= 16 && data[index] < 30 && data[index + 1] < 30 && data[index + 2] < 30 ? 1 : 0;
   }
   const queue = [];
   const push = (pixel) => {
@@ -2109,7 +2112,8 @@ function transparentBlackPixels(ctx, x, y, width, height) {
     if (py > 0) push(pixel - pixelWidth);
     if (py + 1 < pixelHeight) push(pixel + pixelWidth);
   }
-  for (const pixel of queue) {
+  for (let pixel = 0; pixel < black.length; pixel += 1) {
+    if (!black[pixel]) continue;
     const index = pixel * 4;
     data[index + 3] = 0;
   }
@@ -2334,7 +2338,7 @@ function drawSourceFallback(shell, size) {
   renderPalette(false);
 }
 
-async function renderSourceShell(shell) {
+async function renderSourceShell(shell, { preferFastSource = false } = {}) {
   if (!shell) return;
   const token = ++state.sourceToken;
   window.clearTimeout(state.sourceLoadTimer);
@@ -2349,6 +2353,22 @@ async function renderSourceShell(shell) {
   drawSourceFallback(shell, size);
   const source = thumbnailSourceRect(shell);
   state.sourceLoadTimer = window.setTimeout(async () => {
+    if (preferFastSource && source && state.loadedThumbnailPages.has(source.page)) {
+      if (token !== state.sourceToken || state.selected !== shell) return;
+      const image = await loadThumbnailPage(source.page);
+      if (token !== state.sourceToken || state.selected !== shell) return;
+      sourceThumbCtx.clearRect(0, 0, size.width, size.height);
+      const frame = drawCroppedLoadedShellImage(sourceThumbCtx, shell, source, image, size.width, size.height)
+        || drawLoadedThumbnailImage(sourceThumbCtx, shell, source, image, size.width, size.height);
+      if (frame) {
+        state.sourceFrame = frame;
+        state.sourceMode = "atlas";
+        if (els.sourceSpinner) els.sourceSpinner.hidden = true;
+        renderPalette(true);
+        return;
+      }
+    }
+    if (preferFastSource) return;
     const original = await loadOriginalImage(shell);
     if (token !== state.sourceToken || state.selected !== shell) return;
     if (original) {
@@ -2376,7 +2396,7 @@ async function renderSourceShell(shell) {
       return;
     }
     drawSourceFallback(shell, size);
-  }, 320);
+  }, preferFastSource ? 16 : 320);
 }
 
 function contourPcDistanceSq(shell, candidate) {
@@ -2536,6 +2556,12 @@ function clearTargetNearestNeighbors() {
   state.targetNeighborValues = null;
 }
 
+function finishPendingScatterSelection() {
+  const shell = state.pendingSelectShell;
+  state.pendingSelectShell = null;
+  if (shell) selectShell(shell, { preferFastSource: true });
+}
+
 function scheduleRenderNeighbors(shell, delay = 0) {
   state.neighborToken += 1;
   const token = state.neighborToken;
@@ -2577,7 +2603,6 @@ function updateStarButton() {
 
 function toggleStarredShell() {
   if (!state.selected) return;
-  const selectedForNeighbors = state.selected;
   window.clearTimeout(state.neighborTimer);
   const id = state.selected.id;
   const active = isStarred(state.selected);
@@ -2594,7 +2619,6 @@ function toggleStarredShell() {
   updateStarButton();
   renderStarred();
   window.setTimeout(saveStarred, 0);
-  scheduleRenderNeighbors(selectedForNeighbors, 900);
 }
 
 function triggerStarBurst() {
@@ -2753,7 +2777,7 @@ function resetStarredDock() {
   }
 }
 
-function selectShell(shell, { renderNearest = true } = {}) {
+function selectShell(shell, { renderNearest = true, preferFastSource = false } = {}) {
   if (!shell) return;
   if (state.walkingPca) stopPcaWalk(false);
   if (shell.id >= 0 && state.uploadImageUrl) {
@@ -2793,7 +2817,7 @@ function selectShell(shell, { renderNearest = true } = {}) {
     els.selectedDetails.append(dt, dd);
   }
   state.sourceFrame = null;
-  renderSourceShell(shell);
+  renderSourceShell(shell, { preferFastSource });
   if (renderNearest) scheduleRenderNeighbors(shell);
   else els.neighborsList.innerHTML = "";
   updateGeneratorStatus();
@@ -2932,7 +2956,7 @@ function setTargetFromEvent(event, { updateControls = false } = {}) {
   const point = screenToWorld(screenX, screenY, size);
   const count = Math.max(state.model?.contour_component_count || 0, state.pcValues.length, contourAxisCount());
   if (state.targetDragStart?.ignoreRealShells) {
-    const values = Array.from({ length: count }, (_, index) => clampPcValue(index, state.pcValues[index] || 0));
+    const values = Array.from({ length: count }, () => 0);
     assignPointAxes(values, point);
     applyPcValues(values, { updateControls });
     if (!updateControls) syncActivePcControls(values);
@@ -2976,37 +3000,6 @@ function flushTargetDragPreview() {
   syncPcControls();
 }
 
-function renderNearestFromMouseEvent(event) {
-  const rect = els.scatter.getBoundingClientRect();
-  const size = resizeCanvas(els.scatter, scatterCtx);
-  const screenX = event.clientX - rect.left;
-  const screenY = event.clientY - rect.top;
-  const point = screenToWorld(screenX, screenY, size);
-  const values = Array.from({ length: Math.max(state.model?.contour_component_count || 0, state.pcValues.length, contourAxisCount()) }, () => 0);
-  assignPointAxes(values, point);
-  const fastNeighbors = nearestScatterNeighborItems(screenX, screenY, values);
-  renderNeighborsForPc(
-    values,
-    fastNeighbors.length
-      ? fastNeighbors
-      : nearestContourNeighborsForPc(values, { axes: activePcaNeighborAxes() }),
-  );
-}
-
-function queueMouseNeighbors(event) {
-  state.previewEvent = {
-    clientX: event.clientX,
-    clientY: event.clientY,
-  };
-  if (state.previewFrame) return;
-  state.previewFrame = window.requestAnimationFrame(() => {
-    state.previewFrame = 0;
-    const next = state.previewEvent;
-    if (!next) return;
-    renderNearestFromMouseEvent(next);
-  });
-}
-
 function startViewportPan(event) {
   const rect = els.scatter.getBoundingClientRect();
   state.panningViewport = {
@@ -3018,6 +3011,7 @@ function startViewportPan(event) {
   state.draggingTarget = false;
   state.targetDragStart = null;
   state.targetEvent = null;
+  state.pendingSelectShell = null;
   clearTargetNearestNeighbors();
   if (state.targetFrame) {
     window.cancelAnimationFrame(state.targetFrame);
@@ -3748,6 +3742,7 @@ function setupEvents() {
   els.uploadInput.addEventListener("change", handleUploadShell);
   els.exportSvg.addEventListener("click", exportGeneratedSvg);
   els.starredBand?.addEventListener("pointermove", updateStarredDock);
+  els.starredBand?.addEventListener("mousemove", updateStarredDock);
   els.starredBand?.addEventListener("pointerleave", () => {
     resetStarredDock();
     queueStarredImageHydration(1200);
@@ -3779,10 +3774,10 @@ function setupEvents() {
     }
     if (event.button !== 0) return;
     state.holdingNearest = true;
-    els.scatter.setPointerCapture(event.pointerId);
     const rect = els.scatter.getBoundingClientRect();
     const shell = nearestShell(event.clientX - rect.left, event.clientY - rect.top);
-    if (shell) selectShell(shell);
+    state.pendingSelectShell = shell;
+    if (shell) scheduleRenderNeighbors(shell, 16);
     else {
       state.draggingTarget = true;
       state.targetDragStart = {
@@ -3803,7 +3798,6 @@ function setupEvents() {
       return;
     }
     if (state.draggingTarget) {
-      event.preventDefault();
       const start = state.targetDragStart;
       if (start && !start.active) {
         const distance = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY);
@@ -3815,22 +3809,55 @@ function setupEvents() {
       return;
     }
     if (state.holdingNearest) {
-      queueMouseNeighbors(event);
       els.pointTooltip.hidden = true;
       return;
     }
     queuePointTooltip(event);
   });
 
+  els.scatter.addEventListener("mousedown", (event) => {
+    if (event.button !== 0 || state.draggingTarget || state.holdingNearest || state.panningViewport) return;
+    state.holdingNearest = true;
+    const rect = els.scatter.getBoundingClientRect();
+    const shell = nearestShell(event.clientX - rect.left, event.clientY - rect.top);
+    state.pendingSelectShell = shell;
+    if (shell) scheduleRenderNeighbors(shell, 16);
+    else {
+      state.draggingTarget = true;
+      state.targetDragStart = {
+        pointerId: -1,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        active: false,
+        ignoreRealShells: true,
+      };
+      els.pointTooltip.hidden = true;
+    }
+  });
+
+  els.scatter.addEventListener("mousemove", (event) => {
+    if (!state.draggingTarget || (event.buttons & 1) !== 1) return;
+    const start = state.targetDragStart;
+    if (start && !start.active) {
+      const distance = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY);
+      if (distance < 4) return;
+      start.active = true;
+    }
+    queueTargetFromEvent(event);
+    els.pointTooltip.hidden = true;
+  });
+
   for (const eventName of ["pointerup", "pointercancel"]) {
     els.scatter.addEventListener(eventName, (event) => {
       flushTargetDragPreview();
+      const pendingSelect = eventName === "pointerup";
       state.holdingNearest = false;
       state.draggingTarget = false;
       state.targetDragStart = null;
       state.targetEvent = null;
       stopViewportPan();
-      state.previewEvent = null;
+      if (pendingSelect) finishPendingScatterSelection();
+      else state.pendingSelectShell = null;
       try {
         if (els.scatter.hasPointerCapture?.(event.pointerId)) els.scatter.releasePointerCapture(event.pointerId);
       } catch (error) {
@@ -3839,9 +3866,17 @@ function setupEvents() {
       if (eventName !== "pointerup") els.pointTooltip.hidden = true;
     });
   }
+  window.addEventListener("mouseup", () => {
+    if (!state.holdingNearest && !state.draggingTarget) return;
+    flushTargetDragPreview();
+    state.holdingNearest = false;
+    state.draggingTarget = false;
+    state.targetDragStart = null;
+    state.targetEvent = null;
+    finishPendingScatterSelection();
+  });
   els.scatter.addEventListener("pointerleave", () => {
     if (state.draggingTarget || state.panningViewport) return;
-    state.previewEvent = null;
     els.pointTooltip.hidden = true;
   });
   els.scatter.addEventListener("auxclick", (event) => {
