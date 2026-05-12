@@ -1,8 +1,8 @@
-- Clavus fusconitens
+- Ancient fossile & South African fossile
 - What are things?
   - Properties of things
   - Latent space
   - PCA / autoencoders / other techniques
 - Elliptic Fourier Descriptors
   - 3B1B video
-  
+- Most X shell / Least Y shell
