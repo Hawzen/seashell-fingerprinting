@@ -423,10 +423,13 @@ async function fetchCompressedArrayBuffer(url) {
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) throw new Error(`${url} returned ${response.status}`);
   if (!url.endsWith(".gz")) return response.arrayBuffer();
+  const buffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  if (bytes[0] !== 0x1f || bytes[1] !== 0x8b) return buffer;
   if (!("DecompressionStream" in window)) {
     throw new Error("This browser cannot decompress the shell data pack.");
   }
-  return new Response(response.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+  return new Response(new Blob([buffer]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
 }
 
 async function fetchCompressedJson(url) {

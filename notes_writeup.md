@@ -6,3 +6,5 @@
 - Elliptic Fourier Descriptors
   - 3B1B video
 - Most X shell / Least Y shell
+- Clavus fusconitens
+- The following document is written with zero AI assistance

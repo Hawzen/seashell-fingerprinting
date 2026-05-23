@@ -5,6 +5,7 @@ __pycache__/
 *_stub.h
 *.tsbuildinfo
 node_modules/
+delete_later/
 dataset/
 processed/
 processed_fft/
