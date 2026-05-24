@@ -7,7 +7,7 @@ export default defineConfig({
   build: {
     outDir: "public",
     emptyOutDir: false,
-    minify: false,
+    minify: true,
     sourcemap: false,
     rollupOptions: {
       input: "src/main.tsx",

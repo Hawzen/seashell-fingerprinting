@@ -1,13 +1,10 @@
 PYTHON ?= python3
 JS_RUNNER ?= npm
 PORT ?= 8010
-.PHONY: fingerprints export-static audit localities species-traits frontend-build frontend-typecheck smoke verify verify-browser verify-perf dev serve
+.PHONY: fingerprints audit localities species-traits frontend-build frontend-typecheck smoke verify verify-browser verify-perf dev serve
 
 fingerprints:
-	$(PYTHON) tools/build_fft_fingerprints.py --dataset dataset --output processed_fft
-
-export-static:
-	$(PYTHON) tools/export_fft_static_data.py --processed processed_fft --output public/data
+	$(PYTHON) tools/build_fingerprints.py --dataset dataset --output processed_fft
 
 audit:
 	$(PYTHON) tools/audit_fft_fingerprints.py --dataset dataset --processed processed_fft --output processed_fft/audit_contact_sheet.jpg

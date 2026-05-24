@@ -9,6 +9,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@bunnio/rembg-web": "^1.0.2",
+    "onnxruntime-web": "^1.26.0",
     "solid-js": "^1.9.9"
   },
   "devDependencies": {

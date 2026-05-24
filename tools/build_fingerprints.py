@@ -15,6 +15,8 @@ import numpy as np
 from PIL import Image, ImageOps
 from rembg import new_session, remove
 
+from enrich import write_enrichment
+
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 MAX_IMAGE_PIXELS = 100_000_000
@@ -200,7 +202,7 @@ def write_outputs(
         return value
 
     output.mkdir(parents=True, exist_ok=True)
-    for stale_name in ["shells.json.gz", "files.json.gz", "errors.json", "model.json"]:
+    for stale_name in ["shells.json.gz", "files.json.gz", "errors.json", "model.json", "enrichment.json", "enrichment.tsv"]:
         stale_path = output / stale_name
         if stale_path.exists():
             stale_path.unlink()
@@ -219,6 +221,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--components", type=int, default=12)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--enrichment", type=Path, default=Path("dataset_enrichment/enriched_preview.tsv"))
+    parser.add_argument("--skip-enrichment", action="store_true")
     return parser.parse_args()
 
 
@@ -261,6 +265,14 @@ def main() -> None:
         "components": pca_model["components"],
     }
     write_outputs(args.output, model, file_names, fingerprint_matrix, pca_scores)
+    if not args.skip_enrichment:
+        write_enrichment(
+            file_names,
+            args.output / "enrichment.json",
+            image_root=args.dataset,
+            enrichment_path=args.enrichment,
+            compact=True,
+        )
     print(f"wrote {len(fingerprints)} shells to {args.output}")
 
 

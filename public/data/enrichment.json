@@ -1,0 +1,266 @@
+{
+  "source_file_count": 100,
+  "species_count": 26,
+  "rows": [
+    {
+      "label": "Aandara_consociata",
+      "scientific_name": "Aandara consociata",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 24.852,
+      "asymmetry_mean": 0.15561
+    },
+    {
+      "label": "Abida_polyodon",
+      "scientific_name": "Abida polyodon",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 6.393,
+      "asymmetry_mean": 0.16134
+    },
+    {
+      "label": "Abida_secale",
+      "scientific_name": "Abida secale",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 3.596,
+      "asymmetry_mean": 0.16083
+    },
+    {
+      "label": "Abra_alba",
+      "scientific_name": "Abra alba",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 32.33,
+      "asymmetry_mean": 0.12987
+    },
+    {
+      "label": "Abra_longicallus",
+      "scientific_name": "Abra longicallus",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 43.044,
+      "asymmetry_mean": 0.1431
+    },
+    {
+      "label": "Abra_soyoae",
+      "scientific_name": "Abra soyoae",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 50.187,
+      "asymmetry_mean": 0.16167
+    },
+    {
+      "label": "Abra_tenuis",
+      "scientific_name": "Abra tenuis",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 39.541,
+      "asymmetry_mean": 0.16141
+    },
+    {
+      "label": "Acanthina_brevidentata",
+      "scientific_name": "Acanthina brevidentata",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 13.623,
+      "asymmetry_mean": 0.16069
+    },
+    {
+      "label": "Acanthina_spirata",
+      "scientific_name": "Acanthina spirata",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 16.687,
+      "asymmetry_mean": 0.16122
+    },
+    {
+      "label": "Acanthocardia_aculeata",
+      "scientific_name": "Acanthocardia aculeata",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 26.274,
+      "asymmetry_mean": 0.15654
+    },
+    {
+      "label": "Acanthocardia_echinata",
+      "scientific_name": "Acanthocardia echinata",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 20.081,
+      "asymmetry_mean": 0.15375
+    },
+    {
+      "label": "Acanthocardia_paucicostata",
+      "scientific_name": "Acanthocardia paucicostata",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 29.862,
+      "asymmetry_mean": 0.14442
+    },
+    {
+      "label": "Acanthocardia_spinosa",
+      "scientific_name": "Acanthocardia spinosa",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 32.67,
+      "asymmetry_mean": 0.14833
+    },
+    {
+      "label": "Acanthocardia_tubercolata",
+      "scientific_name": "Acanthocardia tubercolata",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 36.289,
+      "asymmetry_mean": 0.1536
+    },
+    {
+      "label": "Acanthocardia_tuberculata",
+      "scientific_name": "Acanthocardia tuberculata",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 33.136,
+      "asymmetry_mean": 0.1463
+    },
+    {
+      "label": "Acanthochitona_fascicularis",
+      "scientific_name": "Acanthochitona fascicularis",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 14.737,
+      "asymmetry_mean": 0.16212
+    },
+    {
+      "label": "Acanthochitona_hemphilli",
+      "scientific_name": "Acanthochitona hemphilli",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 16.192,
+      "asymmetry_mean": 0.16021
+    },
+    {
+      "label": "Acanthochitona_pygmaea",
+      "scientific_name": "Acanthochitona pygmaea",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 31.367,
+      "asymmetry_mean": 0.1624
+    },
+    {
+      "label": "Acanthochitona_sueurii",
+      "scientific_name": "Acanthochitona sueurii",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 9.74,
+      "asymmetry_mean": 0.16279
+    },
+    {
+      "label": "Acanthopleura_gemmata",
+      "scientific_name": "Acanthopleura gemmata",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 9.391,
+      "asymmetry_mean": 0.16111
+    },
+    {
+      "label": "Acanthopleura_granulata",
+      "scientific_name": "Acanthopleura granulata",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 24.042,
+      "asymmetry_mean": 0.16087
+    },
+    {
+      "label": "Acanthopleura_japonica",
+      "scientific_name": "Acanthopleura japonica",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 17.603,
+      "asymmetry_mean": 0.16252
+    },
+    {
+      "label": "Acanthopleura_loochooana",
+      "scientific_name": "Acanthopleura loochooana",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 26.462,
+      "asymmetry_mean": 0.16198
+    },
+    {
+      "label": "Acanthopleura_spinosa",
+      "scientific_name": "Acanthopleura spinosa",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 8.661,
+      "asymmetry_mean": 0.16124
+    },
+    {
+      "label": "Acar_donaciformis",
+      "scientific_name": "Acar donaciformis",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 35.778,
+      "asymmetry_mean": 0.16228
+    },
+    {
+      "label": "Acar_gradata",
+      "scientific_name": "Acar gradata",
+      "occurrence_count": "",
+      "country_count": "",
+      "countries_top": "",
+      "rarity_proxy": "unknown",
+      "lightness_mean": 28.567,
+      "asymmetry_mean": 0.16179
+    }
+  ]
+}

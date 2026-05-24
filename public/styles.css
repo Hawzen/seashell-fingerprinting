@@ -24,7 +24,9 @@
 
 html,
 body {
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 body {
@@ -34,6 +36,13 @@ body {
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
+}
+
+body > div {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 h1,
@@ -72,25 +81,50 @@ select {
 }
 
 button {
+  appearance: none;
+  -webkit-appearance: none;
   min-height: 36px;
   min-width: 38px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: var(--panel);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(246, 243, 235, 0.86)),
+    var(--panel);
   color: var(--ink);
   cursor: pointer;
-  font-weight: 400;
+  font-weight: 650;
+  line-height: 1;
+  user-select: none;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
 }
 
 button:hover {
   border-color: var(--teal);
+  box-shadow: 0 1px 0 rgba(31, 38, 40, 0.06);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button:focus-visible {
+  outline: 0;
+  border-color: rgba(31, 117, 111, 0.82);
+  box-shadow:
+    0 0 0 2px rgba(31, 117, 111, 0.12),
+    0 1px 0 rgba(31, 38, 40, 0.06);
 }
 
 .topbar {
   position: relative;
   z-index: 40;
-  min-height: 92px;
-  padding: 44px 20px 14px;
+  /* min-height: 0em; */
+  /* padding: 10em; */
+  padding: 1em;
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
@@ -108,7 +142,8 @@ button:hover {
 }
 
 .topbar p {
-  margin-top: 6px;
+  margin-top: 0em;
+  padding-top: 0;
   color: var(--muted);
   font-size: 14px;
 }
@@ -119,7 +154,7 @@ button:hover {
   line-height: 1.25;
 }
 
-.brand-block #statusLine {
+.brand-block .status-line {
   font-size: 12px;
 }
 
@@ -202,22 +237,26 @@ button:hover {
   z-index: var(--dock-z, 0);
 }
 
-.starred-shell:hover {
-  --dock-scale: 2.08;
-  --dock-lift: 18px;
-  --dock-z: 120;
+.starred-shell,
+.starred-shell:hover,
+.starred-shell:active,
+.starred-shell:focus-visible {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  outline: 0;
 }
 
 .starred-shell:first-child {
-  filter: drop-shadow(0 0 9px rgba(207, 162, 60, 0.42));
+  filter: none;
 }
 
-.starred-shell canvas {
+.starred-shell img {
   width: 100%;
   height: 100%;
   display: block;
   pointer-events: none;
-  filter: drop-shadow(0 2px 3px rgba(32, 36, 42, 0.2));
+  object-fit: contain;
 }
 
 .starred-more {
@@ -244,8 +283,8 @@ button:hover {
 }
 
 .workspace {
-  height: calc(100vh - 77px);
-  min-height: 640px;
+  min-height: 0;
+  overflow: hidden;
   display: grid;
   grid-template-columns: minmax(260px, 330px) minmax(460px, 1fr) minmax(320px, 390px);
 }
@@ -316,7 +355,7 @@ button:hover {
   background-size: 32px 32px;
 }
 
-#scatterCanvas {
+.scatter-canvas {
   width: 100%;
   height: 100%;
   display: block;
@@ -324,7 +363,7 @@ button:hover {
   touch-action: none;
 }
 
-#scatterCanvas.is-panning {
+.scatter-canvas.is-panning {
   cursor: grabbing;
 }
 
@@ -364,6 +403,42 @@ button:hover {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: end;
+}
+
+.shell-action-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.surprise-shell {
+  flex: 0 0 42px;
+  width: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.surprise-shell svg,
+.upload-shell svg {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+}
+
+.surprise-shell rect,
+.upload-shell path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.surprise-shell circle {
+  fill: currentColor;
 }
 
 .filters-toggle {
@@ -583,6 +658,8 @@ dt {
 input[type="search"],
 input[type="number"],
 select {
+  appearance: none;
+  -webkit-appearance: none;
   width: 100%;
   min-height: 38px;
   border: 1px solid var(--line);
@@ -592,10 +669,23 @@ select {
   background: #fff;
 }
 
+select {
+  padding-right: 34px;
+  background:
+    linear-gradient(45deg, transparent 50%, #4d5a5c 50%) right 15px center / 6px 6px no-repeat,
+    linear-gradient(135deg, #4d5a5c 50%, transparent 50%) right 10px center / 6px 6px no-repeat,
+    #fff;
+}
+
+select::-ms-expand {
+  display: none;
+}
+
 input:focus,
 select:focus {
-  outline: 2px solid rgba(40, 122, 116, 0.22);
+  outline: 0;
   border-color: var(--teal);
+  box-shadow: 0 0 0 2px rgba(40, 122, 116, 0.14);
 }
 
 .axis-grid {
@@ -644,8 +734,7 @@ select:focus {
 }
 
 .image-preview img,
-#sourceThumb,
-#sourceImage {
+.source-image {
   width: 100%;
   height: min(340px, 38vh);
   max-height: 340px;
@@ -655,6 +744,14 @@ select:focus {
 }
 
 .upload-shell {
+  flex: 1 1 auto;
+  min-height: 42px;
+  min-width: 0;
+  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   border-color: rgba(198, 93, 75, 0.42);
   background: var(--panel);
   color: #783b30;
@@ -800,26 +897,27 @@ dd {
   word-break: break-word;
 }
 
-#neighborsList {
+.neighbors-list {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
 .neighbor-button {
   position: relative;
   min-width: 0;
-  padding: 0;
+  min-height: 82px;
+  padding: 6px;
   overflow: hidden;
   border-radius: 7px;
   background: #f7f7f2;
-  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
 }
 
-.neighbor-button img,
-.neighbor-button canvas {
-  width: 100%;
-  height: 100%;
+.neighbor-button img {
+  width: min(86px, 100%);
+  height: 68px;
   display: block;
   object-fit: contain;
 }
@@ -839,7 +937,7 @@ dd {
   text-overflow: ellipsis;
 }
 
-#outlineCanvas {
+.outline-canvas {
   width: 100%;
   height: auto;
   display: block;
@@ -848,7 +946,7 @@ dd {
   background: #f7f7f2;
 }
 
-#outlineCanvas {
+.outline-canvas {
   aspect-ratio: 1;
 }
 
@@ -877,7 +975,7 @@ dd {
   font-size: 12px;
 }
 
-#pcControls {
+.pc-controls {
   display: grid;
   gap: 12px;
 }
@@ -1404,6 +1502,19 @@ code {
 }
 
 @media (max-width: 1080px) {
+  html,
+  body {
+    height: auto;
+    min-height: 100%;
+    overflow: auto;
+  }
+
+  body > div {
+    height: auto;
+    min-height: 100%;
+    display: block;
+  }
+
   .topbar {
     align-items: flex-start;
     flex-wrap: wrap;
@@ -1416,6 +1527,7 @@ code {
   .workspace {
     height: auto;
     min-height: 0;
+    overflow: visible;
     grid-template-columns: 1fr;
   }
 

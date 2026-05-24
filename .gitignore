@@ -7,6 +7,7 @@ __pycache__/
 node_modules/
 delete_later/
 dataset/
+dataset_enrichment/
 processed/
 processed_fft/
 processed_full/
