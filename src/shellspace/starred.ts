@@ -4,7 +4,7 @@ import { centerViewportOnShell, shellById } from './conservation-controls';
 import { starStorageKey } from './constants';
 import { els, state } from './runtime';
 import { selectShell } from './selection-palette';
-import { setShellCutoutImage } from './shell-cutouts';
+import { setCachedShellCutoutImage } from './shell-cutouts';
 
 let starredDockFrame = 0;
 let starredDockClientX = 0;
@@ -130,6 +130,7 @@ export function renderStarred() {
       selectShell(shell);
     });
     els.starredBand.append(button);
+    setCachedShellCutoutImage(image, shell);
   }
   if (hidden > 0 || state.showAllStars) {
     const more = document.createElement("button");
@@ -142,7 +143,7 @@ export function renderStarred() {
     });
     els.starredBand.append(more);
   }
-  queueStarredImageHydration();
+  queueStarredImageHydration(0);
 }
 
 export function queueStarredImageHydration(delay = 3000) {
@@ -168,7 +169,7 @@ export async function hydrateVisibleStarredImages(run) {
     if (!image || !shell) continue;
     await waitForIdle();
     if (run !== state.starredHydrationRun || !image.isConnected) return;
-    if (await setShellCutoutImage(image, shell)) state.starredHydratedCount += 1;
+    if (setCachedShellCutoutImage(image, shell)) state.starredHydratedCount += 1;
   }
 }
 

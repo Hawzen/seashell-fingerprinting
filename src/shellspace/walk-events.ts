@@ -1,6 +1,7 @@
 // @ts-nocheck
 
 import { panViewportByWheel, selectRandomShell, setAxes, setPcValues, zoom } from './conservation-controls';
+import { starStorageKey } from './constants';
 import { positionFiltersPanel, resetTraitFilters, setFiltersPanelOpen, updateFilter } from './filters';
 import { exportGeneratedSvg } from './geometry-generation';
 import { contourAxisCount, initialViewport, scheduleDraw } from './map-scatter';
@@ -8,6 +9,7 @@ import { renderPalette } from './palette';
 import { scheduleHashUpdate } from './routing-canvas';
 import { els, state } from './runtime';
 import { flushTargetDragPreview, nearestShell, panViewportFromEvent, queuePointTooltip, queueTargetFromEvent, setTargetFromEvent, startViewportPan, stopViewportPan } from './selection-palette';
+import { clearPersistentCutoutCache } from './shell-cutouts';
 import { finishPendingScatterSelection, renderSourceShell, scheduleRenderNeighbors } from './source-neighbors';
 import { queueStarredImageHydration, renderStarred, resetStarredDock, toggleStarredShell, updateStarredDock } from './starred';
 import { handleUploadShell } from './upload-handler';
@@ -51,12 +53,42 @@ export function resetToMeanShape() {
   setPcValues(Array.from({ length: state.model.contour_component_count || contourAxisCount() }, () => 0));
 }
 
+export function setSettingsPanelOpen(open) {
+  if (!els.settingsPanel || !els.settingsToggle) return;
+  els.settingsPanel.hidden = !open;
+  els.settingsToggle.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+export function clearAllLocalData() {
+  if (!window.confirm("Clear saved shell images, starred shells, and local settings?")) return;
+  clearPersistentCutoutCache();
+  try {
+    localStorage.removeItem(starStorageKey);
+  } catch (_error) {
+    // Best effort.
+  }
+  window.location.hash = "";
+  window.location.reload();
+}
+
 export function setupEvents() {
   els.search.addEventListener("input", updateFilter);
   els.filtersToggle?.addEventListener("click", () => setFiltersPanelOpen(els.filtersPanel?.hidden !== false));
   els.closeFilters?.addEventListener("click", () => setFiltersPanelOpen(false));
+  els.settingsToggle?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setSettingsPanelOpen(els.settingsPanel?.hidden !== false);
+  });
+  els.settingsPanel?.addEventListener("click", (event) => event.stopPropagation());
+  els.clearAllData?.addEventListener("click", clearAllLocalData);
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") setFiltersPanelOpen(false);
+    if (event.key === "Escape") {
+      setFiltersPanelOpen(false);
+      setSettingsPanelOpen(false);
+    }
+  });
+  document.addEventListener("click", () => {
+    setSettingsPanelOpen(false);
   });
   els.randomShell.addEventListener("click", selectRandomShell);
   els.resetTraitFilters?.addEventListener("click", resetTraitFilters);

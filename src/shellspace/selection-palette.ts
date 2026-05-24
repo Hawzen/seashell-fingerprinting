@@ -14,12 +14,24 @@ import { stopPcaWalk } from './walk-events';
 export function selectShell(shell, { renderNearest = true, preferFastSource = false } = {}) {
   var _a;
   if (!shell) return;
+  state.selectionRun += 1;
+  state.sourceToken += 1;
+  window.clearTimeout(state.sourceLoadTimer);
+  window.clearTimeout(state.neighborHydrationTimer);
+  state.neighborHydrationTimer = 0;
+  state.neighborHydrationItems = [];
   if (state.walkingPca) stopPcaWalk(false);
   if (shell.id >= 0 && state.uploadImageUrl) {
     URL.revokeObjectURL(state.uploadImageUrl);
     state.uploadImageUrl = "";
   }
   state.selected = shell;
+  if (els.sourceSpinner) els.sourceSpinner.hidden = true;
+  if (els.sourceImage) {
+    els.sourceImage.hidden = true;
+    els.sourceImage.removeAttribute("src");
+  }
+  if (shell.id >= 0) state.mapShellImageIds.add(shell.id);
   state.selectedContour = normalizedContour(shell);
   state.generatedContour = state.selectedContour;
   state.generatedTraits = shapeTraitsFromShell(shell);

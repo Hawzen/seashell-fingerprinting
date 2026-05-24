@@ -177,7 +177,7 @@ export function maskedImageUrl(imageData, mask, bbox = null) {
   output.width = side;
   output.height = side;
   output.getContext("2d").drawImage(canvas, x0, y0, cropWidth, cropHeight, (side - cropWidth) / 2, (side - cropHeight) / 2, cropWidth, cropHeight);
-  return new Promise((resolve) => output.toBlob((blob) => resolve(blob ? URL.createObjectURL(blob) : ""), "image/png"));
+  return output.toDataURL("image/png");
 }
 
 export async function maskWithRembg(imageData) {

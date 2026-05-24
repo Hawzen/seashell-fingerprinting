@@ -2,6 +2,7 @@
 
 import { resizeCanvas } from './routing-canvas';
 import { els, scatterCtx, state } from './runtime';
+import { getCachedShellCutoutImage, getShellCutoutImage } from './shell-cutouts';
 import { clamp01, hslToRgba } from './utils';
 
 export function contourAxisCount() {
@@ -208,6 +209,21 @@ export function drawScatterPoints(pointCache) {
   scatterCtx.putImageData(imageData, 0, 0);
 }
 
+export function drawShellImageMarker(shell, size, { request = false } = {}) {
+  if (!shell || shell.id < 0) return false;
+  const image = request
+    ? getShellCutoutImage(shell, () => scheduleDraw())
+    : getCachedShellCutoutImage(shell, () => scheduleDraw());
+  if (!image) return false;
+  const point = worldToScreen(axisValue(shell, state.xAxis), axisValue(shell, state.yAxis), size);
+  if (point.x < -40 || point.x > size.width + 40 || point.y < -40 || point.y > size.height + 40) return true;
+  const side = shell === state.selected ? 52 : 42;
+  scatterCtx.save();
+  scatterCtx.drawImage(image, point.x - side / 2, point.y - side / 2, side, side);
+  scatterCtx.restore();
+  return true;
+}
+
 export function drawScatter() {
   const size = resizeCanvas(els.scatter, scatterCtx);
   if (!state.viewport || !state.needsDraw) return;
@@ -245,19 +261,26 @@ export function drawScatter() {
     scatterCtx.stroke();
   }
 
+  for (const id of state.mapShellImageIds) {
+    const shell = state.shellById.get(id);
+    if (shell && shell !== state.selected) drawShellImageMarker(shell, size);
+  }
+
   if (state.selected) {
-    const selected = worldToScreen(
-      axisValue(state.selected, state.xAxis),
-      axisValue(state.selected, state.yAxis),
-      size,
-    );
-    scatterCtx.fillStyle = "#ffffff";
-    scatterCtx.strokeStyle = "#20242a";
-    scatterCtx.lineWidth = 2;
-    scatterCtx.beginPath();
-    scatterCtx.arc(selected.x, selected.y, 6, 0, Math.PI * 2);
-    scatterCtx.fill();
-    scatterCtx.stroke();
+    if (!drawShellImageMarker(state.selected, size, { request: true })) {
+      const selected = worldToScreen(
+        axisValue(state.selected, state.xAxis),
+        axisValue(state.selected, state.yAxis),
+        size,
+      );
+      scatterCtx.fillStyle = "#ffffff";
+      scatterCtx.strokeStyle = "#20242a";
+      scatterCtx.lineWidth = 2;
+      scatterCtx.beginPath();
+      scatterCtx.arc(selected.x, selected.y, 6, 0, Math.PI * 2);
+      scatterCtx.fill();
+      scatterCtx.stroke();
+    }
   }
   scatterCtx.restore();
 }

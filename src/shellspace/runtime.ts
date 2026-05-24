@@ -59,6 +59,7 @@ export const state = {
   needsDraw: true,
   sourceToken: 0,
   sourceLoadTimer: 0,
+  selectionRun: 0,
   scatterPointCache: null,
   shellById: new Map(),
   surpriseQueue: [],
@@ -75,6 +76,7 @@ export const state = {
   pointColorCache: new Map(),
   paletteCache: new Map(),
   originFilterOptionsCache: null,
+  mapShellImageIds: new Set(),
 };
 
 export const els: Record<string, any> = {};
@@ -90,3 +92,4 @@ export function initCanvasContexts() {
 export const normalizedContourCache = new Map();
 export const originalImageCache = new Map();
 export const pythonCutCache = new Map();
+export const shellCutoutImageCache = new Map();

@@ -12,7 +12,7 @@ import { axisOptionCount, conservationStatus, initialViewport, scheduleDraw } fr
 import { loadStarred, renderStarred } from './starred';
 import { renderPalette } from './palette';
 import { selectShell } from './selection-palette';
-import { loadPyodideRuntime, loadRembgSession } from './upload-python';
+import { hydratePersistentCutoutCache } from './shell-cutouts';
 import { setupEvents } from './walk-events';
 
 window.shellspacePerf = {
@@ -73,11 +73,7 @@ async function init() {
   els.colorModeSelect.value = state.colorMode;
   renderPcaInterpretation();
   loadStarred();
-
-  setLoading('Loading Python');
-  await loadPyodideRuntime();
-  setLoading('Loading rembg');
-  await loadRembgSession();
+  hydratePersistentCutoutCache(state.shells);
   els.statusLine.textContent = statusText;
 
   state.suppressHash = true;

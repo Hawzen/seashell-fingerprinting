@@ -1,10 +1,11 @@
 // @ts-nocheck
 
 import { centerViewportOnShell } from './conservation-controls';
+import { contourPath, maxContourRadius, normalizedContour } from './geometry-generation';
 import { renderPalette } from './palette';
 import { els, state } from './runtime';
 import { selectShell } from './selection-palette';
-import { cutShellWithPython, restoreCutoutStatus, setShellCutoutImage } from './shell-cutouts';
+import { cutShellWithPython, restoreCutoutStatus, setCachedShellCutoutImage, setShellCutoutImage } from './shell-cutouts';
 import { formatNumber } from './utils';
 
 export function setSourceImageUrl(url, shell, alt = "") {
@@ -26,6 +27,7 @@ export function setSourceImageUrl(url, shell, alt = "") {
 export async function renderSourceShell(shell, { preferFastSource = false } = {}) {
   if (!shell) return;
   const token = ++state.sourceToken;
+  const run = state.selectionRun;
   window.clearTimeout(state.sourceLoadTimer);
   if (els.sourceSpinner) els.sourceSpinner.hidden = false;
   if (state.uploadImageUrl && shell.id < 0) {
@@ -40,7 +42,7 @@ export async function renderSourceShell(shell, { preferFastSource = false } = {}
   state.sourceLoadTimer = window.setTimeout(async () => {
     const cut = await cutShellWithPython(shell);
     restoreCutoutStatus(statusBeforeCut);
-    if (token !== state.sourceToken || state.selected !== shell) return;
+    if (run !== state.selectionRun || token !== state.sourceToken || state.selected !== shell) return;
     if (cut?.imageUrl) setSourceImageUrl(cut.imageUrl, shell, shell.species);
     else if (els.sourceSpinner) els.sourceSpinner.hidden = true;
   }, 0);
@@ -241,21 +243,76 @@ export function renderNeighborItems(items) {
     button.className = "neighbor-button";
     const similarity = Number.isFinite(item.similarity) ? item.similarity : 0;
     button.title = `${item.shell.species} (${formatNumber(similarity, 1)}% similar, distance ${formatNumber(item.distance, 3)})`;
+    const canvas = document.createElement("canvas");
+    canvas.width = 160;
+    canvas.height = 116;
+    canvas.className = "neighbor-contour";
+    drawNeighborContour(canvas, item.shell);
     const image = document.createElement("img");
     image.setAttribute("aria-label", item.shell.species);
     image.alt = item.shell.species;
+    image.hidden = true;
+    image.onload = () => {
+      image.hidden = false;
+      canvas.hidden = true;
+    };
     const label = document.createElement("span");
     label.textContent = `${Math.round(similarity)}%`;
-    button.append(image, label);
+    button.append(canvas, image, label);
     button.addEventListener("click", () => {
       centerViewportOnShell(item.shell);
       selectShell(item.shell);
     });
     els.neighborsList.append(button);
+    if (setCachedShellCutoutImage(image, item.shell)) {
+      if (!image.hidden) canvas.hidden = true;
+    }
     images.push({ image, shell: item.shell });
   }
   state.neighborHydrationItems = images;
   scheduleNeighborImageHydration(images, key);
+}
+
+export function drawNeighborContour(canvas, shell) {
+  const ctx = canvas.getContext("2d");
+  const contour = normalizedContour(shell);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!contour) return;
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  const scale = (Math.min(canvas.width, canvas.height) * 0.4) / maxContourRadius([contour]);
+  const fill = ctx.createLinearGradient(0, canvas.height * 0.22, canvas.width, canvas.height * 0.86);
+  fill.addColorStop(0, "#f7ead0");
+  fill.addColorStop(1, "#c98f72");
+  contourPath(ctx, contour, centerX, centerY, scale);
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = "rgba(59, 77, 76, 0.72)";
+  ctx.lineWidth = 2;
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.save();
+  contourPath(ctx, contour, centerX, centerY, scale);
+  ctx.clip();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.22)";
+  ctx.lineWidth = 1.1;
+  for (let ring = 1; ring <= 2; ring += 1) {
+    contourPath(ctx, contour, centerX, centerY, scale * (0.34 + ring * 0.2));
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(64, 44, 38, 0.1)";
+  ctx.lineWidth = 1;
+  const count = Math.floor(contour.length / 2);
+  const step = Math.max(12, Math.floor(count / 10));
+  for (let index = 0; index < count; index += step) {
+    const x = contour[index * 2];
+    const y = contour[index * 2 + 1];
+    ctx.beginPath();
+    ctx.moveTo(centerX + x * scale * 0.25, centerY + y * scale * 0.25);
+    ctx.lineTo(centerX + x * scale * 0.94, centerY + y * scale * 0.94);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 export function scheduleNeighborImageHydration(images, key) {
@@ -267,13 +324,19 @@ export function scheduleNeighborImageHydration(images, key) {
       return;
     }
     hydrateNeighborImages(images, key);
-  }, state.draggingTarget ? 10 : 0);
+  }, state.draggingTarget ? 180 : 650);
 }
 
 export async function hydrateNeighborImages(images, key) {
+  const run = state.selectionRun;
   for (const item of images) {
-    if (state.neighborRenderKey !== key) return;
-    await setShellCutoutImage(item.image, item.shell);
+    if (run !== state.selectionRun || state.neighborRenderKey !== key) return;
+    if (setCachedShellCutoutImage(item.image, item.shell)) continue;
+    void setShellCutoutImage(item.image, item.shell).then(() => {
+      if (run !== state.selectionRun || state.neighborRenderKey !== key) {
+        item.image.hidden = true;
+      }
+    });
   }
 }
 
