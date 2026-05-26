@@ -1,7 +1,7 @@
 // @ts-nocheck
 
 import { loadOriginalImage } from './images-loading';
-import { els, pythonCutCache, shellCutoutImageCache, state } from './runtime';
+import { els, pythonCutCache, shellCutoutImageCache, shellCutoutSubscribers, state } from './runtime';
 import { fingerprintImageWithPython } from './upload-python';
 
 const cutoutIndexKey = "shellspace:cutouts:v1:index";
@@ -50,6 +50,7 @@ export function clearPersistentCutoutCache() {
   }
   pythonCutCache.clear();
   shellCutoutImageCache.clear();
+  shellCutoutSubscribers.clear();
   state.mapShellImageIds.clear();
 }
 
@@ -187,6 +188,13 @@ function resolveShellCutoutEntry(shell, dataUrl) {
   }
   entry.image.src = dataUrl;
   if (shell.id >= 0) state.mapShellImageIds.add(shell.id);
+  entry.promise.then((image) => {
+    if (!image?.src) return;
+    window.dispatchEvent(new CustomEvent("shellspace:cutout-ready", { detail: { shellId: shell.id, file: shell.file } }));
+    const subscribers = shellCutoutSubscribers.get(shell.file);
+    if (!subscribers) return;
+    for (const callback of [...subscribers]) callback(image);
+  });
 }
 
 function pendingImageEntry() {
@@ -238,6 +246,24 @@ export function requestShellCutout(shell, options = {}) {
     }
     return cut;
   }, options);
+}
+
+export function subscribeShellCutout(shell, callback) {
+  if (!shell?.file || !callback) return () => {};
+  let subscribers = shellCutoutSubscribers.get(shell.file);
+  if (!subscribers) {
+    subscribers = new Set();
+    shellCutoutSubscribers.set(shell.file, subscribers);
+  }
+  subscribers.add(callback);
+
+  const entry = shellCutoutImageCache.get(shell.file);
+  if (entry?.ready) queueMicrotask(() => callback(entry.image));
+
+  return () => {
+    subscribers.delete(callback);
+    if (!subscribers.size) shellCutoutSubscribers.delete(shell.file);
+  };
 }
 
 function waitForShellCutout(shell) {

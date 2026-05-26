@@ -71,6 +71,7 @@ export const state = {
   neighborTimer: 0,
   neighborHydrationTimer: 0,
   neighborHydrationItems: [],
+  neighborHydrationUnsubscribers: [],
   neighborSearchRun: 0,
   neighborSearchTimer: 0,
   neighborToken: 0,
@@ -95,3 +96,4 @@ export const normalizedContourCache = new Map();
 export const originalImageCache = new Map();
 export const pythonCutCache = new Map();
 export const shellCutoutImageCache = new Map();
+export const shellCutoutSubscribers = new Map();

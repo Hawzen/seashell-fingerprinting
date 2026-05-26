@@ -3,6 +3,64 @@
 import { speciesColor } from './map-scatter';
 import { els, state } from './runtime';
 
+let loadingActive = false;
+let loadingVisibleSince = 0;
+let loadingHideTimer = 0;
+let loaderPreviewHeld = false;
+let loaderPreviewTimer = 0;
+let loaderPreviewHideTimer = 0;
+const minimumLoadingMs = 1400;
+
+function hideLoadingOverlay() {
+  if (!els.loadingOverlay) return;
+  els.loadingOverlay.hidden = true;
+  els.loadingOverlay.classList.remove("is-fading-out");
+}
+
+function fadeOutLoadingOverlay() {
+  if (!els.loadingOverlay) return;
+  els.loadingOverlay.classList.add("is-fading-out");
+  window.clearTimeout(loadingHideTimer);
+  loadingHideTimer = window.setTimeout(hideLoadingOverlay, 220);
+}
+
+function showLoaderPreview() {
+  if (!els.loadingOverlay || loadingActive || !loaderPreviewHeld) return;
+  window.clearTimeout(loaderPreviewHideTimer);
+  els.loadingOverlay.hidden = false;
+  els.loadingOverlay.classList.remove("is-fading-out");
+  els.loadingOverlay.classList.add("is-loader-preview");
+}
+
+function hideLoaderPreview() {
+  window.clearTimeout(loaderPreviewTimer);
+  if (!els.loadingOverlay?.classList.contains("is-loader-preview")) return;
+  els.loadingOverlay.classList.add("is-fading-out");
+  window.clearTimeout(loaderPreviewHideTimer);
+  loaderPreviewHideTimer = window.setTimeout(() => {
+    els.loadingOverlay.classList.remove("is-loader-preview", "is-fading-out");
+    if (!loadingActive) hideLoadingOverlay();
+  }, 220);
+}
+
+window.addEventListener("keydown", (event) => {
+  if (event.key.toLowerCase() !== "z" || loaderPreviewHeld) return;
+  loaderPreviewHeld = true;
+  window.clearTimeout(loaderPreviewTimer);
+  loaderPreviewTimer = window.setTimeout(showLoaderPreview, 160);
+});
+
+window.addEventListener("keyup", (event) => {
+  if (event.key.toLowerCase() !== "z") return;
+  loaderPreviewHeld = false;
+  hideLoaderPreview();
+});
+
+window.addEventListener("blur", () => {
+  loaderPreviewHeld = false;
+  hideLoaderPreview();
+});
+
 export function asset(path) {
   return new URL(`public/${path}`, document.baseURI).toString();
 }
@@ -95,7 +153,28 @@ export function shellMeanRadiusCm(shell) {
 
 export function setLoading(text, visible = true) {
   if (els.loadingText && text) els.loadingText.textContent = text;
-  if (els.loadingOverlay) els.loadingOverlay.hidden = !visible;
+  if (!els.loadingOverlay) return;
+  if (visible) {
+    loadingActive = true;
+    loadingVisibleSince = performance.now();
+    window.clearTimeout(loadingHideTimer);
+    window.clearTimeout(loaderPreviewHideTimer);
+    els.loadingOverlay.classList.remove("is-loader-preview", "is-fading-out");
+    els.loadingOverlay.hidden = false;
+    return;
+  }
+  const remaining = minimumLoadingMs - (performance.now() - loadingVisibleSince);
+  if (loadingActive && remaining > 0) {
+    window.clearTimeout(loadingHideTimer);
+    loadingHideTimer = window.setTimeout(() => setLoading("", false), remaining);
+    return;
+  }
+  loadingActive = false;
+  if (loaderPreviewHeld) {
+    showLoaderPreview();
+    return;
+  }
+  fadeOutLoadingOverlay();
 }
 
 export function hashString(input) {

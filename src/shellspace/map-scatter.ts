@@ -294,6 +294,8 @@ export function scheduleDraw(delay = 0) {
   });
 }
 
+window.addEventListener("shellspace:cutout-ready", () => scheduleDraw());
+
 export function drawScatterPoints(pointCache) {
   const pixelWidth = els.scatter.width;
   const pixelHeight = els.scatter.height;

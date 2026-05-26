@@ -5,11 +5,20 @@ import { contourPath, maxContourRadius, normalizedContour } from './geometry-gen
 import { renderPalette } from './palette';
 import { els, state } from './runtime';
 import { selectShell } from './selection-palette';
-import { cutShellWithPython, restoreCutoutStatus, setCachedShellCutoutImage, setShellCutoutImage } from './shell-cutouts';
+import { cutShellWithPython, requestShellCutout, restoreCutoutStatus, subscribeShellCutout } from './shell-cutouts';
 import { formatNumber } from './utils';
 
 const NEIGHBOR_IMAGE_IDLE_DELAY = 1000;
 const SOURCE_IMAGE_PIPELINE_DELAY = 250;
+
+export function clearNeighborHydration({ resetRenderKey = false } = {}) {
+  window.clearTimeout(state.neighborHydrationTimer);
+  state.neighborHydrationTimer = 0;
+  state.neighborHydrationItems = [];
+  for (const unsubscribe of state.neighborHydrationUnsubscribers || []) unsubscribe();
+  state.neighborHydrationUnsubscribers = [];
+  if (resetRenderKey) state.neighborRenderKey = "";
+}
 
 export function setSourceImageUrl(url, shell, alt = "") {
   els.sourceImage.hidden = false;
@@ -167,7 +176,7 @@ export function formatNeighborItems(best) {
     }));
 }
 
-export function scheduleNearestContourNeighborsForPc(values, { axes = null, limit = 4, excludeId = null } = {}) {
+export function scheduleNearestContourNeighborsForPc(values, { axes = null, limit = 4, excludeId = null, cacheId = null } = {}) {
   const run = ++state.neighborSearchRun;
   window.clearTimeout(state.neighborSearchTimer);
   const candidates = state.filtered.length ? state.filtered : state.shells;
@@ -186,61 +195,24 @@ export function scheduleNearestContourNeighborsForPc(values, { axes = null, limi
       state.neighborSearchTimer = window.setTimeout(step, 0);
       return;
     }
-    renderNeighborItems(formatNeighborItems(best));
+    const items = formatNeighborItems(best);
+    if (cacheId != null) state.neighborCache.set(cacheId, items);
+    renderNeighborItems(items);
   };
   state.neighborSearchTimer = window.setTimeout(step, 0);
-}
-
-export function nearestContourNeighbors(shell) {
-  if (!shell) return [];
-  if (state.neighborCache.has(shell.id)) return state.neighborCache.get(shell.id);
-  const best = [];
-  let worstIndex = -1;
-  let worstDistance = -1;
-  for (const candidate of state.shells) {
-    if (candidate.id === shell.id) continue;
-    const stats = contourPcDistanceStatsToValues(candidate, shell.contour_pc || []);
-    const distance = stats.normalizedSq;
-    if (best.length < 4) {
-      best.push({ distance, stats, shell: candidate });
-      if (distance > worstDistance) {
-        worstDistance = distance;
-        worstIndex = best.length - 1;
-      }
-      continue;
-    }
-    if (distance >= worstDistance) continue;
-    best[worstIndex] = { distance, stats, shell: candidate };
-    worstDistance = -1;
-    for (let index = 0; index < best.length; index += 1) {
-      if (best[index].distance > worstDistance) {
-        worstDistance = best[index].distance;
-        worstIndex = index;
-      }
-    }
-  }
-  best.sort((a, b) => a.distance - b.distance);
-  const neighbors = best.map((item) => ({
-    distance: Math.sqrt(item.stats.rawSq),
-    similarity: similarityPercentFromStats(item.stats),
-    shell: item.shell,
-  }));
-  state.neighborCache.set(shell.id, neighbors);
-  return neighbors;
 }
 
 export function renderNeighborItems(items) {
   const key = items.map((item) => item.shell.id).join("|");
   if (state.neighborRenderKey === key) {
-    if (state.draggingTarget && state.neighborHydrationItems.length) {
+    if (state.neighborHydrationItems.length) {
       scheduleNeighborImageHydration(state.neighborHydrationItems, key);
+      return;
     }
-    return;
   }
   state.neighborRenderKey = key;
   els.neighborsList.innerHTML = "";
-  window.clearTimeout(state.neighborHydrationTimer);
-  state.neighborHydrationItems = [];
+  clearNeighborHydration();
   const images = [];
   for (const item of items) {
     const button = document.createElement("button");
@@ -268,9 +240,13 @@ export function renderNeighborItems(items) {
       selectShell(item.shell);
     });
     els.neighborsList.append(button);
-    if (setCachedShellCutoutImage(image, item.shell)) {
-      if (!image.hidden) canvas.hidden = true;
-    }
+    const unsubscribe = subscribeShellCutout(item.shell, (readyImage) => {
+      if (state.neighborRenderKey !== key || !image.isConnected || !readyImage?.src) return;
+      image.src = readyImage.src;
+      image.hidden = false;
+      canvas.hidden = true;
+    });
+    state.neighborHydrationUnsubscribers.push(unsubscribe);
     images.push({ image, shell: item.shell });
   }
   state.neighborHydrationItems = images;
@@ -332,16 +308,17 @@ export function scheduleNeighborImageHydration(images, key) {
 }
 
 export async function hydrateNeighborImages(images, key) {
-  const run = state.selectionRun;
-  for (const item of images) {
-    if (run !== state.selectionRun || state.neighborRenderKey !== key) return;
-    if (setCachedShellCutoutImage(item.image, item.shell)) continue;
-    void setShellCutoutImage(item.image, item.shell, { priority: -5 }).then(() => {
-      if (run !== state.selectionRun || state.neighborRenderKey !== key) {
-        item.image.hidden = true;
-      }
-    });
-  }
+  if (!images.length || state.neighborRenderKey !== key) return;
+  let index = 0;
+  const publishNext = () => {
+    if (state.neighborRenderKey !== key) return;
+    if (index >= images.length) return;
+    const item = images[index];
+    index += 1;
+    requestShellCutout(item.shell, { priority: -5 });
+    state.neighborHydrationTimer = window.setTimeout(publishNext, 80);
+  };
+  publishNext();
 }
 
 export function renderNeighbors(shell, token = state.neighborToken) {
@@ -350,13 +327,15 @@ export function renderNeighbors(shell, token = state.neighborToken) {
     state.neighborSearchRun += 1;
     window.clearTimeout(state.neighborSearchTimer);
     state.neighborSearchTimer = 0;
-    window.clearTimeout(state.neighborHydrationTimer);
-    state.neighborHydrationTimer = 0;
-    state.neighborHydrationItems = [];
+    clearNeighborHydration();
     els.neighborsList.innerHTML = "";
     return;
   }
-  renderNeighborItems(nearestContourNeighbors(shell));
+  if (state.neighborCache.has(shell.id)) {
+    renderNeighborItems(state.neighborCache.get(shell.id));
+    return;
+  }
+  scheduleNearestContourNeighborsForPc(shell.contour_pc || [], { excludeId: shell.id, cacheId: shell.id });
 }
 
 export function renderNeighborsForPc(values, items = null) {
@@ -365,9 +344,7 @@ export function renderNeighborsForPc(values, items = null) {
   state.neighborSearchRun += 1;
   window.clearTimeout(state.neighborSearchTimer);
   state.neighborSearchTimer = 0;
-  window.clearTimeout(state.neighborHydrationTimer);
-  state.neighborHydrationTimer = 0;
-  state.neighborHydrationItems = [];
+  clearNeighborHydration({ resetRenderKey: true });
   if (items) {
     renderNeighborItems(items);
     return;
@@ -394,6 +371,7 @@ export function clearTargetNearestNeighbors() {
   state.neighborSearchRun += 1;
   window.clearTimeout(state.neighborSearchTimer);
   state.neighborSearchTimer = 0;
+  clearNeighborHydration({ resetRenderKey: true });
 }
 
 export function finishPendingScatterSelection() {
@@ -406,17 +384,13 @@ export function scheduleRenderNeighbors(shell, delay = 0) {
   state.neighborToken += 1;
   const token = state.neighborToken;
   window.clearTimeout(state.neighborTimer);
-  window.clearTimeout(state.neighborHydrationTimer);
-  state.neighborHydrationTimer = 0;
-  state.neighborHydrationItems = [];
+  clearNeighborHydration({ resetRenderKey: true });
   if (!shell) {
     state.neighborRenderKey = "";
     state.neighborSearchRun += 1;
     window.clearTimeout(state.neighborSearchTimer);
     state.neighborSearchTimer = 0;
-    window.clearTimeout(state.neighborHydrationTimer);
-    state.neighborHydrationTimer = 0;
-    state.neighborHydrationItems = [];
+    clearNeighborHydration({ resetRenderKey: true });
     els.neighborsList.innerHTML = "";
     return;
   }

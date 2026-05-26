@@ -7,7 +7,7 @@ import { axisLabel, axisRange, axisValue, contourAxisCount, scatterHitPoints, sc
 import { renderPalette } from './palette';
 import { resizeCanvas, scheduleHashUpdate } from './routing-canvas';
 import { els, scatterCtx, state } from './runtime';
-import { activePcaNeighborAxes, clearTargetNearestNeighbors, contourPcDistanceStatsToValues, similarityPercentFromStats, renderNeighborsForPc, renderSourceShell, scheduleRenderNeighbors } from './source-neighbors';
+import { activePcaNeighborAxes, clearNeighborHydration, clearTargetNearestNeighbors, contourPcDistanceStatsToValues, similarityPercentFromStats, renderNeighborsForPc, renderSourceShell, scheduleRenderNeighbors } from './source-neighbors';
 import { updateStarButton } from './starred';
 import { datasetCmScale, formatNumber, physicalLocationLabel, precisePercentValue, shellAreaCm2, shellMeanRadiusCm } from './utils';
 import { stopPcaWalk } from './walk-events';
@@ -50,9 +50,7 @@ export function selectShell(shell, { renderNearest = true, preferFastSource = fa
   state.selectionRun += 1;
   state.sourceToken += 1;
   window.clearTimeout(state.sourceLoadTimer);
-  window.clearTimeout(state.neighborHydrationTimer);
-  state.neighborHydrationTimer = 0;
-  state.neighborHydrationItems = [];
+  clearNeighborHydration({ resetRenderKey: true });
   if (state.walkingPca) stopPcaWalk(false);
   if (shell.id >= 0 && state.uploadImageUrl) {
     URL.revokeObjectURL(state.uploadImageUrl);
