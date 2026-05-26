@@ -78,13 +78,6 @@ async function init() {
   renderPcaInterpretation();
   loadStarred();
   hydratePersistentCutoutCache(state.shells);
-  if (state.starredIds.length) {
-    await warmStarredCutoutCache({
-      onProgress: ({ loaded, total }) => {
-        if (total > 0) setLoading(`Caching starred shells ${Math.min(loaded + 1, total)} / ${total}`);
-      },
-    });
-  }
   els.statusLine.textContent = statusText;
 
   state.suppressHash = true;
@@ -103,6 +96,7 @@ async function init() {
   scheduleDraw();
   updateHashState();
   setLoading('', false);
+  if (state.starredIds.length) void warmStarredCutoutCache();
   primeSurpriseQueue();
 }
 

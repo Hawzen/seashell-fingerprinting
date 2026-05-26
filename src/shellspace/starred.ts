@@ -4,7 +4,7 @@ import { centerViewportOnShell, shellById } from './conservation-controls';
 import { starStorageKey } from './constants';
 import { els, state } from './runtime';
 import { selectShell } from './selection-palette';
-import { loadShellCutoutImage, setCachedShellCutoutImage } from './shell-cutouts';
+import { getCachedShellCutoutImage, loadShellCutoutImage, readPersistentCutout, setCachedShellCutoutImage } from './shell-cutouts';
 
 let starredDockFrame = 0;
 let starredDockClientX = 0;
@@ -152,14 +152,15 @@ export async function warmStarredCutoutCache({ limit = 80, onProgress = null } =
     const shell = shellById(id);
     if (shell?.file) shells.push(shell);
   }
+  const missing = shells.filter((shell) => !getCachedShellCutoutImage(shell) && !readPersistentCutout(shell));
   let loaded = 0;
   for (const shell of shells) {
-    if (onProgress) onProgress({ shell, loaded, total: shells.length });
+    if (onProgress && missing.includes(shell)) onProgress({ shell, loaded, total: missing.length });
     await loadShellCutoutImage(shell, { priority: -2 });
-    loaded += 1;
+    if (missing.includes(shell)) loaded += 1;
   }
-  if (onProgress) onProgress({ shell: null, loaded, total: shells.length });
-  return loaded;
+  if (onProgress && missing.length) onProgress({ shell: null, loaded, total: missing.length });
+  return shells.length;
 }
 
 export function queueStarredImageHydration(delay = 3000) {

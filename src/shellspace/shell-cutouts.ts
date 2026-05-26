@@ -330,6 +330,11 @@ export function setCachedShellCutoutImage(image, shell) {
 export async function loadShellCutoutImage(shell, options = {}) {
   const ready = getShellCutoutImage(shell, null, { ...options, request: false });
   if (ready) return ready;
+  const cached = readPersistentCutout(shell);
+  if (cached) {
+    resolveShellCutoutEntry(shell, cached);
+    return getCachedShellCutoutImage(shell);
+  }
   requestShellCutout(shell, options);
   const entry = shell?.file ? shellCutoutImageCache.get(shell.file) : null;
   return entry?.promise || null;
