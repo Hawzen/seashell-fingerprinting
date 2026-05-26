@@ -37,7 +37,10 @@ export function PcaGuideModal() {
       <div class="pca-guide-backdrop" />
       <section class="pca-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="pca-guide-title">
         <header>
-          <h2 id="pca-guide-title">PCA Axes</h2>
+          <div class="pca-guide-title">
+            <h2 id="pca-guide-title">PCA Axes</h2>
+            <p>Here are the shells that showcase the most variance within a given PCA, while minimizing variance of other axes</p>
+          </div>
           <button ref={(node) => { els.pcaGuideClose = node; }} title="Close" aria-label="Close">x</button>
         </header>
         <div ref={(node) => { els.pcaGuideList = node; }} class="pca-guide-list" />

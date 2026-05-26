@@ -49,6 +49,7 @@ def load_shell(path: Path, samples: int, debug_info: bool = False) -> Shell | tu
     if _SESSION is None:
         _SESSION = new_session(REMBG_MODEL)
 
+    # Load image
     with Image.open(path) as image:
         image = ImageOps.exif_transpose(image).convert("RGB")
         width, height = image.size
@@ -65,6 +66,7 @@ def load_shell(path: Path, samples: int, debug_info: bool = False) -> Shell | tu
         mask_array = mask_array[:, :, 0]
     mask_array = mask_array > 0
 
+    # Crop foreground
     ys, xs = np.nonzero(mask_array)
     if len(xs) == 0:
         raise ValueError("no shell foreground found")
@@ -74,6 +76,7 @@ def load_shell(path: Path, samples: int, debug_info: bool = False) -> Shell | tu
     crop = mask_array[y0:y1, x0:x1]
     crop_rgb = rgb[y0:y1, x0:x1]
 
+    # Square canvas
     side = max(crop.shape)
     canvas = np.zeros((side, side), dtype=bool)
     canvas_rgb = np.full((side, side, 3), 255, dtype=np.uint8)
@@ -82,6 +85,7 @@ def load_shell(path: Path, samples: int, debug_info: bool = False) -> Shell | tu
     canvas[y : y + crop.shape[0], x : x + crop.shape[1]] = crop
     canvas_rgb[y : y + crop.shape[0], x : x + crop.shape[1]] = crop_rgb
 
+    # Extract contour
     found, _ = cv2.findContours(canvas.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     if not found:
         raise ValueError("no shell contour found")
@@ -90,6 +94,7 @@ def load_shell(path: Path, samples: int, debug_info: bool = False) -> Shell | tu
     if len(points) < 3:
         raise ValueError("shell contour is too small")
 
+    # Resample points
     closed = np.vstack([points, points[0]])
     segment_lengths = np.linalg.norm(np.diff(closed, axis=0), axis=1)
     distance = np.concatenate([[0.0], np.cumsum(segment_lengths)])
@@ -102,6 +107,7 @@ def load_shell(path: Path, samples: int, debug_info: bool = False) -> Shell | tu
     y = np.interp(positions, distance, closed[:, 1])
     points = np.column_stack([x, y]).astype(np.float32)
 
+    # Center and rotate
     center = points.mean(axis=0)
     points -= center.reshape(1, 2)
     covariance = np.cov(points.T)
@@ -113,22 +119,26 @@ def load_shell(path: Path, samples: int, debug_info: bool = False) -> Shell | tu
     rotation = np.array([[cos_a, -sin_a], [sin_a, cos_a]], dtype=np.float32)
     points = points @ rotation.T
 
+    # Normalize scale
     scale = float(np.sqrt(np.mean(np.sum(points * points, axis=1))))
     if scale <= 0:
         raise ValueError("shell contour has zero scale")
     points /= scale
 
+    # Normalize winding
     area = 0.5 * float(
         np.sum(points[:, 0] * np.roll(points[:, 1], -1) - np.roll(points[:, 0], -1) * points[:, 1])
     )
     if area < 0:
         points = points[::-1]
 
+    # Start point
     start = int(np.lexsort((points[:, 0], -points[:, 1]))[0])
     shell = np.roll(points, -start, axis=0).astype(np.float32)
     if not debug_info:
         return shell
 
+    # Debug output
     image_to_shell = np.eye(3, dtype=np.float32)
     image_to_shell[:2, :2] = rotation / scale
     image_to_shell[:2, 2] = -(rotation @ center.astype(np.float32)) / scale

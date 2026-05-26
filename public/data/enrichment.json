@@ -61,8 +61,8 @@
     {
       "label": "Acanthina_brevidentata",
       "scientific_name": "Acanthina brevidentata",
-      "occurrence_count": "",
-      "country_count": "",
+      "occurrence_count": "0",
+      "country_count": "0",
       "countries_top": "",
       "rarity_proxy": "unknown"
     },
@@ -213,834 +213,834 @@
     {
       "label": "Acar_olivercoseli",
       "scientific_name": "Acar olivercoseli",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "18",
+      "country_count": "5",
+      "countries_top": "CV:11; AO:2; CG:2; GH:1; MR:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Acar_plicatus",
       "scientific_name": "Acar plicatus",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "1785",
+      "country_count": "80",
+      "countries_top": "JP:376; AU:259; US:161; PF:66; ID:60; OM:52; PH:51; SA:43; FJ:39; PW:36; ZZ:33; NU:28; EG:27; CX:26; MH:24; NC:23; ZA:21; AE:18; CK:17; NZ:17; MG:15; CV:14; PG:13; KI:11; TW:11",
+      "rarity_proxy": "high_gbif_evidence"
     },
     {
       "label": "Acavus_haemastoma",
       "scientific_name": "Acavus haemastoma",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "667",
+      "country_count": "10",
+      "countries_top": "LK:547; IN:26; ZA:4; MY:2; PH:2; AU:1; CK:1; ID:1; JP:1; ZZ:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acavus_superbus",
       "scientific_name": "Acavus superbus",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "186",
+      "country_count": "3",
+      "countries_top": "LK:176; ID:1; IN:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acesta_excavata",
       "scientific_name": "Acesta excavata",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "7619",
+      "country_count": "14",
+      "countries_top": "SE:4309; NO:3117; ZZ:83; CV:39; IS:8; MR:7; FR:3; GL:3; AO:2; FO:2; AR:1; DK:1; GR:1; ID:1",
+      "rarity_proxy": "high_gbif_evidence"
     },
     {
       "label": "Achatina_fulica",
       "scientific_name": "Achatina fulica",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "1800",
+      "country_count": "68",
+      "countries_top": "GP:258; TW:117; IN:100; MU:89; MG:69; JP:61; KE:59; CO:54; BR:52; ID:52; MY:49; PF:47; TZ:42; LK:40; US:31; MP:27; SC:26; YT:25; PH:22; ZZ:22; SG:16; TH:16; RE:15; GU:12; NA:11",
+      "rarity_proxy": "high_gbif_evidence"
     },
     {
       "label": "Achatina_glutinosa",
       "scientific_name": "Achatina glutinosa",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "44",
+      "country_count": "8",
+      "countries_top": "MW:15; MZ:6; ZW:4; TZ:3; KE:2; ZA:2; SS:1; ZM:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Achatina_oblitterata",
       "scientific_name": "Achatina oblitterata",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "2",
+      "country_count": "2",
+      "countries_top": "CD:1; NG:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Achatina_reticulata",
       "scientific_name": "Achatina reticulata",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "73",
+      "country_count": "5",
+      "countries_top": "TZ:35; KE:5; SO:1; ZA:1; ZZ:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Achatina_sirius",
       "scientific_name": "Achatina sirius",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "5911758",
+      "country_count": "247",
+      "countries_top": "US:715231; GB:616242; CH:579165; SE:441832; NL:387729; FR:381361; DE:294473; AT:222072; AU:201295; PL:132274; ES:129427; CA:90012; NZ:81992; BE:71956; FI:71543; JP:69277; IT:59745; PT:54764; CU:54044; GR:50077; PH:44839; JM:39825; RU:35041; DK:34692; IE:33971",
+      "rarity_proxy": "high_gbif_evidence"
     },
     {
       "label": "Achatina_varicosa",
       "scientific_name": "Achatina varicosa",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "42",
+      "country_count": "6",
+      "countries_top": "ZA:31; GH:4; ZW:2; GB:1; MZ:1; ZZ:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Acila_divaricata",
       "scientific_name": "Acila divaricata",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "691",
+      "country_count": "9",
+      "countries_top": "JP:439; TW:90; KR:65; NA:26; PH:5; CN:4; RU:2; MY:1; US:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acila_mirabilis",
       "scientific_name": "Acila mirabilis",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "291",
+      "country_count": "7",
+      "countries_top": "JP:127; CN:109; KR:27; ID:5; US:1; VN:1; ZZ:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Aclophora_species",
       "scientific_name": "Aclophora species",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "186",
+      "country_count": "24",
+      "countries_top": "AU:75; PH:20; JP:17; BS:7; CU:7; MG:7; NC:6; US:5; MH:4; GP:3; TW:3; ID:2; PF:2; TF:2; FJ:1; FR:1; LK:1; MY:1; RE:1; SB:1; TC:1; TL:1; TZ:1; ZZ:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Aclophora_xystica",
       "scientific_name": "Aclophora xystica",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "67",
+      "country_count": "15",
+      "countries_top": "AU:19; JP:11; PH:9; NC:6; MG:5; MH:3; TW:3; PF:2; TF:2; FJ:1; FR:1; ID:1; RE:1; SB:1; TZ:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Aclophoropsis_mcmichaeli",
       "scientific_name": "Aclophoropsis mcmichaeli",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "38",
+      "country_count": "6",
+      "countries_top": "JP:25; PF:3; KR:2; MH:2; US:2; FR:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Acmaea_digitalis",
       "scientific_name": "Acmaea digitalis",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "320",
+      "country_count": "3",
+      "countries_top": "US:259; MX:30; CA:6",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acmaea_fenestrata",
       "scientific_name": "Acmaea fenestrata",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "85",
+      "country_count": "4",
+      "countries_top": "US:73; MX:5; CA:2; ZZ:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Acmaea_persona",
       "scientific_name": "Acmaea persona",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "253",
+      "country_count": "5",
+      "countries_top": "US:184; MX:13; CA:9; CL:1; PA:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acmaea_pustulata",
       "scientific_name": "Acmaea pustulata",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "412",
+      "country_count": "27",
+      "countries_top": "US:129; BS:51; MX:30; CU:28; DO:23; VI:22; BZ:19; PA:14; JM:10; BB:9; HN:9; PR:9; KY:8; BM:7; VG:5; CO:4; HT:4; TT:3; ZZ:3; AG:2; CR:2; TC:2; VC:2; GD:1; KN:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acmaea_species",
       "scientific_name": "Acmaea species",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "3006368969",
+      "country_count": "252",
+      "countries_top": "US:1221603255; CA:207088779; GB:153578355; AU:137253979; SE:121112749; FR:112339005; NL:103572146; NO:77200962; IN:62792798; ES:61514321; DK:46952747; ZA:43509851; FI:40175670; DE:39740083; CR:37807553; CO:32968013; MX:31265558; BE:30295323; BR:29412914; CH:24393444; TW:23719606; CL:20822762; PT:18116419; AR:16809763; EC:13103136",
+      "rarity_proxy": "high_gbif_evidence"
     },
     {
       "label": "Acreuciroa_rostrata",
       "scientific_name": "Acreuciroa rostrata",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "22",
+      "country_count": "3",
+      "countries_top": "JP:15; ZZ:4; AU:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Acroloxus_lacustris",
       "scientific_name": "Acroloxus lacustris",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "15582",
+      "country_count": "46",
+      "countries_top": "NL:5437; GB:3553; SE:1119; FR:1009; DK:966; CH:663; BE:578; DE:391; FI:307; NO:231; PL:227; AT:199; EE:173; IE:153; HU:75; ES:64; RU:46; UA:44; IT:21; GR:12; TR:8; MK:6; AX:5; SK:5; BY:4",
+      "rarity_proxy": "high_gbif_evidence"
     },
     {
       "label": "Acroptychia_bathei",
       "scientific_name": "Acroptychia bathei",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "552",
+      "country_count": "2",
+      "countries_top": "MG:545; KM:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acrosterigma_biradiatum",
       "scientific_name": "Acrosterigma biradiatum",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "628",
+      "country_count": "36",
+      "countries_top": "PH:139; NC:80; AU:79; JP:56; PG:41; SC:28; ZA:25; ID:23; FJ:14; LK:14; MG:14; VU:11; PW:10; TZ:8; IN:6; SB:6; MU:5; EG:4; MH:4; MV:3; MZ:3; TO:3; YT:3; ZZ:3; CN:2",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acrosterigma_cygnorum",
       "scientific_name": "Acrosterigma cygnorum",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "696",
+      "country_count": "5",
+      "countries_top": "AU:683; ID:3; MY:2; NZ:2; MZ:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acrosterigma_elongata",
       "scientific_name": "Acrosterigma elongata",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "56",
+      "country_count": "13",
+      "countries_top": "PH:15; FJ:9; ID:6; NC:5; AS:2; PG:2; VU:2; AU:1; JP:1; MG:1; SC:1; TO:1; VN:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Acrosterigma_hobbsae",
       "scientific_name": "Acrosterigma hobbsae",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "51",
+      "country_count": "8",
+      "countries_top": "PH:21; ZZ:7; ID:6; MY:6; NC:6; AU:3; PF:1; PW:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Acrosterigma_impolitum",
       "scientific_name": "Acrosterigma impolitum",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "570",
+      "country_count": "20",
+      "countries_top": "AU:445; ID:26; CN:24; PH:18; SG:11; PG:7; IN:6; TH:6; MM:4; MY:3; SB:3; HK:2; AE:1; GA:1; MG:1; MU:1; NC:1; SA:1; TW:1; US:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acrosterigma_maculosum",
       "scientific_name": "Acrosterigma maculosum",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "506",
+      "country_count": "43",
+      "countries_top": "JP:168; PH:48; PG:41; AU:32; ID:23; NC:18; EG:14; TH:13; IN:11; MY:10; OM:10; LK:6; SA:6; SG:5; CN:4; IL:4; MZ:4; SC:4; TZ:4; MG:3; MV:3; NF:3; YT:3; ZZ:3; DJ:2",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acrosterigma_punctolineatum",
       "scientific_name": "Acrosterigma punctolineatum",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "133",
+      "country_count": "10",
+      "countries_top": "AU:44; VU:20; NC:14; PH:13; ID:12; PG:12; TL:8; MY:4; JP:3; SB:3",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acrosterigma_simplex",
       "scientific_name": "Acrosterigma simplex",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "570",
+      "country_count": "34",
+      "countries_top": "NC:161; AU:98; PH:72; MG:36; PG:36; ID:33; MY:15; MH:14; PW:14; TZ:14; KI:10; MV:8; TH:7; CN:3; JP:3; SA:3; YT:3; FM:2; IL:2; IN:2; MM:2; PF:2; SC:2; TF:2; BR:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acrosterigma_transcendens",
       "scientific_name": "Acrosterigma transcendens",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "317",
+      "country_count": "24",
+      "countries_top": "NC:51; PH:38; PF:34; MG:33; ID:29; AU:24; JP:22; FJ:17; ZA:16; PG:14; SC:11; MH:5; KI:3; SG:3; TH:2; WF:2; AS:1; FM:1; IN:1; LK:1; MZ:1; PW:1; TL:1; TV:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acrosterigma_variegatum",
       "scientific_name": "Acrosterigma variegatum",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "58",
+      "country_count": "9",
+      "countries_top": "PH:32; ID:12; AU:4; WF:3; SB:2; BN:1; IN:1; MU:1; PG:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Actaeon_biplicata",
       "scientific_name": "Actaeon biplicata",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "2",
+      "country_count": "1",
+      "countries_top": "FR:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Acteocina_canaliculata",
       "scientific_name": "Acteocina canaliculata",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "2447",
+      "country_count": "26",
+      "countries_top": "US:2148; MX:116; CA:89; BS:11; TT:8; DO:7; BM:4; CU:4; PR:4; GP:3; VI:3; AR:2; KY:2; PA:2; SR:2; BQ:1; BZ:1; GB:1; HN:1; JP:1; MF:1; PH:1; UY:1; VC:1; VG:1",
+      "rarity_proxy": "high_gbif_evidence"
     },
     {
       "label": "Acteocina_decorata",
       "scientific_name": "Acteocina decorata",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "84",
+      "country_count": "11",
+      "countries_top": "JP:39; NC:18; ID:8; PH:5; AU:3; VN:3; FR:1; GU:1; LK:1; MG:1; ZZ:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Acteocina_gordonis",
       "scientific_name": "Acteocina gordonis",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "59",
+      "country_count": "2",
+      "countries_top": "JP:55; ID:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Acteon_candens",
       "scientific_name": "Acteon candens",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "222",
+      "country_count": "7",
+      "countries_top": "US:205; BR:5; CU:4; MX:3; BS:2; BM:1; PR:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acteon_cebuanus",
       "scientific_name": "Acteon cebuanus",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "6",
+      "country_count": "2",
+      "countries_top": "PH:5; MY:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Acteon_nakayamai",
       "scientific_name": "Acteon nakayamai",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "15",
+      "country_count": "3",
+      "countries_top": "JP:11; ID:2; PH:2",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Acteon_teramachii",
       "scientific_name": "Acteon teramachii",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "19",
+      "country_count": "5",
+      "countries_top": "JP:11; KR:3; PH:2; FJ:1; ID:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Acteon_tornatilis",
       "scientific_name": "Acteon tornatilis",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "7646",
+      "country_count": "41",
+      "countries_top": "NO:2686; GB:1438; NL:865; FR:663; IT:273; DE:269; DK:239; SE:235; ES:114; IE:77; IL:71; PT:48; GR:38; ZZ:18; BE:16; DZ:9; HR:9; AL:8; EH:7; IM:7; TR:6; MA:4; TN:4; MT:3; EG:2",
+      "rarity_proxy": "high_gbif_evidence"
     },
     {
       "label": "Acteon_traskii",
       "scientific_name": "Acteon traskii",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "160",
+      "country_count": "6",
+      "countries_top": "US:92; MX:51; CR:10; PA:2; CO:1; EC:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Aculamprotula_fibrosa",
       "scientific_name": "Aculamprotula fibrosa",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "35",
+      "country_count": "2",
+      "countries_top": "CN:20; VN:2",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Aculamprotula_nodulosa",
       "scientific_name": "Aculamprotula nodulosa",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "14",
+      "country_count": "2",
+      "countries_top": "CN:7; VN:7",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Aculamprotula_polysticta",
       "scientific_name": "Aculamprotula polysticta",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "4",
+      "country_count": "2",
+      "countries_top": "VN:2; CN:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Aculamprotula_scripta",
       "scientific_name": "Aculamprotula scripta",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "20",
+      "country_count": "1",
+      "countries_top": "CN:7",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Aculamprotula_tientsinensis",
       "scientific_name": "Aculamprotula tientsinensis",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "25",
+      "country_count": "2",
+      "countries_top": "CN:11; VN:2",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Aculamprotula_tortuosa",
       "scientific_name": "Aculamprotula tortuosa",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "32",
+      "country_count": "1",
+      "countries_top": "CN:18",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Acus_strigata",
       "scientific_name": "Acus strigata",
-      "occurrence_count": "",
-      "country_count": "",
+      "occurrence_count": "0",
+      "country_count": "0",
       "countries_top": "",
       "rarity_proxy": "unknown"
     },
     {
       "label": "Acusta_plicosa",
       "scientific_name": "Acusta plicosa",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "23",
+      "country_count": "2",
+      "countries_top": "TW:18; JP:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Acusta_tourannensis",
       "scientific_name": "Acusta tourannensis",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "228",
+      "country_count": "7",
+      "countries_top": "TW:70; NA:42; VN:38; CN:29; JP:18; IN:2; ZZ:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acuticosta_chinensis",
       "scientific_name": "Acuticosta chinensis",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "103",
+      "country_count": "1",
+      "countries_top": "CN:69",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Acuticosta_ovata",
       "scientific_name": "Acuticosta ovata",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "9",
+      "country_count": "1",
+      "countries_top": "CN:8",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Adamietta_housei",
       "scientific_name": "Adamietta housei",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "50",
+      "country_count": "3",
+      "countries_top": "TH:45; LA:2; VN:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Adamnestia_bizona",
       "scientific_name": "Adamnestia bizona",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "93",
+      "country_count": "3",
+      "countries_top": "JP:90; AU:2; ID:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Adamnestia_consobrinoides",
       "scientific_name": "Adamnestia consobrinoides",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "93",
+      "country_count": "3",
+      "countries_top": "JP:90; AU:2; ID:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Adamnestia_kawamurai",
       "scientific_name": "Adamnestia kawamurai",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "93",
+      "country_count": "3",
+      "countries_top": "JP:90; AU:2; ID:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Adamsiella_mirabilis",
       "scientific_name": "Adamsiella mirabilis",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "97",
+      "country_count": "4",
+      "countries_top": "JM:89; GY:2; PR:1; VI:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Adelomelon_ancilla",
       "scientific_name": "Adelomelon ancilla",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "661",
+      "country_count": "15",
+      "countries_top": "AR:320; CL:160; UY:87; FK:22; BR:9; AQ:6; MX:2; FR:1; GB:1; NA:1; NZ:1; PT:1; PY:1; ZA:1; ZZ:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Adelomelon_brasiliana",
       "scientific_name": "Adelomelon brasiliana",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "277",
+      "country_count": "6",
+      "countries_top": "AR:101; BR:99; UY:38; CL:4; PH:1; ZZ:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Adelomelon_ferussacii",
       "scientific_name": "Adelomelon ferussacii",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "67",
+      "country_count": "2",
+      "countries_top": "AR:59; CL:4",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Admete_magellanica",
       "scientific_name": "Admete magellanica",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "57",
+      "country_count": "6",
+      "countries_top": "CL:26; AR:13; FK:8; UY:3; AQ:1; GB:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Adrana_cultrata",
       "scientific_name": "Adrana cultrata",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "16",
+      "country_count": "4",
+      "countries_top": "MX:8; GT:5; CR:2; PA:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Adrana_patagonica",
       "scientific_name": "Adrana patagonica",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "150",
+      "country_count": "5",
+      "countries_top": "SR:53; BR:44; AR:23; GF:7; UY:7",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Aegista_chinensis",
       "scientific_name": "Aegista chinensis",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "102",
+      "country_count": "3",
+      "countries_top": "CN:89; JP:4; TW:3",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Aegista_furtiva",
       "scientific_name": "Aegista furtiva",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "1",
+      "country_count": "1",
+      "countries_top": "CN:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Aegista_hupeana",
       "scientific_name": "Aegista hupeana",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "11",
+      "country_count": "1",
+      "countries_top": "CN:11",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Aegista_laurentii",
       "scientific_name": "Aegista laurentii",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "5",
+      "country_count": "1",
+      "countries_top": "CN:5",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Aegista_lautsi",
       "scientific_name": "Aegista lautsi",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "86",
+      "country_count": "3",
+      "countries_top": "TW:65; JP:9; CN:5",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Aegista_megachila",
       "scientific_name": "Aegista megachila",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "4",
+      "country_count": "1",
+      "countries_top": "CN:4",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Aegista_species",
       "scientific_name": "Aegista species",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "4572",
+      "country_count": "21",
+      "countries_top": "JP:2789; CN:577; TW:374; VN:217; KR:86; HK:62; IN:41; MM:26; ID:25; TH:20; NA:18; PH:15; KP:10; ZZ:10; LA:6; LK:3; AU:1; FJ:1; FM:1; KH:1; MY:1",
+      "rarity_proxy": "high_gbif_evidence"
     },
     {
       "label": "Aegista_turbinella",
       "scientific_name": "Aegista turbinella",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "4572",
+      "country_count": "21",
+      "countries_top": "JP:2789; CN:577; TW:374; VN:217; KR:86; HK:62; IN:41; MM:26; ID:25; TH:20; NA:18; PH:15; KP:10; ZZ:10; LA:6; LK:3; AU:1; FJ:1; FM:1; KH:1; MY:1",
+      "rarity_proxy": "high_gbif_evidence"
     },
     {
       "label": "Aegista_vermes",
       "scientific_name": "Aegista vermes",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "84",
+      "country_count": "3",
+      "countries_top": "JP:76; CN:3; ZZ:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Aegopinella_nitens",
       "scientific_name": "Aegopinella nitens",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "25954",
+      "country_count": "34",
+      "countries_top": "CH:20169; AT:2952; DE:859; FR:844; PL:307; ES:133; LI:103; LU:81; UA:57; IT:40; HU:29; RO:26; SI:20; CZ:15; SK:13; AU:9; GB:7; SE:7; HR:6; NL:6; BA:3; ZZ:3; BE:2; BO:2; DK:2",
+      "rarity_proxy": "high_gbif_evidence"
     },
     {
       "label": "Aegopinella_nitidula",
       "scientific_name": "Aegopinella nitidula",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "22745",
+      "country_count": "40",
+      "countries_top": "GB:12795; SE:2526; FR:2162; NL:1813; IE:838; DE:524; PT:391; PL:307; BE:231; ES:220; DK:130; LU:121; FI:46; AX:42; CH:40; IM:32; GG:30; NO:30; UA:24; JE:23; AT:18; SK:17; CZ:13; IT:8; CA:7",
+      "rarity_proxy": "high_gbif_evidence"
     },
     {
       "label": "Aegopinella_pura",
       "scientific_name": "Aegopinella pura",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "26503",
+      "country_count": "44",
+      "countries_top": "CH:9245; GB:5740; SE:4837; AT:1591; FR:1549; PL:731; IE:547; DE:530; LU:238; NL:191; FI:113; ES:110; LI:87; DK:85; EE:80; IT:74; BE:68; UA:63; RO:46; NO:42; IM:29; AX:27; BG:16; CZ:16; SI:10",
+      "rarity_proxy": "high_gbif_evidence"
     },
     {
       "label": "Aenator_loisae",
       "scientific_name": "Aenator loisae",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "76",
+      "country_count": "2",
+      "countries_top": "CL:66; AR:2",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Aeneator_fontainei",
       "scientific_name": "Aeneator fontainei",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "2793",
+      "country_count": "4",
+      "countries_top": "CL:2763; NZ:6; PE:3; US:1",
+      "rarity_proxy": "high_gbif_evidence"
     },
     {
       "label": "Aeneator_loissae",
       "scientific_name": "Aeneator loissae",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "76",
+      "country_count": "2",
+      "countries_top": "CL:66; AR:2",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Aeneator_recens",
       "scientific_name": "Aeneator recens",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "179",
+      "country_count": "2",
+      "countries_top": "NZ:163; CL:2",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Aequipecten_commutatus",
       "scientific_name": "Aequipecten commutatus",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "945",
+      "country_count": "29",
+      "countries_top": "PT:270; CV:199; ES:181; MR:74; IT:56; SN:20; ZA:17; MA:16; DZ:14; US:10; CG:5; FR:4; MT:3; SL:3; ZZ:3; AO:2; CD:2; GA:2; GN:2; GR:2; LR:2; MZ:2; SH:2; TN:2; CI:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Aequipecten_exasperatus",
       "scientific_name": "Aequipecten exasperatus",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "233",
+      "country_count": "26",
+      "countries_top": "US:66; CU:38; VI:22; AG:12; BM:10; BS:9; PR:9; CO:6; VE:6; VG:6; BB:5; DM:4; PA:4; ZZ:4; CW:3; JM:3; MX:3; NL:3; BZ:2; GP:2; HT:2; KN:2; FR:1; GD:1; HN:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Aequipecten_glyptus",
       "scientific_name": "Aequipecten glyptus",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "327",
+      "country_count": "8",
+      "countries_top": "US:289; MX:16; ZZ:4; CU:2; DO:1; EC:1; GY:1; PA:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Aequipecten_lineolaris",
       "scientific_name": "Aequipecten lineolaris",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "160",
+      "country_count": "10",
+      "countries_top": "SR:89; US:16; VE:10; HN:5; PR:4; BZ:3; PA:3; CO:2; ZZ:2; GF:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Aeschrodomus_stipulates",
       "scientific_name": "Aeschrodomus stipulates",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "160",
+      "country_count": "1",
+      "countries_top": "NZ:157",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Afer_cumingii",
       "scientific_name": "Afer cumingii",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "92",
+      "country_count": "5",
+      "countries_top": "TW:66; NA:10; CN:2; JP:2; BR:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Afer_pseudofusinus",
       "scientific_name": "Afer pseudofusinus",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "33",
+      "country_count": "5",
+      "countries_top": "SN:21; MR:5; AO:3; CI:1; ZZ:1",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Africanella_coseli",
       "scientific_name": "Africanella coseli",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "16",
+      "country_count": "3",
+      "countries_top": "GA:8; GH:4; CD:2",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Africominella_elongata",
       "scientific_name": "Africominella elongata",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "45",
+      "country_count": "1",
+      "countries_top": "ZA:45",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Afrivoluta_pringlei",
       "scientific_name": "Afrivoluta pringlei",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "117",
+      "country_count": "3",
+      "countries_top": "ZA:100; AU:1; NA:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Afrocominella_capensis",
       "scientific_name": "Afrocominella capensis",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "291",
+      "country_count": "8",
+      "countries_top": "ZA:256; NA:4; AU:3; MU:3; NZ:2; CL:1; ER:1; ZZ:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Agaronia_acuminata",
       "scientific_name": "Agaronia acuminata",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "383",
+      "country_count": "35",
+      "countries_top": "SN:65; ID:43; AO:36; CV:24; GQ:16; GM:9; LR:9; SL:9; GA:7; CD:5; GH:5; LK:5; MR:5; GN:4; ST:4; CI:3; GW:3; IN:3; ZZ:3; EH:2; PH:2; TZ:2; AU:1; BJ:1; CG:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Agaronia_ancillarioides",
       "scientific_name": "Agaronia ancillarioides",
-      "occurrence_count": "",
-      "country_count": "",
+      "occurrence_count": "0",
+      "country_count": "0",
       "countries_top": "",
       "rarity_proxy": "unknown"
     },
     {
       "label": "Agaronia_boavistensis",
       "scientific_name": "Agaronia boavistensis",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "4034",
+      "country_count": "85",
+      "countries_top": "MX:446; US:342; CR:310; IN:283; ID:269; PA:240; BR:174; LK:152; SN:137; PH:125; NI:107; FR:65; AO:41; AU:36; CV:33; EC:33; GH:32; TH:31; ZZ:26; GA:24; NA:22; GM:19; GQ:19; LR:18; SV:18",
+      "rarity_proxy": "high_gbif_evidence"
     },
     {
       "label": "Agaronia_gibbosa",
       "scientific_name": "Agaronia gibbosa",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "869",
+      "country_count": "43",
+      "countries_top": "IN:250; LK:130; ID:61; TH:27; NA:20; PH:20; CF:16; MY:11; ZZ:11; BR:10; MG:10; MM:10; PK:10; TZ:7; SN:5; AU:4; MV:4; FR:3; MX:3; RE:3; CV:2; MU:2; MZ:2; SA:2; SG:2",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Agaronia_griseoalba",
       "scientific_name": "Agaronia griseoalba",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "177",
+      "country_count": "8",
+      "countries_top": "CR:69; NI:35; PA:18; MX:15; SV:12; EC:3; GT:1; US:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Agaronia_hiatula",
       "scientific_name": "Agaronia hiatula",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "195",
+      "country_count": "26",
+      "countries_top": "SN:43; GH:14; MX:14; LR:8; CI:7; GM:7; PA:5; BR:4; SL:4; CV:2; FR:2; GN:2; GQ:2; IN:2; ZZ:2; AU:1; BJ:1; CD:1; CN:1; GA:1; GW:1; ID:1; NI:1; PE:1; PK:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Agaronia_lutaria",
       "scientific_name": "Agaronia lutaria",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "118",
+      "country_count": "11",
+      "countries_top": "ID:75; SN:6; ZZ:4; AO:3; AU:1; CG:1; GM:1; MY:1; PH:1; TW:1; TZ:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Agaronia_nica",
       "scientific_name": "Agaronia nica",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "30",
+      "country_count": "4",
+      "countries_top": "NI:13; MX:7; CR:4; PA:2",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Agaronia_propatula",
       "scientific_name": "Agaronia propatula",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "264",
+      "country_count": "12",
+      "countries_top": "CR:120; MX:43; PA:31; NI:16; EC:15; GT:2; SN:2; SV:2; US:2; ZZ:2; CO:1; PH:1",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Agatha_lepidula",
       "scientific_name": "Agatha lepidula",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "3",
+      "country_count": "1",
+      "countries_top": "JP:3",
+      "rarity_proxy": "low_gbif_evidence"
     },
     {
       "label": "Agathotoma_candidissima",
       "scientific_name": "Agathotoma candidissima",
-      "occurrence_count": "",
-      "country_count": "",
-      "countries_top": "",
-      "rarity_proxy": "unknown"
+      "occurrence_count": "508",
+      "country_count": "31",
+      "countries_top": "GP:122; US:121; ZZ:63; BS:43; MQ:28; CU:10; MX:10; JM:8; PR:8; BB:7; VI:7; BZ:6; MF:6; GD:5; KY:5; PA:5; SR:5; BM:4; TT:4; VC:4; BQ:3; GF:3; HT:3; AG:2; AW:2",
+      "rarity_proxy": "moderate_gbif_evidence"
     },
     {
       "label": "Agathylla_lamellosa",

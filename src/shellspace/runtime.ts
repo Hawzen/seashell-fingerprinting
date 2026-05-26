@@ -16,7 +16,7 @@ export const state = {
   uploadImageUrl: "",
   xAxis: 0,
   yAxis: 1,
-  colorMode: "species",
+  colorMode: "roughness",
   pcValues: [],
   pcaAxisNames: [],
   pcControlRows: [],

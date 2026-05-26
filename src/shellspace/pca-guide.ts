@@ -3,8 +3,8 @@
 import { centerViewportOnShell, refreshPcaControlLabels } from './conservation-controls';
 import { els, state } from './runtime';
 import { selectShell } from './selection-palette';
+import { setCachedShellCutoutImage, setShellCutoutImage } from './shell-cutouts';
 import { drawNeighborContour } from './source-neighbors';
-import { datasetAsset } from './utils';
 
 export const pcaAxisNamesKey = "shellspace-pca-axis-names";
 
@@ -29,7 +29,25 @@ function shellByPairId(id) {
   return state.shellById.get(Number(id)) || null;
 }
 
-function shellPreview(shell, label) {
+function scheduleGuideShellCutout(image, canvas, shell) {
+  const run = state.selectionRun;
+  const start = () => {
+    if (!image.isConnected || run !== state.selectionRun) return;
+    void setShellCutoutImage(image, shell, { priority: -10 }).then((loaded) => {
+      if (!loaded && image.isConnected) {
+        image.hidden = true;
+        canvas.hidden = false;
+      }
+    });
+  };
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(start, { timeout: 800 });
+    return;
+  }
+  window.setTimeout(start, 350);
+}
+
+function shellPreview(shell) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "pca-guide-shell";
@@ -38,32 +56,30 @@ function shellPreview(shell, label) {
   frame.className = "pca-guide-shell-frame";
   const image = document.createElement("img");
   image.alt = shell?.species || "";
-  image.loading = "lazy";
+  image.loading = "eager";
   image.decoding = "async";
   image.hidden = true;
   const canvas = document.createElement("canvas");
   canvas.width = 148;
   canvas.height = 104;
   if (shell) drawNeighborContour(canvas, shell);
-  if (shell?.file) {
-    image.src = datasetAsset(shell.file);
-    image.onload = () => {
-      image.hidden = false;
-      canvas.hidden = true;
-    };
-    image.onerror = () => {
-      image.hidden = true;
-      canvas.hidden = false;
-    };
-  } else {
+  image.onload = () => {
+    image.hidden = false;
+    canvas.hidden = true;
+  };
+  image.onerror = () => {
     image.hidden = true;
+    canvas.hidden = false;
+  };
+  if (shell) {
+    const cached = setCachedShellCutoutImage(image, shell);
+    if (cached && !image.hidden) canvas.hidden = true;
+    if (!cached) {
+      scheduleGuideShellCutout(image, canvas, shell);
+    }
   }
   frame.append(image, canvas);
-  const caption = document.createElement("span");
-  caption.textContent = label;
-  const name = document.createElement("strong");
-  name.textContent = shell?.species || "Unknown";
-  button.append(frame, caption, name);
+  button.append(frame);
   button.addEventListener("click", () => {
     if (!shell) return;
     centerViewportOnShell(shell);
@@ -108,8 +124,8 @@ function pairRow(pair) {
   const shells = document.createElement("div");
   shells.className = "pca-guide-shells";
   shells.append(
-    shellPreview(lowShell, "Low"),
-    shellPreview(highShell, "High"),
+    shellPreview(lowShell),
+    shellPreview(highShell),
   );
 
   row.append(header, shells);

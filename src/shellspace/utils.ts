@@ -200,7 +200,6 @@ export function buildLocalityLookup(localityPayload) {
   for (let index = 0; index < names.length; index += 1) {
     const country = localityPayload.primary_country_codes?.[index] || "";
     const region = localityPayload.region_keys?.[index] || "";
-    const total = localityPayload.total_occurrences?.[index] || 0;
     const topCodes = localityPayload.top_country_codes?.[index] || [];
     const topCounts = localityPayload.top_country_counts?.[index] || [];
     const countryName = country ? countryLabel(localityPayload, country) : "";
@@ -215,7 +214,6 @@ export function buildLocalityLookup(localityPayload) {
       primary_country_label: countryName,
       region_key: region,
       region_label: regionName,
-      total_occurrences: total,
       top_countries: topCountries,
       location_label: countryName && regionName ? `${countryName}, ${regionName}` : countryName || regionName || "",
     });
@@ -242,7 +240,6 @@ export function buildSpeciesTraitsLookup(speciesTraitsPayload) {
       rarity_label: rarityLabels[speciesTraitsPayload.rarity?.[index]] || "Data deficient",
       rarity_reason: speciesTraitsPayload.rarity_reasons?.[index] || "",
       dataset_sample_count: speciesTraitsPayload.dataset_sample_count?.[index] || 0,
-      observation_count: speciesTraitsPayload.observation_count?.[index] || 0,
       known_range_country_count: speciesTraitsPayload.country_count?.[index] || rangeCountries.length,
       known_range_countries: rangeCountries,
       primary_country: speciesTraitsPayload.primary_country_codes?.[index] || "",
@@ -286,7 +283,6 @@ export function buildDerivedShellData(shells, localityPayload = null, speciesTra
     shell.morph_traits = { ...derivedMorphTraits, ...(shell.morph_traits || {}) };
     shell.rarity_label = traits?.rarity_label || shell.rarity_label || "";
     shell.rarity_reason = traits?.rarity_reason || "";
-    shell.global_occurrences = traits?.observation_count || locality?.total_occurrences || shell.gbif_occurrence_count || 0;
     shell.location_label = locality?.location_label || "Locality unavailable";
     shell.location_key = locality?.primary_country || locality?.region_key || "unknown";
     shell.location_color = shell.location_key === "unknown"
@@ -296,7 +292,7 @@ export function buildDerivedShellData(shells, localityPayload = null, speciesTra
     shell.region_label = locality?.region_label || "";
     shell.top_countries_label = locality?.top_countries?.length
       ? locality.top_countries.slice(0, 3).map((country) => country.label).join(", ")
-      : shell.gbif_countries_top || "";
+      : shell.countries_top || "";
   }
 }
 

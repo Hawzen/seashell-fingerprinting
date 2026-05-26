@@ -12,11 +12,6 @@ import { updateStarButton } from './starred';
 import { datasetCmScale, formatNumber, physicalLocationLabel, precisePercentValue, shellAreaCm2, shellMeanRadiusCm } from './utils';
 import { stopPcaWalk } from './walk-events';
 
-function countValue(value) {
-  const count = Number(value || 0);
-  return Number.isFinite(count) && count > 0 ? count.toLocaleString() : "";
-}
-
 function knownText(value) {
   const text = String(value || "").trim();
   if (!text) return "";
@@ -57,11 +52,11 @@ export function selectShell(shell, { renderNearest = true, preferFastSource = fa
   updateHashChips();
   updateStarButton();
   els.selectedDetails.innerHTML = "";
-  const topCountries = shell.gbif_countries_top || shell.top_countries_label || shell.enrichment?.countries_top;
+  const topCountries = shell.countries_top || shell.top_countries_label || shell.enrichment?.countries_top;
   const details = [
     ["Shellprint", shell.fingerprint_hash || "-"],
   ];
-  const rarityLabel = knownText(shell.rarity_label || shell.enrichment?.rarity_proxy);
+  const rarityLabel = knownText(shell.rarity_label);
   if (rarityLabel) details.push(["Rarity", rarityLabel]);
   const countryLabel = formatTopCountries(topCountries);
   if (countryLabel) details.push(["Countries", countryLabel]);

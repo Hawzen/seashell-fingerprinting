@@ -195,7 +195,6 @@ export async function loadNewFingerprintPack() {
     const lightnessMean = optionalNumber(shellEnrichment.lightness_mean);
     const paletteRgb = Array.isArray(shellEnrichment.palette_rgb) ? shellEnrichment.palette_rgb : [];
     const paletteWeights = Array.isArray(shellEnrichment.palette_weights) ? shellEnrichment.palette_weights : [];
-    const asymmetry = optionalNumber(shellEnrichment.asymmetry);
     const contour = reconstructContourFromFingerprint(fingerprint, 256);
     return {
       id,
@@ -213,14 +212,12 @@ export async function loadNewFingerprintPack() {
       enrichment: speciesEnrichment,
       shell_enrichment: shellEnrichment,
       rarity_label: rarityLabel(speciesEnrichment.rarity_proxy),
-      gbif_occurrence_count: optionalNumber(speciesEnrichment.occurrence_count),
-      gbif_country_count: optionalNumber(speciesEnrichment.country_count),
-      gbif_countries_top: speciesEnrichment.countries_top || "",
+      country_count: optionalNumber(speciesEnrichment.country_count),
+      countries_top: speciesEnrichment.countries_top || "",
       color_l_mean: lightnessMean == null ? null : lightnessMean / 255,
       color_palette_rgb: paletteRgb,
       color_palette_weights: paletteWeights,
       morph_traits: {
-        asymmetry,
         roughness: contourRoughness(contour),
       },
     };

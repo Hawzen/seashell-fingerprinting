@@ -36,7 +36,6 @@ export async function handleUploadShell() {
     shell.morph_traits = deriveMorphMetrics(shell);
     shell.fingerprint_hash = await shellprintFromFingerprint(py.fingerprint);
     shell.species_sample_count = 1;
-    shell.global_occurrences = 0;
     shell.rarity_label = "Data deficient";
     shell.rarity_reason = "uploaded image";
     shell.location_label = "Uploaded image";

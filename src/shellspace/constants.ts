@@ -6,8 +6,6 @@ export const colorModeDefs = [
   { key: "pattern", label: "Pattern" },
   { key: "lightness", label: "Lightness" },
   { key: "roughness", label: "Roughness" },
-  { key: "occurrences", label: "GBIF records" },
-  { key: "countries", label: "Country count" },
   { key: "rarity", label: "Rarity" },
   { key: "concavity", label: "Concavity" },
 ];

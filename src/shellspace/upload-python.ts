@@ -10,6 +10,19 @@ let pyodideScriptPromise = null;
 let pyodidePromise = null;
 let rembgSessionPromise = null;
 let rembgConfigured = false;
+let fingerprintWorker = null;
+let fingerprintWorkerJobId = 0;
+const fingerprintWorkerJobs = new Map();
+
+function yieldToUi(timeout = 80) {
+  return new Promise((resolve) => {
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(() => resolve(), { timeout });
+      return;
+    }
+    requestAnimationFrame(() => resolve());
+  });
+}
 
 export function percentile(sortedValues, q) {
   if (!sortedValues.length) return 0;
@@ -98,6 +111,7 @@ export async function loadPyodideRuntime() {
       const pyodide = await window.loadPyodide({ indexURL: PYODIDE_INDEX });
       els.statusLine.textContent = "Loading numpy";
       await pyodide.loadPackage(["numpy"]);
+      await yieldToUi();
       pyodide.runPython(PYTHON_FINGERPRINT_CODE);
       return pyodide;
     })();
@@ -105,11 +119,59 @@ export async function loadPyodideRuntime() {
   return pyodidePromise;
 }
 
+export function loadFingerprintWorker() {
+  if (!fingerprintWorker) {
+    fingerprintWorker = new Worker(new URL("./fingerprint-worker.ts", import.meta.url), { type: "classic" });
+    fingerprintWorker.onmessage = (event) => {
+      const { id, ok, raw, error } = event.data || {};
+      const job = fingerprintWorkerJobs.get(id);
+      if (!job) return;
+      fingerprintWorkerJobs.delete(id);
+      if (ok) job.resolve(raw);
+      else job.reject(new Error(error || "Worker fingerprint failed"));
+    };
+    fingerprintWorker.onerror = (event) => {
+      for (const [, job] of fingerprintWorkerJobs) {
+        job.reject(new Error(event.message || "Worker fingerprint failed"));
+      }
+      fingerprintWorkerJobs.clear();
+      fingerprintWorker?.terminate();
+      fingerprintWorker = null;
+    };
+  }
+  return fingerprintWorker;
+}
+
+export function runFingerprintInWorker(imageData, mask) {
+  const worker = loadFingerprintWorker();
+  const id = ++fingerprintWorkerJobId;
+  const rgba = new Uint8Array(imageData.data);
+  const maskCopy = new Uint8Array(mask);
+  return new Promise((resolve, reject) => {
+    fingerprintWorkerJobs.set(id, { resolve, reject });
+    worker.postMessage({
+      id,
+      payload: {
+        rgba: rgba.buffer,
+        mask: maskCopy.buffer,
+        width: imageData.width,
+        height: imageData.height,
+        contourPoints: state.contourPoints || 256,
+        runtime: {
+          pyodideIndex: PYODIDE_INDEX,
+          pyodideScript: PYODIDE_SCRIPT,
+          pythonCode: PYTHON_FINGERPRINT_CODE,
+        },
+      },
+    }, [rgba.buffer, maskCopy.buffer]);
+  });
+}
+
 export function configureRembg() {
   if (rembgConfigured) return;
   const ortBase = new URL("public/ort/", document.baseURI);
   ort.env.wasm.numThreads = 1;
-  ort.env.wasm.proxy = false;
+  ort.env.wasm.proxy = true;
   ort.env.wasm.wasmPaths = {
     mjs: new URL("ort-wasm-simd-threaded.jsep.mjs", ortBase).toString(),
     wasm: new URL("ort-wasm-simd-threaded.jsep.wasm", ortBase).toString(),
@@ -151,7 +213,22 @@ export function maskBounds(mask, width, height) {
   return maxX < minX ? [0, 0, width - 1, height - 1] : [minX, minY, maxX, maxY];
 }
 
-export function maskedImageUrl(imageData, mask, bbox = null) {
+function canvasToPngDataUrl(canvas) {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        resolve(canvas.toDataURL("image/png"));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => resolve(canvas.toDataURL("image/png"));
+      reader.readAsDataURL(blob);
+    }, "image/png");
+  });
+}
+
+export async function maskedImageUrl(imageData, mask, bbox = null) {
   const canvas = document.createElement("canvas");
   canvas.width = imageData.width;
   canvas.height = imageData.height;
@@ -159,6 +236,7 @@ export function maskedImageUrl(imageData, mask, bbox = null) {
   const cut = new ImageData(new Uint8ClampedArray(imageData.data), imageData.width, imageData.height);
   for (let index = 0; index < mask.length; index += 1) {
     cut.data[index * 4 + 3] = mask[index] ? cut.data[index * 4 + 3] : 0;
+    if ((index & 0x1ffff) === 0x1ffff) await yieldToUi(16);
   }
   ctx.putImageData(cut, 0, 0);
 
@@ -177,17 +255,20 @@ export function maskedImageUrl(imageData, mask, bbox = null) {
   output.width = side;
   output.height = side;
   output.getContext("2d").drawImage(canvas, x0, y0, cropWidth, cropHeight, (side - cropWidth) / 2, (side - cropHeight) / 2, cropWidth, cropHeight);
-  return output.toDataURL("image/png");
+  return canvasToPngDataUrl(output);
 }
 
 export async function maskWithRembg(imageData) {
   els.statusLine.textContent = "Removing background";
+  await yieldToUi();
   const input = document.createElement("canvas");
   input.width = imageData.width;
   input.height = imageData.height;
   input.getContext("2d").putImageData(imageData, 0, 0);
   const session = await loadRembgSession();
+  await yieldToUi();
   const blob = await remove(input, { onlyMask: true, postProcessMask: true, session });
+  await yieldToUi();
   const bitmap = await createImageBitmap(blob);
   const canvas = document.createElement("canvas");
   canvas.width = imageData.width;
@@ -199,19 +280,17 @@ export async function maskWithRembg(imageData) {
   const mask = new Uint8Array(imageData.width * imageData.height);
   for (let index = 0; index < mask.length; index += 1) {
     mask[index] = pixels[index * 4] > 16 ? 1 : 0;
+    if ((index & 0x1ffff) === 0x1ffff) await yieldToUi(16);
   }
   return mask;
 }
 
 export async function fingerprintImageDataWithPython(imageData) {
   const mask = await maskWithRembg(imageData);
-  const pyodide = await loadPyodideRuntime();
-  pyodide.FS.writeFile("/upload.rgba", new Uint8Array(imageData.data));
-  pyodide.FS.writeFile("/upload.mask", mask);
   els.statusLine.textContent = "Fingerprinting shell";
-  const raw = pyodide.runPython(
-    `fingerprint_rgba_mask_file("/upload.rgba", "/upload.mask", ${imageData.width}, ${imageData.height}, ${state.contourPoints || 256}, 32)`,
-  );
+  await yieldToUi();
+  const raw = await runFingerprintInWorker(imageData, mask);
+  await yieldToUi();
   const result = JSON.parse(raw);
   const cleanMask = maskFromBase64(result.mask, imageData.width, imageData.height);
   const bbox = result.bbox || maskBounds(cleanMask, imageData.width, imageData.height);
@@ -228,10 +307,12 @@ export async function fingerprintImageDataWithPython(imageData) {
 
 export async function fingerprintImageWithPython(image) {
   els.statusLine.textContent = "Cutting shell";
+  await yieldToUi();
   return fingerprintImageDataWithPython(imageDataFromImage(image, 768));
 }
 
 export async function fingerprintUploadWithPython(file) {
   els.statusLine.textContent = "Cutting shell";
+  await yieldToUi();
   return fingerprintImageDataWithPython(await readUploadImage(file, 768));
 }

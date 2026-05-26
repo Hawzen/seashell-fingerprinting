@@ -9,6 +9,7 @@ import { cutShellWithPython, restoreCutoutStatus, setCachedShellCutoutImage, set
 import { formatNumber } from './utils';
 
 const NEIGHBOR_IMAGE_IDLE_DELAY = 1000;
+const SOURCE_IMAGE_PIPELINE_DELAY = 250;
 
 export function setSourceImageUrl(url, shell, alt = "") {
   els.sourceImage.hidden = false;
@@ -42,12 +43,13 @@ export async function renderSourceShell(shell, { preferFastSource = false } = {}
   renderPalette(false);
   const statusBeforeCut = els.statusLine.textContent;
   state.sourceLoadTimer = window.setTimeout(async () => {
-    const cut = await cutShellWithPython(shell);
+    if (run !== state.selectionRun || token !== state.sourceToken || state.selected !== shell) return;
+    const cut = await cutShellWithPython(shell, { priority: 10 });
     restoreCutoutStatus(statusBeforeCut);
     if (run !== state.selectionRun || token !== state.sourceToken || state.selected !== shell) return;
     if (cut?.imageUrl) setSourceImageUrl(cut.imageUrl, shell, shell.species);
     else if (els.sourceSpinner) els.sourceSpinner.hidden = true;
-  }, 0);
+  }, preferFastSource ? 80 : SOURCE_IMAGE_PIPELINE_DELAY);
 }
 
 export function contourPcDistanceSq(shell, candidate) {
@@ -334,7 +336,7 @@ export async function hydrateNeighborImages(images, key) {
   for (const item of images) {
     if (run !== state.selectionRun || state.neighborRenderKey !== key) return;
     if (setCachedShellCutoutImage(item.image, item.shell)) continue;
-    void setShellCutoutImage(item.image, item.shell).then(() => {
+    void setShellCutoutImage(item.image, item.shell, { priority: -5 }).then(() => {
       if (run !== state.selectionRun || state.neighborRenderKey !== key) {
         item.image.hidden = true;
       }

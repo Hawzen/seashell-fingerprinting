@@ -14,8 +14,8 @@ export function shellOriginKey(shell) {
   return shell?.species_traits?.region_key || shell?.location_key || "unknown";
 }
 
-function gbifCountryItems(shell) {
-  return parseCountryList(shell?.gbif_countries_top || shell?.enrichment?.countries_top || "");
+function countryItems(shell) {
+  return parseCountryList(shell?.countries_top || shell?.enrichment?.countries_top || "");
 }
 
 export function shellOriginLabel(shell) {
@@ -33,7 +33,7 @@ export function shellOriginMatches(shell, filterValue) {
       || (shell?.species_traits?.known_range_countries || []).some((country) =>
         `${country.label || ""} ${country.code || ""}`.toLowerCase().includes(query),
       )
-      || gbifCountryItems(shell).some((country) => countrySearchText(country.code).includes(query));
+      || countryItems(shell).some((country) => countrySearchText(country.code).includes(query));
   }
   if (type === "region") {
     return shell?.species_traits?.region_key === value
@@ -45,7 +45,7 @@ export function shellOriginMatches(shell, filterValue) {
     return shell?.location_key === value
       || shell?.species_traits?.primary_country === value
       || (shell?.species_traits?.known_range_countries || []).some((country) => country.code === value)
-      || gbifCountryItems(shell).some((country) => country.code === value);
+      || countryItems(shell).some((country) => country.code === value);
   }
   return shellOriginKey(shell) === filterValue;
 }
@@ -121,7 +121,7 @@ export function availableRangeFilterDefs() {
 export function availableRarityOptions() {
   const values = new Set();
   for (const shell of state.shells) {
-    const label = shell.rarity_label || shell.enrichment?.rarity_proxy;
+    const label = shell.rarity_label;
     if (isKnownDataLabel(label)) values.add(label);
   }
   return rarityFilterOptions.filter((option) => values.has(option)).concat([...values].filter((option) => !rarityFilterOptions.includes(option)).sort());
@@ -230,7 +230,7 @@ export function originFilterData() {
       current.count += Math.max(1, Number(country.count || 0));
       countries.set(value, current);
     }
-    for (const country of gbifCountryItems(shell)) {
+    for (const country of countryItems(shell)) {
       const value = `country:${country.code}`;
       const label = countryDisplayLabel(country.code);
       if (!label) continue;

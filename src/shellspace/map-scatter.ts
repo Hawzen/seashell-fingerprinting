@@ -3,7 +3,7 @@
 import { resizeCanvas } from './routing-canvas';
 import { colorModeDefs } from './constants';
 import { els, scatterCtx, state } from './runtime';
-import { getCachedShellCutoutImage, getShellCutoutImage } from './shell-cutouts';
+import { getCachedShellCutoutImage } from './shell-cutouts';
 import { clamp01, hslToRgba } from './utils';
 
 export function contourAxisCount() {
@@ -126,9 +126,7 @@ export function shellHasColorModeData(shell, mode) {
   if (mode === "pattern") return hasNumber(shell.color_pattern_strength);
   if (mode === "lightness") return hasNumber(shell.color_l_mean);
   if (mode === "roughness") return hasNumber(shell.morph_traits?.roughness);
-  if (mode === "occurrences") return hasNumber(shell.gbif_occurrence_count) && Number(shell.gbif_occurrence_count) > 0;
-  if (mode === "countries") return hasNumber(shell.gbif_country_count) && Number(shell.gbif_country_count) > 0;
-  if (mode === "rarity") return isKnownText(shell.rarity_label || shell.enrichment?.rarity_proxy);
+  if (mode === "rarity") return isKnownText(shell.rarity_label);
   if (mode === "concavity") return hasNumber(shell.contour_concavity);
   return false;
 }
@@ -147,7 +145,9 @@ export function buildColorModeOptions() {
     option.textContent = mode.label;
     els.colorModeSelect.append(option);
   }
-  if (!modes.some((mode) => mode.key === state.colorMode)) state.colorMode = modes[0]?.key || "species";
+  if (!modes.some((mode) => mode.key === state.colorMode)) {
+    state.colorMode = modes.some((mode) => mode.key === "roughness") ? "roughness" : modes[0]?.key || "species";
+  }
   els.colorModeSelect.value = state.colorMode;
   renderColorLegend();
 }
@@ -201,14 +201,6 @@ export function renderColorLegend() {
     legend.append(legendGradient(rgbaCss(hslToRgba(178, 0.58, 0.34)), rgbaCss(hslToRgba(28, 0.58, 0.5)), "Smooth", "Rough"));
     return;
   }
-  if (state.colorMode === "occurrences") {
-    legend.append(legendGradient("rgba(104, 113, 116, 0.45)", rgbaCss(hslToRgba(44, 0.56, 0.48)), "Few", "Many"));
-    return;
-  }
-  if (state.colorMode === "countries") {
-    legend.append(legendGradient("rgba(104, 113, 116, 0.45)", rgbaCss(hslToRgba(185, 0.5, 0.52)), "Few", "Many"));
-    return;
-  }
   if (state.colorMode === "concavity") {
     legend.append(legendGradient(rgbaCss(hslToRgba(320, 0.56, 0.35)), rgbaCss(hslToRgba(135, 0.56, 0.46)), "Smooth", "Indented"));
     return;
@@ -235,17 +227,11 @@ export function conservationRgba(shell) {
 }
 
 function rarityRgba(shell) {
-  const rarity = String(shell.rarity_label || shell.enrichment?.rarity_proxy || "").toLowerCase();
+  const rarity = String(shell.rarity_label || "").toLowerCase();
   if (rarity.includes("uncommon")) return [222, 146, 54, 218];
   if (rarity.includes("common")) return [52, 136, 96, 208];
   if (rarity.includes("rare")) return [199, 64, 44, 224];
   return [104, 113, 116, 138];
-}
-
-function logCountScale(value, maxLog = 5) {
-  const count = Number(value || 0);
-  if (!Number.isFinite(count) || count <= 0) return 0;
-  return clamp01(Math.log10(count + 1) / maxLog);
 }
 
 export function pointRgbaForMode(shell, mode) {
@@ -262,16 +248,6 @@ export function pointRgbaForMode(shell, mode) {
   if (mode === "roughness") {
     const t = clamp01(shell.morph_traits?.roughness ?? 0);
     return hslToRgba(178 - t * 150, 0.58, (34 + t * 16) / 100);
-  }
-  if (mode === "occurrences") {
-    const t = logCountScale(shell.gbif_occurrence_count);
-    if (t <= 0) return [104, 113, 116, 116];
-    return hslToRgba(192 - t * 148, 0.56, (32 + t * 16) / 100);
-  }
-  if (mode === "countries") {
-    const t = logCountScale(shell.gbif_country_count, 2);
-    if (t <= 0) return [104, 113, 116, 116];
-    return hslToRgba(265 - t * 80, 0.5, (34 + t * 18) / 100);
   }
   if (mode === "rarity") return rarityRgba(shell);
   if (mode === "pattern") {
@@ -358,11 +334,9 @@ export function drawScatterPoints(pointCache) {
   scatterCtx.putImageData(imageData, 0, 0);
 }
 
-export function drawShellImageMarker(shell, size, { request = false } = {}) {
+export function drawShellImageMarker(shell, size) {
   if (!shell || shell.id < 0) return false;
-  const image = request
-    ? getShellCutoutImage(shell, () => scheduleDraw())
-    : getCachedShellCutoutImage(shell, () => scheduleDraw());
+  const image = getCachedShellCutoutImage(shell, () => scheduleDraw());
   if (!image) return false;
   const point = worldToScreen(axisValue(shell, state.xAxis), axisValue(shell, state.yAxis), size);
   if (point.x < -40 || point.x > size.width + 40 || point.y < -40 || point.y > size.height + 40) return true;
@@ -419,7 +393,7 @@ export function drawScatter() {
   }
 
   if (state.selected && visibleShells.has(state.selected)) {
-    if (!state.showPoppedShells || !drawShellImageMarker(state.selected, size, { request: true })) {
+    if (!state.showPoppedShells || !drawShellImageMarker(state.selected, size)) {
       const selected = worldToScreen(
         axisValue(state.selected, state.xAxis),
         axisValue(state.selected, state.yAxis),
