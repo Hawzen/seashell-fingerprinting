@@ -35,6 +35,42 @@ export function relativeMeanRadius(shell) {
   return clamp01((shell?.mean_radius || 0) / Math.max(1, Math.min(shell?.image_width || 1, shell?.image_height || 1)));
 }
 
+export function contourRoughness(contour) {
+  if (!contour || contour.length < 8) return null;
+  const count = Math.floor(contour.length / 2);
+  let centerX = 0;
+  let centerY = 0;
+  for (let index = 0; index < count; index += 1) {
+    centerX += Number(contour[index * 2] || 0);
+    centerY += Number(contour[index * 2 + 1] || 0);
+  }
+  centerX /= count;
+  centerY /= count;
+
+  const radii = [];
+  for (let index = 0; index < count; index += 1) {
+    const x = Number(contour[index * 2] || 0) - centerX;
+    const y = Number(contour[index * 2 + 1] || 0) - centerY;
+    const radius = Math.hypot(x, y);
+    if (Number.isFinite(radius) && radius > 1e-6) radii.push(radius);
+  }
+  if (radii.length < 4) return null;
+  const mean = radii.reduce((sum, radius) => sum + radius, 0) / radii.length;
+  if (mean <= 1e-6) return null;
+  const window = Math.max(2, Math.round(radii.length * 0.035));
+  let rough = 0;
+  for (let index = 0; index < radii.length; index += 1) {
+    let local = 0;
+    let used = 0;
+    for (let offset = -window; offset <= window; offset += 1) {
+      local += radii[(index + offset + radii.length) % radii.length];
+      used += 1;
+    }
+    rough += Math.abs(radii[index] - local / used);
+  }
+  return clamp01((rough / radii.length) / mean);
+}
+
 export function datasetCmScale(shell) {
   const width = Math.max(1, shell?.image_width || 400);
   const height = Math.max(1, shell?.image_height || 300);
@@ -220,12 +256,13 @@ export function buildSpeciesTraitsLookup(speciesTraitsPayload) {
 }
 
 export function deriveMorphMetrics(shell) {
+  const roughness = Number.isFinite(Number(shell.roughness)) ? Number(shell.roughness) : contourRoughness(shell.upload_contour);
   const solidityLoss = clamp01((1 - (shell.contour_solidity || 1)) / 0.32);
   const pc = shell.contour_pc || [];
   const pc2 = clamp01(((pc[1] || 0) + 7) / 14);
   const pc4 = clamp01(((pc[3] || 0) + 3) / 6);
   return {
-    asymmetry: clamp01(0.4 * Math.abs(pc2 - 0.5) * 2 + 0.34 * Math.abs(pc4 - 0.5) * 2 + 0.26 * solidityLoss),
+    roughness: roughness ?? clamp01(0.4 * Math.abs(pc2 - 0.5) * 2 + 0.34 * Math.abs(pc4 - 0.5) * 2 + 0.26 * solidityLoss),
   };
 }
 
@@ -242,13 +279,14 @@ export function buildDerivedShellData(shells, localityPayload = null, speciesTra
   for (const shell of shells) {
     const locality = localityLookup.get(shell.species);
     const traits = speciesTraitsLookup.get(shell.species);
+    const derivedMorphTraits = deriveMorphMetrics(shell);
     shell.fingerprint_hash ||= fingerprintHash(shell);
     shell.species_sample_count = state.speciesCounts.get(shell.species) || 1;
     shell.species_traits = traits || null;
-    shell.morph_traits = deriveMorphMetrics(shell);
-    shell.rarity_label = traits?.rarity_label || "Data deficient";
+    shell.morph_traits = { ...derivedMorphTraits, ...(shell.morph_traits || {}) };
+    shell.rarity_label = traits?.rarity_label || shell.rarity_label || "";
     shell.rarity_reason = traits?.rarity_reason || "";
-    shell.global_occurrences = traits?.observation_count || locality?.total_occurrences || 0;
+    shell.global_occurrences = traits?.observation_count || locality?.total_occurrences || shell.gbif_occurrence_count || 0;
     shell.location_label = locality?.location_label || "Locality unavailable";
     shell.location_key = locality?.primary_country || locality?.region_key || "unknown";
     shell.location_color = shell.location_key === "unknown"
@@ -258,7 +296,7 @@ export function buildDerivedShellData(shells, localityPayload = null, speciesTra
     shell.region_label = locality?.region_label || "";
     shell.top_countries_label = locality?.top_countries?.length
       ? locality.top_countries.slice(0, 3).map((country) => country.label).join(", ")
-      : "";
+      : shell.gbif_countries_top || "";
   }
 }
 

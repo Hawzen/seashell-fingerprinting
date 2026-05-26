@@ -2,10 +2,11 @@
 
 import { panViewportByWheel, selectRandomShell, setAxes, setPcValues, zoom } from './conservation-controls';
 import { starStorageKey } from './constants';
-import { positionFiltersPanel, resetTraitFilters, setFiltersPanelOpen, updateFilter } from './filters';
+import { buildTraitFilters, positionFiltersPanel, resetTraitFilters, setFiltersPanelOpen, updateFilter } from './filters';
 import { exportGeneratedSvg } from './geometry-generation';
-import { contourAxisCount, initialViewport, scheduleDraw } from './map-scatter';
+import { contourAxisCount, initialViewport, renderColorLegend, scheduleDraw } from './map-scatter';
 import { renderPalette } from './palette';
+import { closePcaGuide, openPcaGuide, pcaAxisNamesKey } from './pca-guide';
 import { scheduleHashUpdate } from './routing-canvas';
 import { els, state } from './runtime';
 import { flushTargetDragPreview, nearestShell, panViewportFromEvent, queuePointTooltip, queueTargetFromEvent, setTargetFromEvent, startViewportPan, stopViewportPan } from './selection-palette';
@@ -13,6 +14,8 @@ import { clearPersistentCutoutCache } from './shell-cutouts';
 import { finishPendingScatterSelection, renderSourceShell, scheduleRenderNeighbors } from './source-neighbors';
 import { queueStarredImageHydration, renderStarred, resetStarredDock, toggleStarredShell, updateStarredDock } from './starred';
 import { handleUploadShell } from './upload-handler';
+
+const showPoppedShellsKey = "shellspace-show-popped-shells";
 
 export function stopPcaWalk(updateHash = true) {
   state.walkingPca = false;
@@ -64,6 +67,8 @@ export function clearAllLocalData() {
   clearPersistentCutoutCache();
   try {
     localStorage.removeItem(starStorageKey);
+    localStorage.removeItem(showPoppedShellsKey);
+    localStorage.removeItem(pcaAxisNamesKey);
   } catch (_error) {
     // Best effort.
   }
@@ -71,9 +76,24 @@ export function clearAllLocalData() {
   window.location.reload();
 }
 
+export function loadLocalSettings() {
+  let showPoppedShells = true;
+  try {
+    showPoppedShells = localStorage.getItem(showPoppedShellsKey) !== "false";
+  } catch (_error) {
+    showPoppedShells = true;
+  }
+  state.showPoppedShells = showPoppedShells;
+  if (els.showPoppedShells) els.showPoppedShells.checked = showPoppedShells;
+}
+
 export function setupEvents() {
+  loadLocalSettings();
   els.search.addEventListener("input", updateFilter);
   els.filtersToggle?.addEventListener("click", () => setFiltersPanelOpen(els.filtersPanel?.hidden !== false));
+  els.pcaGuideOpen?.addEventListener("click", openPcaGuide);
+  els.pcaGuideClose?.addEventListener("click", closePcaGuide);
+  els.pcaGuideModal?.querySelector(".pca-guide-backdrop")?.addEventListener("click", closePcaGuide);
   els.closeFilters?.addEventListener("click", () => setFiltersPanelOpen(false));
   els.settingsToggle?.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -81,10 +101,20 @@ export function setupEvents() {
   });
   els.settingsPanel?.addEventListener("click", (event) => event.stopPropagation());
   els.clearAllData?.addEventListener("click", clearAllLocalData);
+  els.showPoppedShells?.addEventListener("change", () => {
+    state.showPoppedShells = Boolean(els.showPoppedShells.checked);
+    try {
+      localStorage.setItem(showPoppedShellsKey, state.showPoppedShells ? "true" : "false");
+    } catch (_error) {
+      // Best effort.
+    }
+    scheduleDraw();
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       setFiltersPanelOpen(false);
       setSettingsPanelOpen(false);
+      closePcaGuide();
     }
   });
   document.addEventListener("click", () => {
@@ -96,8 +126,13 @@ export function setupEvents() {
   els.yAxisSelect.addEventListener("change", () => setAxes(state.xAxis, Number(els.yAxisSelect.value)));
   els.colorModeSelect.addEventListener("change", () => {
     state.colorMode = els.colorModeSelect.value;
+    renderColorLegend();
     scheduleDraw();
     scheduleHashUpdate();
+  });
+  window.addEventListener("shellspace:color-filter-changed", () => {
+    buildTraitFilters();
+    updateFilter();
   });
   els.meanShape.addEventListener("click", resetToMeanShape);
   els.walkPca.addEventListener("click", togglePcaWalk);

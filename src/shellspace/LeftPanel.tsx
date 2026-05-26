@@ -54,7 +54,10 @@ function ControlsPanel() {
       <input ref={(node) => { els.uploadInput = node; }} type="file" accept="image/*" hidden />
 
       <div class="section-title">
-        <h2>Map</h2>
+        <h2>
+          Map
+          <button ref={(node) => { els.pcaGuideOpen = node; }} class="pca-guide-button" title="Explain PCA axes" aria-label="Explain PCA axes">?</button>
+        </h2>
       </div>
       <div class="axis-grid">
         <label>
@@ -68,16 +71,9 @@ function ControlsPanel() {
       </div>
       <label class="field">
         <span>Color</span>
-        <select ref={(node) => { els.colorModeSelect = node; }}>
-          <option value="locality">Location</option>
-          <option value="species">Species</option>
-          <option value="conservation">Conservation</option>
-          <option value="shell">Shell color</option>
-          <option value="pattern">Pattern</option>
-          <option value="lightness">Lightness</option>
-          <option value="concavity">Concavity</option>
-        </select>
+        <select ref={(node) => { els.colorModeSelect = node; }} />
       </label>
+      <div ref={(node) => { els.colorLegend = node; }} class="color-legend" hidden />
     </section>
   );
 }
@@ -99,6 +95,10 @@ function PhysicalShellPanel() {
       </div>
       <div ref={(node) => { els.selectedName = node; }} class="selected-name">None</div>
       <dl ref={(node) => { els.selectedDetails = node; }} />
+      <div class="color-palette">
+        <h2>Palette</h2>
+        <div ref={(node) => { els.paletteSwatches = node; }} class="palette-swatches" />
+      </div>
     </section>
   );
 }

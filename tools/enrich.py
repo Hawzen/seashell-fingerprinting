@@ -57,9 +57,20 @@ COMPACT_FIELDS = [
     "country_count",
     "countries_top",
     "rarity_proxy",
-    "lightness_mean",
-    "asymmetry_mean",
 ]
+
+SHELL_FIELDS = [
+    "file",
+    "label",
+    "scientific_name",
+    "lightness_mean",
+    "asymmetry",
+    "palette_rgb",
+    "palette_weights",
+]
+
+PALETTE_SIZE = 5
+MAX_PALETTE_PIXELS = 5000
 
 
 def load_files(path: Path) -> list[str]:
@@ -180,23 +191,117 @@ def resolve_image_path(entry: str, image_root: Path) -> Path | None:
     return None
 
 
-def image_traits(path: Path) -> dict[str, float]:
+def color_palette(
+    pixels: np.ndarray,
+    weights: np.ndarray | None = None,
+    *,
+    size: int = PALETTE_SIZE,
+) -> tuple[list[list[float]], list[float]]:
+    if pixels.size == 0:
+        return [], []
+
+    pixels = np.asarray(pixels, dtype=np.float32).reshape(-1, 3)
+    pixels = np.clip(pixels, 0.0, 1.0)
+    if weights is None:
+        weights = np.ones(len(pixels), dtype=np.float32)
+    else:
+        weights = np.asarray(weights, dtype=np.float32).reshape(-1)
+        weights = np.maximum(weights, 0.0)
+
+    valid = np.isfinite(pixels).all(axis=1) & np.isfinite(weights) & (weights > 0)
+    pixels = pixels[valid]
+    weights = weights[valid]
+    if len(pixels) == 0:
+        return [], []
+
+    if len(pixels) > MAX_PALETTE_PIXELS:
+        step = max(1, len(pixels) // MAX_PALETTE_PIXELS)
+        pixels = pixels[::step]
+        weights = weights[::step]
+
+    weights = weights / float(weights.sum())
+    luminance = pixels @ np.asarray([0.2126, 0.7152, 0.0722], dtype=np.float32)
+    order = np.argsort(luminance)
+    sorted_pixels = pixels[order]
+    sorted_weights = weights[order]
+    cumulative = np.cumsum(sorted_weights)
+    quantiles = np.linspace(0.08, 0.92, size)
+    centers = np.asarray(
+        [sorted_pixels[min(len(sorted_pixels) - 1, int(np.searchsorted(cumulative, q, side="left")))] for q in quantiles],
+        dtype=np.float32,
+    )
+
+    counts = np.zeros(size, dtype=np.float32)
+    labels = np.zeros(len(pixels), dtype=np.int32)
+    for _ in range(8):
+        distances = np.sum((pixels[:, None, :] - centers[None, :, :]) ** 2, axis=2)
+        labels = np.argmin(distances, axis=1)
+        counts = np.zeros(size, dtype=np.float32)
+        next_centers = centers.copy()
+        for index in range(size):
+            cluster = labels == index
+            weight = float(weights[cluster].sum())
+            counts[index] = weight
+            if weight > 0:
+                next_centers[index] = np.average(pixels[cluster], axis=0, weights=weights[cluster])
+        centers = next_centers
+
+    center_luminance = centers @ np.asarray([0.2126, 0.7152, 0.0722], dtype=np.float32)
+    order = np.argsort(center_luminance)
+    centers = centers[order]
+    counts = counts[order]
+    if float(counts.sum()) > 0:
+        counts = counts / float(counts.sum())
+
+    return (
+        [[round(float(channel), 4) for channel in color] for color in centers],
+        [round(float(weight), 4) for weight in counts],
+    )
+
+
+def foreground_mask(gray: np.ndarray, rgb: np.ndarray) -> np.ndarray:
+    border = np.concatenate([gray[0, :], gray[-1, :], gray[:, 0], gray[:, -1]])
+    background = float(np.median(border))
+    if background < 64.0:
+        mask = gray > max(8.0, background + 8.0)
+        if int(mask.sum()) < 64:
+            mask = gray > max(2.0, background + 2.0)
+        return mask
+    if background > 192.0:
+        mask = gray < min(247.0, background - 8.0)
+        if int(mask.sum()) < 64:
+            mask = gray < min(253.0, background - 2.0)
+        return mask
+
+    border_rgb = np.concatenate([rgb[0, :, :], rgb[-1, :, :], rgb[:, 0, :], rgb[:, -1, :]], axis=0)
+    background_rgb = np.median(border_rgb, axis=0)
+    distance = np.linalg.norm(rgb - background_rgb.reshape(1, 1, 3), axis=2)
+    mask = distance > 0.08
+    if int(mask.sum()) < 64:
+        mask = np.abs(gray - background) > 8.0
+    return mask
+
+
+def image_traits(path: Path) -> dict[str, Any]:
     with Image.open(path) as image:
         rgb = ImageOps.exif_transpose(image).convert("RGB")
         gray = ImageOps.grayscale(rgb)
 
     arr = np.asarray(gray, dtype=np.float32)
-    # The dataset images generally use a white/light background. This mask keeps
-    # darker shell pixels and rejects most background without needing rembg.
-    threshold = min(245.0, float(np.percentile(arr, 92)))
-    mask = arr < threshold
-    if int(mask.sum()) < 64:
-        mask = arr < 250.0
+    rgb_arr = np.asarray(rgb, dtype=np.float32) / 255.0
+    mask = foreground_mask(arr, rgb_arr)
 
     if int(mask.sum()) == 0:
-        return {"lightness_mean": float(arr.mean()), "asymmetry": 0.0}
+        colors, weights = color_palette(rgb_arr.reshape(-1, 3))
+        return {
+            "lightness_mean": float(arr.mean()),
+            "asymmetry": 0.0,
+            "palette_rgb": colors,
+            "palette_weights": weights,
+        }
 
     lightness_mean = float(arr[mask].mean())
+    colors, weights = color_palette(rgb_arr[mask])
 
     ys, xs = np.where(mask)
     crop = mask[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1]
@@ -207,12 +312,20 @@ def image_traits(path: Path) -> dict[str, float]:
     union = np.logical_or(crop, flipped).sum()
     asymmetry = float(np.logical_xor(crop, flipped).sum() / union) if union else 0.0
 
-    return {"lightness_mean": lightness_mean, "asymmetry": asymmetry}
+    return {
+        "lightness_mean": lightness_mean,
+        "asymmetry": asymmetry,
+        "palette_rgb": colors,
+        "palette_weights": weights,
+    }
 
 
-def add_visual_traits(rows: list[dict[str, Any]], image_root: Path) -> None:
+def add_visual_traits(rows: list[dict[str, Any]], image_root: Path) -> list[dict[str, Any]]:
+    shell_rows: list[dict[str, Any]] = []
     for row in rows:
         values: dict[str, list[float]] = {"lightness_mean": [], "asymmetry": []}
+        palette_colors: list[list[float]] = []
+        palette_weights: list[float] = []
         missing = 0
         for entry in row.get("requested_files", []):
             path = resolve_image_path(entry, image_root)
@@ -226,11 +339,36 @@ def add_visual_traits(rows: list[dict[str, Any]], image_root: Path) -> None:
                 continue
             values["lightness_mean"].append(traits["lightness_mean"])
             values["asymmetry"].append(traits["asymmetry"])
+            image_colors = traits.get("palette_rgb") or []
+            image_weights = traits.get("palette_weights") or []
+            shell_rows.append(
+                {
+                    "file": entry,
+                    "label": row.get("label", ""),
+                    "scientific_name": row.get("scientific_name", ""),
+                    "lightness_mean": round(float(traits["lightness_mean"]), 3),
+                    "asymmetry": round(float(traits["asymmetry"]), 5),
+                    "palette_rgb": image_colors,
+                    "palette_weights": image_weights,
+                }
+            )
+            if image_colors and image_weights:
+                scale = 1.0 / max(1, len(row.get("requested_files", [])))
+                palette_colors.extend(image_colors)
+                palette_weights.extend(float(weight) * scale for weight in image_weights)
 
         row["visual_trait_image_count"] = len(values["lightness_mean"])
         row["visual_trait_missing_count"] = missing
         row["lightness_mean"] = round(statistics.fmean(values["lightness_mean"]), 3) if values["lightness_mean"] else ""
         row["asymmetry_mean"] = round(statistics.fmean(values["asymmetry"]), 5) if values["asymmetry"] else ""
+        if palette_colors and palette_weights:
+            colors, weights = color_palette(np.asarray(palette_colors, dtype=np.float32), np.asarray(palette_weights, dtype=np.float32))
+            row["palette_rgb"] = colors
+            row["palette_weights"] = weights
+        else:
+            row["palette_rgb"] = []
+            row["palette_weights"] = []
+    return shell_rows
 
 
 def enrich_rows(rows: list[dict[str, Any]], enrichment: dict[str, dict[str, str]]) -> list[dict[str, Any]]:
@@ -255,16 +393,15 @@ def compact_row(row: dict[str, Any]) -> dict[str, Any]:
         "country_count": row.get("gbif_country_count", ""),
         "countries_top": row.get("gbif_countries_top", ""),
         "rarity_proxy": row.get("rarity_proxy", "unknown"),
-        "lightness_mean": row.get("lightness_mean", ""),
-        "asymmetry_mean": row.get("asymmetry_mean", ""),
     }
 
 
-def write_json(path: Path, rows: list[dict[str, Any]], source_files: list[str]) -> None:
+def write_json(path: Path, species_rows: list[dict[str, Any]], shell_rows: list[dict[str, Any]], source_files: list[str]) -> None:
     payload = {
         "source_file_count": len(source_files),
-        "species_count": sum(1 for row in rows if row.get("label")),
-        "rows": rows,
+        "species_count": sum(1 for row in species_rows if row.get("label")),
+        "species": species_rows,
+        "shell": shell_rows,
     }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -280,7 +417,14 @@ def write_tsv(path: Path, rows: list[dict[str, Any]], fields: list[str] | None =
         writer = csv.DictWriter(handle, delimiter="\t", fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         for row in rows:
-            writer.writerow(row)
+            writer.writerow(
+                {
+                    key: json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+                    if isinstance(value, (list, dict))
+                    else value
+                    for key, value in row.items()
+                }
+            )
 
 
 def enrich_files(
@@ -290,10 +434,10 @@ def enrich_files(
     enrichment_path: Path = Path("dataset_enrichment/enriched_preview.tsv"),
     compact: bool = True,
     include_files: bool = False,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     parsed = [parse_file_entry(entry) for entry in source_files]
     rows = aggregate(parsed)
-    add_visual_traits(rows, image_root)
+    shell_rows = add_visual_traits(rows, image_root)
     rows = enrich_rows(rows, load_enrichment(enrichment_path))
     if compact:
         rows = [compact_row(row) for row in rows]
@@ -302,7 +446,7 @@ def enrich_files(
         for row in rows:
             row.pop("requested_files", None)
 
-    return rows
+    return rows, shell_rows
 
 
 def write_enrichment(
@@ -313,8 +457,8 @@ def write_enrichment(
     enrichment_path: Path = Path("dataset_enrichment/enriched_preview.tsv"),
     compact: bool = True,
     include_files: bool = False,
-) -> list[dict[str, Any]]:
-    rows = enrich_files(
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    rows, shell_rows = enrich_files(
         source_files,
         image_root=image_root,
         enrichment_path=enrichment_path,
@@ -325,5 +469,5 @@ def write_enrichment(
     if output.suffix.lower() == ".tsv":
         write_tsv(output, rows, COMPACT_FIELDS if compact else None)
     else:
-        write_json(output, rows, source_files)
-    return rows
+        write_json(output, rows, shell_rows, source_files)
+    return rows, shell_rows

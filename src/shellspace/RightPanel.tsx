@@ -22,11 +22,6 @@ function ProjectedShellPanel() {
         </div>
       </div>
 
-      <div class="color-palette">
-        <h2>Palette</h2>
-        <div ref={(node) => { els.paletteSwatches = node; }} class="palette-swatches" />
-      </div>
-
       <div class="slider-stack">
         <div class="section-title">
           <h2>Contour PCs</h2>

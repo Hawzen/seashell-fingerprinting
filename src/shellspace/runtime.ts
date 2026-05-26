@@ -18,6 +18,7 @@ export const state = {
   yAxis: 1,
   colorMode: "species",
   pcValues: [],
+  pcaAxisNames: [],
   pcControlRows: [],
   morphFilters: new Map(),
   categoryFilters: { origin: "", rarity: "", color: "" },
@@ -74,8 +75,8 @@ export const state = {
   neighborToken: 0,
   neighborRenderKey: "",
   pointColorCache: new Map(),
-  paletteCache: new Map(),
   originFilterOptionsCache: null,
+  showPoppedShells: true,
   mapShellImageIds: new Set(),
 };
 

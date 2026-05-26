@@ -1,6 +1,8 @@
 // @ts-nocheck
 
-import { colorSwatches, filterLevels, rangeFilterDefs, rarityFilterOptions } from './constants';
+import { filterLevels, rangeFilterDefs, rarityFilterOptions } from './constants';
+import { colorBinFilterValue, colorBinFromFilterValue, occupiedColorBins, shellHasColorBin } from './color-bins';
+import { countryDisplayLabel, countrySearchText, parseCountryList } from './countries';
 import { primeSurpriseQueue, resetSurpriseQueue } from './images-loading';
 import { scheduleDraw, shellRgba } from './map-scatter';
 import { renderPalette } from './palette';
@@ -12,6 +14,10 @@ export function shellOriginKey(shell) {
   return shell?.species_traits?.region_key || shell?.location_key || "unknown";
 }
 
+function gbifCountryItems(shell) {
+  return parseCountryList(shell?.gbif_countries_top || shell?.enrichment?.countries_top || "");
+}
+
 export function shellOriginLabel(shell) {
   return shell?.species_traits?.region_label || shell?.region_label || shell?.location_label || "Unknown";
 }
@@ -20,6 +26,15 @@ export function shellOriginMatches(shell, filterValue) {
   if (!filterValue) return true;
   const [type, value] = filterValue.split(":");
   if (!value) return shellOriginKey(shell) === filterValue;
+  if (type === "country-search") {
+    const query = value.trim().toLowerCase();
+    if (!query) return true;
+    return String(shell?.location_label || "").toLowerCase().includes(query)
+      || (shell?.species_traits?.known_range_countries || []).some((country) =>
+        `${country.label || ""} ${country.code || ""}`.toLowerCase().includes(query),
+      )
+      || gbifCountryItems(shell).some((country) => countrySearchText(country.code).includes(query));
+  }
   if (type === "region") {
     return shell?.species_traits?.region_key === value
       || shell?.region_key === value
@@ -29,9 +44,15 @@ export function shellOriginMatches(shell, filterValue) {
   if (type === "country") {
     return shell?.location_key === value
       || shell?.species_traits?.primary_country === value
-      || (shell?.species_traits?.known_range_countries || []).some((country) => country.code === value);
+      || (shell?.species_traits?.known_range_countries || []).some((country) => country.code === value)
+      || gbifCountryItems(shell).some((country) => country.code === value);
   }
   return shellOriginKey(shell) === filterValue;
+}
+
+function isKnownDataLabel(value) {
+  const text = String(value || "").trim().toLowerCase();
+  return text && !["unknown", "not assessed", "data deficient", "locality unavailable"].includes(text);
 }
 
 export function hexToRgb(hex) {
@@ -44,34 +65,92 @@ export function hexToRgb(hex) {
   };
 }
 
+function normalizedPaletteRgb(shell) {
+  if (Array.isArray(shell.color_palette_rgb) && shell.color_palette_rgb.length) {
+    return shell.color_palette_rgb
+      .map((color) => [
+        Number(color?.[0] ?? 0) * 255,
+        Number(color?.[1] ?? 0) * 255,
+        Number(color?.[2] ?? 0) * 255,
+      ])
+      .filter((color) => color.every((channel) => Number.isFinite(channel)));
+  }
+  return [];
+}
+
 export function shellColorDistance(shell, hex) {
   const target = hexToRgb(hex);
   if (!target) return Infinity;
+  const palette = normalizedPaletteRgb(shell);
+  if (palette.length) {
+    return Math.min(...palette.map((color) => {
+      const dr = color[0] - target.r;
+      const dg = color[1] - target.g;
+      const db = color[2] - target.b;
+      return Math.sqrt(dr * dr + dg * dg + db * db);
+    }));
+  }
   if (shell.color_r_mean == null || shell.color_g_mean == null || shell.color_b_mean == null) return null;
   const shellColor = shellRgba(shell);
   const dr = shellColor[0] - target.r;
   const dg = shellColor[1] - target.g;
   const db = shellColor[2] - target.b;
-  const patternBonus = Math.min(24, Math.max(0, shell.color_pattern_strength || 0) * 80);
-  return Math.sqrt(dr * dr + dg * dg + db * db) - patternBonus;
+  return Math.sqrt(dr * dr + dg * dg + db * db);
 }
 
 export function shellMatchesColor(shell, hex) {
   if (!hex) return true;
+  const bin = colorBinFromFilterValue(hex);
+  if (bin != null) return shellHasColorBin(shell, bin);
   const distance = shellColorDistance(shell, hex);
-  return distance == null ? true : distance <= 105;
+  return distance == null ? true : distance <= 42;
 }
 
 export function filterValue(shell, key) {
   if (key === "lightness") return shell.color_l_mean == null ? null : clamp01(shell.color_l_mean);
   if (key === "area") return shell.area == null || shell.image_width == null || shell.image_height == null ? null : relativeArea(shell);
   if (key === "concavity") return shell.contour_concavity == null ? null : clamp01(shell.contour_concavity / 0.32);
-  if (key === "asymmetry") return shell.morph_traits?.asymmetry == null ? null : clamp01(shell.morph_traits.asymmetry);
+  if (key === "roughness") return shell.morph_traits?.roughness == null ? null : clamp01(shell.morph_traits.roughness);
   return null;
 }
 
+export function availableRangeFilterDefs() {
+  return rangeFilterDefs.filter((def) => state.shells.some((shell) => filterValue(shell, def.key) != null));
+}
+
+export function availableRarityOptions() {
+  const values = new Set();
+  for (const shell of state.shells) {
+    const label = shell.rarity_label || shell.enrichment?.rarity_proxy;
+    if (isKnownDataLabel(label)) values.add(label);
+  }
+  return rarityFilterOptions.filter((option) => values.has(option)).concat([...values].filter((option) => !rarityFilterOptions.includes(option)).sort());
+}
+
+export function hasColorFilterData() {
+  return occupiedColorBins(state.shells).length > 0 || state.shells.some((shell) => normalizedPaletteRgb(shell).length || (
+    shell.color_r_mean != null
+    && shell.color_g_mean != null
+    && shell.color_b_mean != null
+    && Number.isFinite(Number(shell.color_r_mean))
+    && Number.isFinite(Number(shell.color_g_mean))
+    && Number.isFinite(Number(shell.color_b_mean))
+  ));
+}
+
+export function availablePaletteColorFilters() {
+  return occupiedColorBins(state.shells);
+}
+
+export function colorFilterLabel(value) {
+  if (!value) return "Any";
+  const bin = colorBinFromFilterValue(value);
+  const item = bin == null ? null : occupiedColorBins(state.shells).find((color) => color.bin === bin);
+  return item?.hex || value;
+}
+
 export function passesMorphFilters(shell) {
-  for (const def of rangeFilterDefs) {
+  for (const def of availableRangeFilterDefs()) {
     const filter = state.morphFilters.get(def.key);
     if (!filter) continue;
     const value = filterValue(shell, def.key);
@@ -79,8 +158,8 @@ export function passesMorphFilters(shell) {
     if (value < filter.min || value > filter.max) return false;
   }
   if (state.categoryFilters.rarity && shell.rarity_label !== state.categoryFilters.rarity) return false;
-  if (!shellOriginMatches(shell, state.categoryFilters.origin)) return false;
-  if (!shellMatchesColor(shell, state.categoryFilters.color)) return false;
+  if (state.categoryFilters.origin && !shellOriginMatches(shell, state.categoryFilters.origin)) return false;
+  if (state.categoryFilters.color && !shellMatchesColor(shell, state.categoryFilters.color)) return false;
   return true;
 }
 
@@ -108,7 +187,7 @@ export function updateFilter() {
 export function updateFilterButton() {
   if (!els.filtersToggle) return;
   let active = 0;
-  for (const def of rangeFilterDefs) {
+  for (const def of availableRangeFilterDefs()) {
     const filter = state.morphFilters.get(def.key);
     if (filter && (filter.min > 0 || filter.max < 1)) active += 1;
   }
@@ -121,8 +200,7 @@ export function updateFilterButton() {
 
 export function originFilterOptions() {
   return [
-    ...originFilterData().regions.map((item) => [item.value, `Continent: ${item.label}`]),
-    ...originFilterData().countries.map((item) => [item.value, `Country: ${item.label}`]),
+    ...originFilterData().countries.map((item) => [item.value, item.label]),
   ];
 }
 
@@ -145,11 +223,25 @@ export function originFilterData() {
       const current = countries.get(value) || {
         value,
         code: country.code,
-        label: country.label,
+        label: countryDisplayLabel(country.code) || country.label,
         region: shell.species_traits?.region_key || "",
         count: 0,
       };
       current.count += Math.max(1, Number(country.count || 0));
+      countries.set(value, current);
+    }
+    for (const country of gbifCountryItems(shell)) {
+      const value = `country:${country.code}`;
+      const label = countryDisplayLabel(country.code);
+      if (!label) continue;
+      const current = countries.get(value) || {
+        value,
+        code: country.code,
+        label,
+        region: "",
+        count: 0,
+      };
+      current.count += country.count;
       countries.set(value, current);
     }
     const localityKey = shell.location_key || "";
@@ -158,7 +250,7 @@ export function originFilterData() {
       const current = countries.get(value) || {
         value,
         code: localityKey,
-        label: shell.location_label?.split(",")[0] || localityKey,
+        label: countryDisplayLabel(localityKey) || shell.location_label?.split(",")[0] || localityKey,
         region: shell.species_traits?.region_key || "",
         count: 0,
       };
@@ -178,29 +270,47 @@ export function addOriginSelectFilter() {
   row.className = "filter-row filter-panel-card filter-select-row filter-origin-row";
   const header = document.createElement("header");
   const label = document.createElement("span");
-  label.textContent = "Origin";
+  label.textContent = "Country";
   const output = document.createElement("output");
   output.textContent = originFilterLabel(state.categoryFilters.origin);
   header.append(label, output);
-  const select = document.createElement("select");
-  select.setAttribute("aria-label", "Origin");
-  for (const [value, labelValue] of [["", "Any origin"], ...originFilterOptions()]) {
+  const input = document.createElement("input");
+  const list = document.createElement("datalist");
+  const options = originFilterOptions();
+  const optionByLabel = new Map(options.map(([value, labelValue]) => [labelValue.toLowerCase(), value]));
+  const optionByValue = new Map(options);
+  const listId = "country-filter-options";
+  list.id = listId;
+  input.type = "search";
+  input.placeholder = "Search country";
+  input.setAttribute("aria-label", "Country");
+  input.setAttribute("list", listId);
+  for (const [value, labelValue] of options) {
     const option = document.createElement("option");
-    option.value = value;
+    option.value = labelValue;
+    option.label = value.replace(/^country:/, "");
     option.textContent = labelValue;
-    select.append(option);
+    list.append(option);
   }
-  select.value = state.categoryFilters.origin || "";
-  select.addEventListener("change", () => {
-    state.categoryFilters.origin = select.value;
-    buildTraitFilters();
+  if (state.categoryFilters.origin?.startsWith("country-search:")) {
+    input.value = state.categoryFilters.origin.slice("country-search:".length);
+  } else if (state.categoryFilters.origin) {
+    input.value = optionByValue.get(state.categoryFilters.origin) || "";
+  }
+  input.addEventListener("input", () => {
+    const text = input.value.trim();
+    state.categoryFilters.origin = text
+      ? optionByLabel.get(text.toLowerCase()) || `country-search:${text}`
+      : "";
     updateFilter();
   });
-  row.append(header, select);
+  row.append(header, input, list);
   els.filterControls.append(row);
 }
 
 export function addRarityFilter() {
+  const rarityOptions = availableRarityOptions();
+  if (!rarityOptions.length) return;
   const row = document.createElement("div");
   row.className = "filter-row filter-panel-card rarity-filter-row";
   const header = document.createElement("header");
@@ -211,7 +321,7 @@ export function addRarityFilter() {
   header.append(label, output);
   const levels = document.createElement("div");
   levels.className = "rarity-filter-options";
-  for (const value of ["", ...rarityFilterOptions]) {
+  for (const value of rarityOptions) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = value || "Any";
@@ -229,6 +339,7 @@ export function addRarityFilter() {
 
 export function originFilterLabel(value) {
   if (!value) return "Any";
+  if (value.startsWith("country-search:")) return value.slice("country-search:".length);
   const data = originFilterData();
   const hit = [...data.regions, ...data.countries].find((item) => item.value === value);
   return hit?.label || "Any";
@@ -269,30 +380,38 @@ export function addRangeFilter(def) {
 }
 
 export function addColorPickerFilter() {
+  if (!hasColorFilterData()) return;
+  const colors = availablePaletteColorFilters();
+  if (!colors.length) return;
   const row = document.createElement("div");
   row.className = "filter-row filter-panel-card color-filter-row";
   const header = document.createElement("header");
   const label = document.createElement("span");
   label.textContent = "Color";
   const output = document.createElement("output");
-  output.textContent = colorSwatches.find(([hex]) => hex === state.categoryFilters.color)?.[1] || "Any";
+  output.textContent = colorFilterLabel(state.categoryFilters.color);
   header.append(label, output);
   const panel = document.createElement("div");
   panel.className = "color-filter-panel";
   const controls = document.createElement("div");
   controls.className = "color-swatch-filter";
-  for (const [hex, name] of colorSwatches) {
+  const preferredColumns = [12, 11, 10, 9, 8, 7, 6, 5];
+  const columns = preferredColumns.find((value) => colors.length >= value && colors.length % value <= 1)
+    || Math.min(10, Math.max(5, Math.ceil(Math.sqrt(colors.length * 1.4))));
+  controls.style.setProperty("--color-filter-columns", String(columns));
+  for (const { bin, hex, count, weight } of colors) {
+    const value = colorBinFilterValue(bin);
     const button = document.createElement("button");
     button.type = "button";
-    button.title = name;
-    button.setAttribute("aria-label", name);
-    button.setAttribute("aria-pressed", state.categoryFilters.color === hex ? "true" : "false");
+    button.title = `${hex} · bin ${bin} · ${count} shells · weight ${weight.toFixed(2)}`;
+    button.setAttribute("aria-label", `${hex} color bin`);
+    button.setAttribute("aria-pressed", state.categoryFilters.color === value ? "true" : "false");
     button.style.setProperty("--swatch", hex);
     const dot = document.createElement("span");
     dot.className = "color-swatch-dot";
     button.append(dot);
     button.addEventListener("click", () => {
-      state.categoryFilters.color = state.categoryFilters.color === hex ? "" : hex;
+      state.categoryFilters.color = state.categoryFilters.color === value ? "" : value;
       buildTraitFilters();
       updateFilter();
     });
@@ -306,10 +425,32 @@ export function addColorPickerFilter() {
 export function buildTraitFilters() {
   if (!els.filterControls) return;
   els.filterControls.innerHTML = "";
-  addOriginSelectFilter();
+  const originOptions = originFilterOptions();
+  const rarityOptions = availableRarityOptions();
+  const visibleRangeDefs = availableRangeFilterDefs();
+  if (
+    state.categoryFilters.origin
+    && !state.categoryFilters.origin.startsWith("country-search:")
+    && !originOptions.some(([value]) => value === state.categoryFilters.origin)
+  ) {
+    state.categoryFilters.origin = "";
+  }
+  if (!rarityOptions.includes(state.categoryFilters.rarity)) state.categoryFilters.rarity = "";
+  const colorOptions = availablePaletteColorFilters().filter((color) => color.count > 0);
+  if (
+    state.categoryFilters.color
+    && !colorOptions.some((color) => colorBinFilterValue(color.bin) === state.categoryFilters.color)
+  ) {
+    state.categoryFilters.color = "";
+  }
+  if (!hasColorFilterData()) state.categoryFilters.color = "";
+  for (const def of rangeFilterDefs) {
+    if (!visibleRangeDefs.includes(def)) state.morphFilters.set(def.key, { min: 0, max: 1 });
+  }
+  if (originOptions.length) addOriginSelectFilter();
   addRarityFilter();
   addColorPickerFilter();
-  for (const def of rangeFilterDefs) {
+  for (const def of visibleRangeDefs) {
     if (!state.morphFilters.has(def.key)) state.morphFilters.set(def.key, { min: 0, max: 1 });
     addRangeFilter(def);
   }

@@ -4,7 +4,7 @@ import { centerViewportOnShell, shellById } from './conservation-controls';
 import { starStorageKey } from './constants';
 import { els, state } from './runtime';
 import { selectShell } from './selection-palette';
-import { setCachedShellCutoutImage } from './shell-cutouts';
+import { loadShellCutoutImage, readPersistentCutout, setCachedShellCutoutImage } from './shell-cutouts';
 
 let starredDockFrame = 0;
 let starredDockClientX = 0;
@@ -144,6 +144,26 @@ export function renderStarred() {
     els.starredBand.append(more);
   }
   queueStarredImageHydration(0);
+}
+
+export async function warmStarredCutoutCache({ limit = 80, onProgress = null } = {}) {
+  const shells = [];
+  for (const id of state.starredIds.slice(0, limit)) {
+    const shell = shellById(id);
+    if (shell?.file) shells.push(shell);
+  }
+  let loaded = 0;
+  for (const shell of shells) {
+    if (readPersistentCutout(shell)) {
+      loaded += 1;
+      continue;
+    }
+    if (onProgress) onProgress({ shell, loaded, total: shells.length });
+    await loadShellCutoutImage(shell);
+    loaded += 1;
+  }
+  if (onProgress) onProgress({ shell: null, loaded, total: shells.length });
+  return loaded;
 }
 
 export function queueStarredImageHydration(delay = 3000) {

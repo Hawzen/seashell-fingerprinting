@@ -8,6 +8,8 @@ import { selectShell } from './selection-palette';
 import { cutShellWithPython, restoreCutoutStatus, setCachedShellCutoutImage, setShellCutoutImage } from './shell-cutouts';
 import { formatNumber } from './utils';
 
+const NEIGHBOR_IMAGE_IDLE_DELAY = 1000;
+
 export function setSourceImageUrl(url, shell, alt = "") {
   els.sourceImage.hidden = false;
   if (els.sourceSpinner) els.sourceSpinner.hidden = false;
@@ -19,7 +21,7 @@ export function setSourceImageUrl(url, shell, alt = "") {
   };
   els.sourceImage.onload = () => {
     if (els.sourceSpinner) els.sourceSpinner.hidden = true;
-    renderPalette(true);
+    renderPalette(false);
   };
   els.sourceImage.src = url;
 }
@@ -324,7 +326,7 @@ export function scheduleNeighborImageHydration(images, key) {
       return;
     }
     hydrateNeighborImages(images, key);
-  }, state.draggingTarget ? 180 : 650);
+  }, NEIGHBOR_IMAGE_IDLE_DELAY);
 }
 
 export async function hydrateNeighborImages(images, key) {
@@ -358,10 +360,13 @@ export function renderNeighbors(shell, token = state.neighborToken) {
 export function renderNeighborsForPc(values, items = null) {
   state.neighborToken += 1;
   window.clearTimeout(state.neighborTimer);
+  state.neighborSearchRun += 1;
+  window.clearTimeout(state.neighborSearchTimer);
+  state.neighborSearchTimer = 0;
+  window.clearTimeout(state.neighborHydrationTimer);
+  state.neighborHydrationTimer = 0;
+  state.neighborHydrationItems = [];
   if (items) {
-    state.neighborSearchRun += 1;
-    window.clearTimeout(state.neighborSearchTimer);
-    state.neighborSearchTimer = 0;
     renderNeighborItems(items);
     return;
   }
@@ -370,16 +375,14 @@ export function renderNeighborsForPc(values, items = null) {
 
 export function queueTargetNearestNeighbors(values) {
   state.targetNeighborValues = values.slice();
-  if (state.targetNeighborTimer) return;
-  const elapsed = performance.now() - state.targetNeighborLastAt;
-  const delay = Math.max(0, 160 - elapsed);
+  window.clearTimeout(state.targetNeighborTimer);
   state.targetNeighborTimer = window.setTimeout(() => {
     state.targetNeighborTimer = 0;
     state.targetNeighborLastAt = performance.now();
     const next = state.targetNeighborValues;
     state.targetNeighborValues = null;
     if (next) renderNeighborsForPc(next);
-  }, delay);
+  }, NEIGHBOR_IMAGE_IDLE_DELAY);
 }
 
 export function clearTargetNearestNeighbors() {
@@ -401,6 +404,9 @@ export function scheduleRenderNeighbors(shell, delay = 0) {
   state.neighborToken += 1;
   const token = state.neighborToken;
   window.clearTimeout(state.neighborTimer);
+  window.clearTimeout(state.neighborHydrationTimer);
+  state.neighborHydrationTimer = 0;
+  state.neighborHydrationItems = [];
   if (!shell) {
     state.neighborRenderKey = "";
     state.neighborSearchRun += 1;

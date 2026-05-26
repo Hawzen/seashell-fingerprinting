@@ -1,4 +1,17 @@
-export const colorModes = ["locality", "species", "conservation", "shell", "pattern", "lightness", "concavity"];
+export const colorModeDefs = [
+  { key: "species", label: "Species" },
+  { key: "locality", label: "Location" },
+  { key: "conservation", label: "Conservation" },
+  { key: "shell", label: "Shell color" },
+  { key: "pattern", label: "Pattern" },
+  { key: "lightness", label: "Lightness" },
+  { key: "roughness", label: "Roughness" },
+  { key: "occurrences", label: "GBIF records" },
+  { key: "countries", label: "Country count" },
+  { key: "rarity", label: "Rarity" },
+  { key: "concavity", label: "Concavity" },
+];
+export const colorModes = colorModeDefs.map((mode) => mode.key);
 export const starStorageKey = "shellspace-starred";
 
 export const PYODIDE_VERSION = "0.27.7";
@@ -215,7 +228,7 @@ export const rangeFilterDefs = [
   { key: "lightness", label: "Lightness", format: "percent" },
   { key: "area", label: "Area", format: "percent" },
   { key: "concavity", label: "Concavity", format: "percent" },
-  { key: "asymmetry", label: "Asymmetry", format: "percent" },
+  { key: "roughness", label: "Roughness", format: "percent" },
 ];
 
 export const filterLevels = [
@@ -224,7 +237,7 @@ export const filterLevels = [
   { key: "high", label: "High", min: 2 / 3, max: 1 },
 ];
 
-export const rarityFilterOptions = ["Common", "Uncommon", "Rare", "Extremely rare", "Data deficient"];
+export const rarityFilterOptions = ["Common", "Uncommon", "Rare"];
 
 export const colorSwatches = [
   ["#f5ead0", "Ivory"],

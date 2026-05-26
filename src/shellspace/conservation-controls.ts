@@ -2,7 +2,7 @@
 
 import { reconstructFromPc } from './geometry-generation';
 import { popReadySurpriseShell, randomShellFromSource } from './images-loading';
-import { axisLabel, axisMeaning, axisOptionCount, axisValue, axisVariance, contourAxisCount, initialViewport, scheduleDraw, screenToWorld } from './map-scatter';
+import { axisLabel, axisMeaning, axisOptionCount, axisValue, contourAxisCount, initialViewport, scheduleDraw, screenToWorld } from './map-scatter';
 import { resizeCanvas, scheduleHashUpdate } from './routing-canvas';
 import { els, scatterCtx, state } from './runtime';
 import { selectShell } from './selection-palette';
@@ -184,7 +184,7 @@ export function buildAxisControls() {
     for (let index = 0; index < count; index += 1) {
       const option = document.createElement("option");
       option.value = String(index);
-      option.textContent = `${axisLabel(index)} (${formatNumber(axisVariance(index) * 100, 1)}%)`;
+      option.textContent = axisLabel(index);
       select.append(option);
     }
   }
@@ -232,8 +232,23 @@ export function buildPcControls() {
     slider.addEventListener("input", () => setPcValue(index, Number(slider.value)));
     number.addEventListener("change", () => setPcValue(index, Number(number.value)));
     row.append(label, slider, number);
-    state.pcControlRows[index] = { slider, number };
+    state.pcControlRows[index] = { label, slider, number };
     els.pcControls.append(row);
+  }
+}
+
+export function refreshPcaControlLabels() {
+  const count = axisOptionCount();
+  for (const select of [els.xAxisSelect, els.yAxisSelect]) {
+    const value = select.value;
+    for (let index = 0; index < count; index += 1) {
+      const option = select.querySelector(`option[value="${index}"]`);
+      if (option) option.textContent = axisLabel(index);
+    }
+    select.value = value;
+  }
+  for (let index = 0; index < state.pcControlRows.length; index += 1) {
+    if (state.pcControlRows[index]?.label) state.pcControlRows[index].label.textContent = axisMeaning(index);
   }
 }
 

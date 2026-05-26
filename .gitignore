@@ -6,6 +6,7 @@ __pycache__/
 *.tsbuildinfo
 node_modules/
 delete_later/
+tmp/
 dataset/
 dataset_enrichment/
 processed/

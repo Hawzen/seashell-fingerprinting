@@ -4,7 +4,7 @@ export function TopBar() {
   return (
     <header class="topbar">
       <div class="brand-block">
-        <h1>Shellspace</h1>
+        <h1>Shellspace 🐚</h1>
         <p ref={(node) => { els.statusLine = node; }} class="status-line">Loading shell model</p>
       </div>
       <div ref={(node) => { els.starredBand = node; }} class="starred-band" aria-label="Starred shells" />
@@ -23,6 +23,10 @@ export function TopBar() {
       <div ref={(node) => { els.settingsPanel = node; }} class="settings-panel" hidden>
         <section>
           <h2>Settings</h2>
+          <label class="settings-check">
+            <input ref={(node) => { els.showPoppedShells = node; }} type="checkbox" />
+            <span>Show shells on map</span>
+          </label>
           <button ref={(node) => { els.clearAllData = node; }} class="danger-button">Clear all data</button>
         </section>
         <section>

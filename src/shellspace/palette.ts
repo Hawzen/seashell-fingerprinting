@@ -1,100 +1,42 @@
 // @ts-nocheck
 
 import { effectiveGeneratedTraits } from './geometry-generation';
+import { canonicalColorBin, colorBinFilterValue, colorBinForRgb } from './color-bins';
 import { els, state } from './runtime';
 import { clamp01, hslCss, rgbToHsl } from './utils';
 
-export function rgbCssFromTriplet(color) {
-  return `rgb(${Math.round(color[0])}, ${Math.round(color[1])}, ${Math.round(color[2])})`;
-}
-
-export function colorDistanceSq(a, b) {
-  const red = a[0] - b[0];
-  const green = a[1] - b[1];
-  const blue = a[2] - b[2];
-  return red * red + green * green + blue * blue;
-}
-
-export function fiveDistinctColorsFromPixels(pixels) {
-  if (!pixels.length) return null;
-  const centers = [pixels.reduce((best, color) => {
-    const chroma = Math.max(color[0], color[1], color[2]) - Math.min(color[0], color[1], color[2]);
-    const bestChroma = Math.max(best[0], best[1], best[2]) - Math.min(best[0], best[1], best[2]);
-    return chroma > bestChroma ? color : best;
-  }, pixels[0]).slice()];
-  while (centers.length < 5) {
-    let next = pixels[0];
-    let nextDistance = -1;
-    for (const color of pixels) {
-      const distance = Math.min(...centers.map((center) => colorDistanceSq(color, center)));
-      if (distance > nextDistance) {
-        nextDistance = distance;
-        next = color;
-      }
-    }
-    centers.push(next.slice());
+export function paletteItemsFromShell(shell) {
+  if (Array.isArray(shell?.color_bins) && shell.color_bins.length) {
+    return shell.color_bins
+      .slice()
+      .sort((a, b) => Number(b.weight || 0) - Number(a.weight || 0) || Number(a.bin || 0) - Number(b.bin || 0))
+      .map((item) => {
+        const bin = Number(item.bin);
+        const color = canonicalColorBin(bin).hex;
+        return {
+          color,
+          filterValue: colorBinFilterValue(bin),
+          title: `${color} · bin ${bin} · weight ${Number(item.weight || 0).toFixed(3)}`,
+        };
+      });
   }
-  for (let pass = 0; pass < 5; pass += 1) {
-    const totals = centers.map(() => [0, 0, 0, 0]);
-    for (const color of pixels) {
-      let best = 0;
-      let bestDistance = Infinity;
-      for (let index = 0; index < centers.length; index += 1) {
-        const distance = colorDistanceSq(color, centers[index]);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          best = index;
-        }
-      }
-      totals[best][0] += color[0];
-      totals[best][1] += color[1];
-      totals[best][2] += color[2];
-      totals[best][3] += 1;
-    }
-    for (let index = 0; index < centers.length; index += 1) {
-      if (!totals[index][3]) continue;
-      centers[index] = [
-        totals[index][0] / totals[index][3],
-        totals[index][1] / totals[index][3],
-        totals[index][2] / totals[index][3],
+  if (Array.isArray(shell?.color_palette_rgb) && shell.color_palette_rgb.length) {
+    return shell.color_palette_rgb.map((color) => {
+      const normalized = [
+        clamp01(Number(color?.[0] ?? 0)),
+        clamp01(Number(color?.[1] ?? 0)),
+        clamp01(Number(color?.[2] ?? 0)),
       ];
-    }
+      const bin = colorBinForRgb(normalized);
+      const canonical = canonicalColorBin(bin).hex;
+      return {
+        color: canonical,
+        filterValue: colorBinFilterValue(bin),
+        title: `${canonical} · bin ${bin}`,
+      };
+    });
   }
-  return centers
-    .sort((a, b) => rgbToHsl(a[0] / 255, a[1] / 255, a[2] / 255).l - rgbToHsl(b[0] / 255, b[1] / 255, b[2] / 255).l)
-    .map(rgbCssFromTriplet);
-}
-
-export function paletteFromSourceImage() {
-  const image = els.sourceImage;
-  if (!image || image.hidden || !image.complete || !image.naturalWidth || !image.naturalHeight) return null;
-  const width = Math.min(220, image.naturalWidth);
-  const height = Math.max(1, Math.round((width / image.naturalWidth) * image.naturalHeight));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(image, 0, 0, width, height);
-  let data;
-  try {
-    data = ctx.getImageData(0, 0, width, height).data;
-  } catch (_error) {
-    return null;
-  }
-  const pixels = [];
-  const step = Math.max(4, Math.floor(Math.sqrt((width * height) / 2200)));
-  for (let y = 0; y < height; y += step) {
-    for (let x = 0; x < width; x += step) {
-      const offset = (y * width + x) * 4;
-      const red = data[offset];
-      const green = data[offset + 1];
-      const blue = data[offset + 2];
-      const alpha = data[offset + 3];
-      if (alpha < 180 || red + green + blue < 48) continue;
-      pixels.push([red, green, blue]);
-    }
-  }
-  return fiveDistinctColorsFromPixels(pixels);
+  return [];
 }
 
 export function paletteFromTraits(traits) {
@@ -117,19 +59,24 @@ export function paletteFromTraits(traits) {
 export function renderPalette(preferCanvas = false) {
   if (!els.paletteSwatches) return;
   els.paletteSwatches.innerHTML = "";
-  const traits = effectiveGeneratedTraits();
-  const cacheKey = state.generatedMode === "selected" && state.selected ? state.selected.id : null;
-  let palette = cacheKey == null ? null : state.paletteCache.get(cacheKey);
-  if (!palette && preferCanvas) {
-    palette = paletteFromSourceImage();
-    if (palette && cacheKey != null) state.paletteCache.set(cacheKey, palette);
-  }
-  if (!palette) palette = paletteFromTraits(traits);
-  for (const color of palette) {
-    const swatch = document.createElement("span");
+  const selectedPalette = state.generatedMode === "selected" ? paletteItemsFromShell(state.selected) : [];
+  const palette = selectedPalette.length
+    ? selectedPalette
+    : paletteFromTraits(effectiveGeneratedTraits()).map((color) => ({ color, filterValue: "", title: color }));
+  for (const item of palette) {
+    const swatch = document.createElement("button");
+    swatch.type = "button";
     swatch.className = "palette-swatch";
-    swatch.style.background = color;
-    swatch.title = color;
+    swatch.style.background = item.color;
+    swatch.title = item.title;
+    swatch.setAttribute("aria-label", `Filter by ${item.color}`);
+    swatch.setAttribute("aria-pressed", item.filterValue && state.categoryFilters.color === item.filterValue ? "true" : "false");
+    swatch.disabled = !item.filterValue;
+    swatch.addEventListener("click", () => {
+      if (!item.filterValue) return;
+      state.categoryFilters.color = state.categoryFilters.color === item.filterValue ? "" : item.filterValue;
+      window.dispatchEvent(new CustomEvent("shellspace:color-filter-changed"));
+    });
     els.paletteSwatches.append(swatch);
   }
 }

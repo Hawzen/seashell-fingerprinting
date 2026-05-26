@@ -202,7 +202,18 @@ def write_outputs(
         return value
 
     output.mkdir(parents=True, exist_ok=True)
-    for stale_name in ["shells.json.gz", "files.json.gz", "errors.json", "model.json", "enrichment.json", "enrichment.tsv"]:
+    for stale_name in [
+        "shells.json.gz",
+        "files.json.gz",
+        "errors.json",
+        "model.json",
+        "enrichment.json",
+        "enrichment.tsv",
+        "visual_features.f32",
+        "joint_features.f32",
+        "joint_pca.f32",
+        "joint_pca_model.json",
+    ]:
         stale_path = output / stale_name
         if stale_path.exists():
             stale_path.unlink()

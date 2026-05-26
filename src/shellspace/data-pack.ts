@@ -1,7 +1,9 @@
 // @ts-nocheck
 
 import { state } from './runtime';
-import { asset, fetchCompressedArrayBuffer, fetchJson } from './utils';
+import { asset, contourRoughness, fetchCompressedArrayBuffer, fetchJson } from './utils';
+import { buildShellColorBins } from './color-bins';
+import { computePcaDiametricPairs } from './pca-diametrics';
 
 export function speciesFromFileName(fileName) {
   return String(fileName || "")
@@ -23,6 +25,50 @@ async function fetchOptionalJson(url) {
     return await fetchJson(url);
   } catch {
     return null;
+  }
+}
+
+function optionalNumber(value) {
+  if (value == null || String(value).trim() === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function rarityLabel(value) {
+  const rarity = String(value || "").trim().toLowerCase();
+  if (!rarity || rarity === "unknown") return "";
+  if (rarity.includes("high")) return "Common";
+  if (rarity.includes("moderate")) return "Uncommon";
+  if (rarity.includes("low")) return "Rare";
+  if (rarity.includes("common")) return rarity.includes("uncommon") ? "Uncommon" : "Common";
+  if (rarity.includes("rare")) return "Rare";
+  return "";
+}
+
+function normalizeTraitRanks(shells, key) {
+  const items = shells
+    .map((shell) => ({
+      shell,
+      value: Number(shell.morph_traits?.[key]),
+    }))
+    .filter((item) => Number.isFinite(item.value));
+  if (!items.length) return;
+  items.sort((a, b) => a.value - b.value);
+  if (items.length === 1) {
+    items[0].shell.morph_traits[`${key}_raw`] = items[0].value;
+    items[0].shell.morph_traits[key] = 0.5;
+    return;
+  }
+
+  for (let start = 0; start < items.length;) {
+    let end = start;
+    while (end + 1 < items.length && items[end + 1].value === items[start].value) end += 1;
+    const rank = ((start + end) / 2) / (items.length - 1);
+    for (let index = start; index <= end; index += 1) {
+      items[index].shell.morph_traits[`${key}_raw`] = items[index].value;
+      items[index].shell.morph_traits[key] = rank;
+    }
+    start = end + 1;
   }
 }
 
@@ -120,7 +166,10 @@ export async function loadNewFingerprintPack() {
     fetchCompressedArrayBuffer(asset("data/pca.f32")),
     fetchOptionalJson(asset("data/enrichment.json")),
   ]);
-  const enrichmentByLabel = new Map((enrichment?.rows || []).map((row) => [row.label, row]));
+  const speciesRows = enrichment?.species || enrichment?.rows || [];
+  const shellRows = enrichment?.shell || [];
+  const enrichmentByLabel = new Map(speciesRows.map((row) => [row.label, row]));
+  const enrichmentByFile = new Map(shellRows.map((row) => [row.file, row]));
   const count = files.length;
   const fingerprints = new Float32Array(fingerprintBuffer);
   const pcaScores = new Float32Array(pcaBuffer);
@@ -141,7 +190,13 @@ export async function loadNewFingerprintPack() {
   const shells = await Promise.all(files.map(async (file, id) => {
     const fingerprint = fingerprints.slice(id * fingerprintSize, (id + 1) * fingerprintSize);
     const contourPc = Array.from(pcaScores.slice(id * pcaSize, (id + 1) * pcaSize));
-    const enrichmentRow = enrichmentByLabel.get(speciesLabelFromFileName(file)) || {};
+    const speciesEnrichment = enrichmentByLabel.get(speciesLabelFromFileName(file)) || {};
+    const shellEnrichment = enrichmentByFile.get(file) || {};
+    const lightnessMean = optionalNumber(shellEnrichment.lightness_mean);
+    const paletteRgb = Array.isArray(shellEnrichment.palette_rgb) ? shellEnrichment.palette_rgb : [];
+    const paletteWeights = Array.isArray(shellEnrichment.palette_weights) ? shellEnrichment.palette_weights : [];
+    const asymmetry = optionalNumber(shellEnrichment.asymmetry);
+    const contour = reconstructContourFromFingerprint(fingerprint, 256);
     return {
       id,
       file,
@@ -155,17 +210,26 @@ export async function loadNewFingerprintPack() {
       trait_pc: [],
       fingerprint,
       fingerprint_hash: await shellprintFromFingerprint(fingerprint),
-      enrichment: enrichmentRow,
-      rarity_label: enrichmentRow.rarity_proxy || "unknown",
-      gbif_occurrence_count: Number(enrichmentRow.occurrence_count || 0),
-      gbif_country_count: Number(enrichmentRow.country_count || 0),
-      gbif_countries_top: enrichmentRow.countries_top || "",
-      color_l_mean: Number(enrichmentRow.lightness_mean || 0) / 255,
+      enrichment: speciesEnrichment,
+      shell_enrichment: shellEnrichment,
+      rarity_label: rarityLabel(speciesEnrichment.rarity_proxy),
+      gbif_occurrence_count: optionalNumber(speciesEnrichment.occurrence_count),
+      gbif_country_count: optionalNumber(speciesEnrichment.country_count),
+      gbif_countries_top: speciesEnrichment.countries_top || "",
+      color_l_mean: lightnessMean == null ? null : lightnessMean / 255,
+      color_palette_rgb: paletteRgb,
+      color_palette_weights: paletteWeights,
       morph_traits: {
-        asymmetry: Number(enrichmentRow.asymmetry_mean || 0),
+        asymmetry,
+        roughness: contourRoughness(contour),
       },
     };
   }));
+  normalizeTraitRanks(shells, "roughness");
+  buildShellColorBins(shells);
+  model.contour_pca_diametric_pairs = computePcaDiametricPairs(shells, model.contour_pca_ranges, {
+    axisCount: model.contour_component_count,
+  });
   return { model, shells };
 }
 

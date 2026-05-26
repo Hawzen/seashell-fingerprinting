@@ -1,6 +1,7 @@
 // @ts-nocheck
 
 import { resizeCanvas } from './routing-canvas';
+import { colorModeDefs } from './constants';
 import { els, scatterCtx, state } from './runtime';
 import { getCachedShellCutoutImage, getShellCutoutImage } from './shell-cutouts';
 import { clamp01, hslToRgba } from './utils';
@@ -26,11 +27,13 @@ export function axisVariance(axisIndex) {
 }
 
 export function axisMeaning(axisIndex) {
-  return `PC${axisIndex + 1}`;
+  const name = String(state.pcaAxisNames?.[axisIndex] || "").trim();
+  return name || `PC${axisIndex + 1}`;
 }
 
 export function axisLabel(axisIndex) {
-  return axisMeaning(axisIndex);
+  const name = String(state.pcaAxisNames?.[axisIndex] || "").trim();
+  return name ? `${name} (PC${axisIndex + 1})` : `PC${axisIndex + 1}`;
 }
 
 export function axisValue(shell, axisIndex) {
@@ -104,6 +107,123 @@ export function conservationStatus(shell) {
   return shell?.live_conservation_status || shell?.species_traits?.protection_status || "Not assessed";
 }
 
+function isKnownText(value) {
+  const text = String(value || "").trim().toLowerCase();
+  return text && !["unknown", "not assessed", "data deficient", "locality unavailable"].includes(text);
+}
+
+function hasNumber(value) {
+  if (value == null || String(value).trim() === "") return false;
+  const number = Number(value);
+  return Number.isFinite(number);
+}
+
+export function shellHasColorModeData(shell, mode) {
+  if (mode === "species") return true;
+  if (mode === "locality") return isKnownText(shell.location_key);
+  if (mode === "conservation") return isKnownText(conservationStatus(shell));
+  if (mode === "shell") return hasNumber(shell.color_r_mean) && hasNumber(shell.color_g_mean) && hasNumber(shell.color_b_mean);
+  if (mode === "pattern") return hasNumber(shell.color_pattern_strength);
+  if (mode === "lightness") return hasNumber(shell.color_l_mean);
+  if (mode === "roughness") return hasNumber(shell.morph_traits?.roughness);
+  if (mode === "occurrences") return hasNumber(shell.gbif_occurrence_count) && Number(shell.gbif_occurrence_count) > 0;
+  if (mode === "countries") return hasNumber(shell.gbif_country_count) && Number(shell.gbif_country_count) > 0;
+  if (mode === "rarity") return isKnownText(shell.rarity_label || shell.enrichment?.rarity_proxy);
+  if (mode === "concavity") return hasNumber(shell.contour_concavity);
+  return false;
+}
+
+export function availableColorModes() {
+  return colorModeDefs.filter((mode) => state.shells.some((shell) => shellHasColorModeData(shell, mode.key)));
+}
+
+export function buildColorModeOptions() {
+  if (!els.colorModeSelect) return;
+  const modes = availableColorModes();
+  els.colorModeSelect.innerHTML = "";
+  for (const mode of modes) {
+    const option = document.createElement("option");
+    option.value = mode.key;
+    option.textContent = mode.label;
+    els.colorModeSelect.append(option);
+  }
+  if (!modes.some((mode) => mode.key === state.colorMode)) state.colorMode = modes[0]?.key || "species";
+  els.colorModeSelect.value = state.colorMode;
+  renderColorLegend();
+}
+
+function rgbaCss(rgba) {
+  return `rgba(${rgba[0]}, ${rgba[1]}, ${rgba[2]}, ${rgba[3] / 255})`;
+}
+
+function legendDot(label, color) {
+  const item = document.createElement("span");
+  item.className = "color-legend-item";
+  const dot = document.createElement("span");
+  dot.className = "color-legend-dot";
+  dot.style.background = color;
+  const text = document.createElement("span");
+  text.textContent = label;
+  item.append(dot, text);
+  return item;
+}
+
+function legendGradient(low, high, lowLabel = "Low", highLabel = "High") {
+  const item = document.createElement("div");
+  item.className = "color-legend-gradient";
+  const bar = document.createElement("span");
+  bar.style.background = `linear-gradient(90deg, ${low}, ${high})`;
+  const labels = document.createElement("span");
+  labels.className = "color-legend-labels";
+  labels.innerHTML = `<span>${lowLabel}</span><span>${highLabel}</span>`;
+  item.append(bar, labels);
+  return item;
+}
+
+export function renderColorLegend() {
+  if (!els.colorLegend) return;
+  const legend = els.colorLegend;
+  legend.innerHTML = "";
+  legend.hidden = false;
+  if (state.colorMode === "rarity") {
+    legend.append(
+      legendDot("Common", "rgba(52, 136, 96, 0.82)"),
+      legendDot("Uncommon", "rgba(222, 146, 54, 0.85)"),
+      legendDot("Rare", "rgba(199, 64, 44, 0.88)"),
+    );
+    return;
+  }
+  if (state.colorMode === "lightness") {
+    legend.append(legendGradient(rgbaCss(hslToRgba(48, 0.24, 0.24)), rgbaCss(hslToRgba(48, 0.24, 0.78)), "Dark", "Light"));
+    return;
+  }
+  if (state.colorMode === "roughness") {
+    legend.append(legendGradient(rgbaCss(hslToRgba(178, 0.58, 0.34)), rgbaCss(hslToRgba(28, 0.58, 0.5)), "Smooth", "Rough"));
+    return;
+  }
+  if (state.colorMode === "occurrences") {
+    legend.append(legendGradient("rgba(104, 113, 116, 0.45)", rgbaCss(hslToRgba(44, 0.56, 0.48)), "Few", "Many"));
+    return;
+  }
+  if (state.colorMode === "countries") {
+    legend.append(legendGradient("rgba(104, 113, 116, 0.45)", rgbaCss(hslToRgba(185, 0.5, 0.52)), "Few", "Many"));
+    return;
+  }
+  if (state.colorMode === "concavity") {
+    legend.append(legendGradient(rgbaCss(hslToRgba(320, 0.56, 0.35)), rgbaCss(hslToRgba(135, 0.56, 0.46)), "Smooth", "Indented"));
+    return;
+  }
+  if (state.colorMode === "conservation") {
+    legend.append(
+      legendDot("Least", "rgba(58, 139, 99, 0.75)"),
+      legendDot("Near", "rgba(228, 176, 62, 0.78)"),
+      legendDot("Risk", "rgba(200, 45, 38, 0.86)"),
+    );
+    return;
+  }
+  legend.hidden = true;
+}
+
 export function conservationRgba(shell) {
   const status = conservationStatus(shell).toLowerCase();
   if (status.includes("critically")) return [126, 24, 28, 230];
@@ -112,6 +232,20 @@ export function conservationRgba(shell) {
   if (status.includes("near")) return [228, 176, 62, 200];
   if (status.includes("least")) return [58, 139, 99, 190];
   return [102, 111, 117, 112];
+}
+
+function rarityRgba(shell) {
+  const rarity = String(shell.rarity_label || shell.enrichment?.rarity_proxy || "").toLowerCase();
+  if (rarity.includes("uncommon")) return [222, 146, 54, 218];
+  if (rarity.includes("common")) return [52, 136, 96, 208];
+  if (rarity.includes("rare")) return [199, 64, 44, 224];
+  return [104, 113, 116, 138];
+}
+
+function logCountScale(value, maxLog = 5) {
+  const count = Number(value || 0);
+  if (!Number.isFinite(count) || count <= 0) return 0;
+  return clamp01(Math.log10(count + 1) / maxLog);
 }
 
 export function pointRgbaForMode(shell, mode) {
@@ -125,6 +259,21 @@ export function pointRgbaForMode(shell, mode) {
     const t = clamp01(shell.color_l_mean ?? 0.5);
     return hslToRgba(48, 0.24, (24 + t * 54) / 100);
   }
+  if (mode === "roughness") {
+    const t = clamp01(shell.morph_traits?.roughness ?? 0);
+    return hslToRgba(178 - t * 150, 0.58, (34 + t * 16) / 100);
+  }
+  if (mode === "occurrences") {
+    const t = logCountScale(shell.gbif_occurrence_count);
+    if (t <= 0) return [104, 113, 116, 116];
+    return hslToRgba(192 - t * 148, 0.56, (32 + t * 16) / 100);
+  }
+  if (mode === "countries") {
+    const t = logCountScale(shell.gbif_country_count, 2);
+    if (t <= 0) return [104, 113, 116, 116];
+    return hslToRgba(265 - t * 80, 0.5, (34 + t * 18) / 100);
+  }
+  if (mode === "rarity") return rarityRgba(shell);
   if (mode === "pattern") {
     const t = clamp01((shell.color_pattern_strength || 0) / 0.22);
     return hslToRgba(204 - t * 162, (34 + t * 36) / 100, (30 + t * 18) / 100);
@@ -230,6 +379,7 @@ export function drawScatter() {
   state.needsDraw = false;
   scatterCtx.clearRect(0, 0, size.width, size.height);
   const pointCache = scatterScreenPoints(size);
+  const visibleShells = new Set(pointCache.shells);
   drawScatterPoints(pointCache);
   scatterCtx.save();
   scatterCtx.lineWidth = 1;
@@ -261,13 +411,15 @@ export function drawScatter() {
     scatterCtx.stroke();
   }
 
-  for (const id of state.mapShellImageIds) {
-    const shell = state.shellById.get(id);
-    if (shell && shell !== state.selected) drawShellImageMarker(shell, size);
+  if (state.showPoppedShells) {
+    for (const id of state.mapShellImageIds) {
+      const shell = state.shellById.get(id);
+      if (shell && shell !== state.selected && visibleShells.has(shell)) drawShellImageMarker(shell, size);
+    }
   }
 
-  if (state.selected) {
-    if (!drawShellImageMarker(state.selected, size, { request: true })) {
+  if (state.selected && visibleShells.has(state.selected)) {
+    if (!state.showPoppedShells || !drawShellImageMarker(state.selected, size, { request: true })) {
       const selected = worldToScreen(
         axisValue(state.selected, state.xAxis),
         axisValue(state.selected, state.yAxis),

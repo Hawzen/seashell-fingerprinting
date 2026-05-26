@@ -31,6 +31,21 @@ export function MissingData() {
   );
 }
 
+export function PcaGuideModal() {
+  return (
+    <div ref={(node) => { els.pcaGuideModal = node; }} class="pca-guide-modal" hidden>
+      <div class="pca-guide-backdrop" />
+      <section class="pca-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="pca-guide-title">
+        <header>
+          <h2 id="pca-guide-title">PCA Axes</h2>
+          <button ref={(node) => { els.pcaGuideClose = node; }} title="Close" aria-label="Close">x</button>
+        </header>
+        <div ref={(node) => { els.pcaGuideList = node; }} class="pca-guide-list" />
+      </section>
+    </div>
+  );
+}
+
 function LoaderShell(props: { position: "top" | "bottom" }) {
   return (
     <div class={`loader-shell loader-shell-${props.position}`}>

@@ -8,9 +8,10 @@ import { buildTraitFilters } from './filters';
 import { parseHashState, updateHashState } from './routing-canvas';
 import { buildDerivedShellData, setLoading } from './utils';
 import { primeSurpriseQueue } from './images-loading';
-import { axisOptionCount, conservationStatus, initialViewport, scheduleDraw } from './map-scatter';
-import { loadStarred, renderStarred } from './starred';
+import { axisOptionCount, buildColorModeOptions, conservationStatus, initialViewport, scheduleDraw } from './map-scatter';
+import { loadStarred, renderStarred, warmStarredCutoutCache } from './starred';
 import { renderPalette } from './palette';
+import { loadPcaAxisNames } from './pca-guide';
 import { selectShell } from './selection-palette';
 import { hydratePersistentCutoutCache } from './shell-cutouts';
 import { setupEvents } from './walk-events';
@@ -28,6 +29,7 @@ window.shellspacePerf = {
   },
   sourceMode: () => state.sourceMode,
   filteredCount: () => state.filtered.length,
+  diametricPairs: () => state.model?.contour_pca_diametric_pairs || [],
   lookupConservationStatus,
   conservationStatusForSelected: () => conservationStatus(state.selected),
   selectSpecies: (species) => {
@@ -45,6 +47,7 @@ async function init() {
   state.model = model;
   state.shells = shells;
   state.shellById = new Map(state.shells.map((shell) => [shell.id, shell]));
+  loadPcaAxisNames();
   buildDerivedShellData(state.shells, null, null);
   buildTraitFilters();
   state.filtered = state.shells;
@@ -59,6 +62,7 @@ async function init() {
 
   const initialHash = parseHashState();
   if (colorModes.includes(initialHash.get('color'))) state.colorMode = initialHash.get('color');
+  buildColorModeOptions();
   const axisCount = axisOptionCount();
   const rawX = initialHash.get('x');
   const rawY = initialHash.get('y');
@@ -70,10 +74,17 @@ async function init() {
   state.viewport = initialViewport(state.xAxis, state.yAxis);
   buildAxisControls();
   buildPcControls();
-  els.colorModeSelect.value = state.colorMode;
+  buildColorModeOptions();
   renderPcaInterpretation();
   loadStarred();
   hydratePersistentCutoutCache(state.shells);
+  if (state.starredIds.length) {
+    await warmStarredCutoutCache({
+      onProgress: ({ loaded, total }) => {
+        if (total > 0) setLoading(`Caching starred shells ${Math.min(loaded + 1, total)} / ${total}`);
+      },
+    });
+  }
   els.statusLine.textContent = statusText;
 
   state.suppressHash = true;

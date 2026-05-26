@@ -1,6 +1,7 @@
 // @ts-nocheck
 
 import { syncPcControls, updatePcControl } from './conservation-controls';
+import { formatTopCountries } from './countries';
 import { drawOutline, normalizedContour, reconstructFromPc, shapeTraitsFromShell, shellColorName, updateHashChips } from './geometry-generation';
 import { axisLabel, axisRange, axisValue, contourAxisCount, scatterHitPoints, scheduleDraw, screenToWorld } from './map-scatter';
 import { renderPalette } from './palette';
@@ -10,6 +11,18 @@ import { activePcaNeighborAxes, clearTargetNearestNeighbors, contourPcDistanceSt
 import { updateStarButton } from './starred';
 import { datasetCmScale, formatNumber, physicalLocationLabel, precisePercentValue, shellAreaCm2, shellMeanRadiusCm } from './utils';
 import { stopPcaWalk } from './walk-events';
+
+function countValue(value) {
+  const count = Number(value || 0);
+  return Number.isFinite(count) && count > 0 ? count.toLocaleString() : "";
+}
+
+function knownText(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (["unknown", "not assessed", "data deficient", "locality unavailable"].includes(text.toLowerCase())) return "";
+  return text;
+}
 
 export function selectShell(shell, { renderNearest = true, preferFastSource = false } = {}) {
   var _a;
@@ -44,21 +57,27 @@ export function selectShell(shell, { renderNearest = true, preferFastSource = fa
   updateHashChips();
   updateStarButton();
   els.selectedDetails.innerHTML = "";
+  const topCountries = shell.gbif_countries_top || shell.top_countries_label || shell.enrichment?.countries_top;
   const details = [
-    ["Fingerprint", shell.fingerprint_hash || "-"],
-    ["Rarity", shell.rarity_label || "Data deficient"],
-    ["Origin", physicalLocationLabel(shell)],
+    ["Shellprint", shell.fingerprint_hash || "-"],
   ];
+  const rarityLabel = knownText(shell.rarity_label || shell.enrichment?.rarity_proxy);
+  if (rarityLabel) details.push(["Rarity", rarityLabel]);
+  const countryLabel = formatTopCountries(topCountries);
+  if (countryLabel) details.push(["Countries", countryLabel]);
+  const originLabel = knownText(physicalLocationLabel(shell));
+  if (originLabel) details.push(["Origin", originLabel]);
   if (shell.area != null && shell.image_width != null && shell.image_height != null) details.push(["Area", `${formatNumber(shellAreaCm2(shell), 2)} cm²`]);
   if (shell.mean_radius != null && shell.image_width != null && shell.image_height != null) details.push(["Mean radius", `${formatNumber(shellMeanRadiusCm(shell), 2)} cm`]);
-  if (shell.color_l_mean != null) details.push(["Lightness", precisePercentValue(shell.color_l_mean)]);
+  if (shell.color_l_mean != null) details.push(["Mean lightness", precisePercentValue(shell.color_l_mean)]);
   if (shell.contour_concavity != null) details.push(["Concavity", precisePercentValue(shell.contour_concavity / 0.32)]);
-  if (((_a = shell.morph_traits) == null ? void 0 : _a.asymmetry) != null) details.push(["Asymmetry", precisePercentValue(shell.morph_traits.asymmetry)]);
+  if (((_a = shell.morph_traits) == null ? void 0 : _a.roughness) != null) details.push(["Roughness", precisePercentValue(shell.morph_traits.roughness)]);
   if (shell.image_width != null && shell.image_height != null) {
     const scale = datasetCmScale(shell);
     details.push(["Scale", `${formatNumber(scale.widthCm, 2)} x ${formatNumber(scale.heightCm, 2)} cm frame`]);
   }
   for (const [key, value] of details) {
+    if (value == null || value === "") continue;
     const dt = document.createElement("dt");
     dt.textContent = key;
     const dd = document.createElement("dd");
