@@ -861,15 +861,15 @@ select:focus {
   animation: spin 0.9s linear infinite;
 }
 
-.source-inspect-toggle {
+.source-inspect-toggle,
+.source-cursor-toggle {
   position: absolute;
-  right: 10px;
   bottom: 10px;
   z-index: 5;
-  width: 38px;
-  min-width: 38px;
-  height: 38px;
-  min-height: 38px;
+  width: 29px;
+  min-width: 29px;
+  height: 29px;
+  min-height: 29px;
   padding: 0;
   display: grid;
   place-items: center;
@@ -881,18 +881,42 @@ select:focus {
   backdrop-filter: blur(8px);
 }
 
+.source-inspect-toggle {
+  right: 10px;
+}
+
+.source-cursor-toggle {
+  right: 45px;
+}
+
 .source-inspect-toggle:hover,
-.source-inspect-toggle[aria-pressed="true"] {
+.source-inspect-toggle[aria-pressed="true"],
+.source-cursor-toggle:hover,
+.source-cursor-toggle[aria-pressed="true"] {
   background: rgba(23, 117, 113, 0.92);
   color: white;
   border-color: rgba(23, 117, 113, 0.9);
 }
 
+.source-cursor-toggle svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
 .source-inspect-toggle span {
   font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-  font-size: 15px;
+  font-size: 11px;
   font-weight: 900;
   letter-spacing: 0;
+}
+
+.shell-cursor-active,
+.shell-cursor-active * {
+  cursor: var(--shell-cursor), auto !important;
 }
 
 .source-inspect {

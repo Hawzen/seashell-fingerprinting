@@ -10,7 +10,7 @@ import { renderPalette } from './palette';
 import { closePcaGuide, openPcaGuide, pcaAxisNamesKey } from './pca-guide';
 import { scheduleHashUpdate } from './routing-canvas';
 import { els, state } from './runtime';
-import { flushTargetDragPreview, nearestShell, panViewportFromEvent, queuePointTooltip, queueTargetFromEvent, setSourceInspectOpen, setTargetFromEvent, startViewportPan, stopViewportPan } from './selection-palette';
+import { flushTargetDragPreview, nearestShell, panViewportFromEvent, queuePointTooltip, queueTargetFromEvent, setSourceInspectOpen, setSourceShellCursorOpen, setTargetFromEvent, startViewportPan, stopViewportPan } from './selection-palette';
 import { clearPersistentCutoutCache } from './shell-cutouts';
 import { finishPendingScatterSelection, renderNeighborsForPc, renderSourceShell, scheduleRenderNeighbors } from './source-neighbors';
 import { queueStarredImageHydration, renderStarred, resetStarredDock, toggleStarredShell, updateStarredDock } from './starred';
@@ -258,6 +258,7 @@ export function setupEvents() {
   els.walkPca.addEventListener("click", togglePcaWalk);
   els.starShell.addEventListener("click", toggleStarredShell);
   els.sourceInspectToggle?.addEventListener("click", () => setSourceInspectOpen(!state.sourceInspectOpen));
+  els.sourceCursorToggle?.addEventListener("click", () => setSourceShellCursorOpen(!state.sourceCursorActive));
   els.drawProjectedShell?.addEventListener("click", () => setDrawShellMode(!drawShellMode));
   els.outline.addEventListener("pointerdown", (event) => {
     if (!drawShellMode || event.button !== 0) return;

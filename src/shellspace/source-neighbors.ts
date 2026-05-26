@@ -205,10 +205,7 @@ export function scheduleNearestContourNeighborsForPc(values, { axes = null, limi
 export function renderNeighborItems(items) {
   const key = items.map((item) => item.shell.id).join("|");
   if (state.neighborRenderKey === key) {
-    if (state.neighborHydrationItems.length) {
-      scheduleNeighborImageHydration(state.neighborHydrationItems, key);
-      return;
-    }
+    if (state.neighborHydrationItems.length) return;
   }
   state.neighborRenderKey = key;
   els.neighborsList.innerHTML = "";
@@ -239,6 +236,9 @@ export function renderNeighborItems(items) {
       centerViewportOnShell(item.shell);
       selectShell(item.shell);
     });
+    const requestImage = () => requestNeighborImageHydration(item.shell, key);
+    button.addEventListener("pointerenter", requestImage);
+    button.addEventListener("focus", requestImage);
     els.neighborsList.append(button);
     const unsubscribe = subscribeShellCutout(item.shell, (readyImage) => {
       if (state.neighborRenderKey !== key || !image.isConnected || !readyImage?.src) return;
@@ -250,7 +250,6 @@ export function renderNeighborItems(items) {
     images.push({ image, shell: item.shell });
   }
   state.neighborHydrationItems = images;
-  scheduleNeighborImageHydration(images, key);
 }
 
 export function drawNeighborContour(canvas, shell) {
@@ -295,30 +294,18 @@ export function drawNeighborContour(canvas, shell) {
   ctx.restore();
 }
 
-export function scheduleNeighborImageHydration(images, key) {
+export function requestNeighborImageHydration(shell, key) {
+  if (!shell || state.neighborRenderKey !== key) return;
   window.clearTimeout(state.neighborHydrationTimer);
   state.neighborHydrationTimer = window.setTimeout(() => {
     state.neighborHydrationTimer = 0;
     if (state.draggingTarget) {
-      scheduleNeighborImageHydration(images, key);
+      requestNeighborImageHydration(shell, key);
       return;
     }
-    hydrateNeighborImages(images, key);
-  }, NEIGHBOR_IMAGE_IDLE_DELAY);
-}
-
-export async function hydrateNeighborImages(images, key) {
-  if (!images.length || state.neighborRenderKey !== key) return;
-  let index = 0;
-  const publishNext = () => {
     if (state.neighborRenderKey !== key) return;
-    if (index >= images.length) return;
-    const item = images[index];
-    index += 1;
-    requestShellCutout(item.shell, { priority: -5 });
-    state.neighborHydrationTimer = window.setTimeout(publishNext, 80);
-  };
-  publishNext();
+    requestShellCutout(shell, { priority: -5 });
+  }, 120);
 }
 
 export function renderNeighbors(shell, token = state.neighborToken) {

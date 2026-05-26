@@ -33,6 +33,8 @@ export const state = {
   sourceFrame: null,
   sourceMode: "fallback",
   sourceInspectOpen: false,
+  sourceCursorActive: false,
+  sourceCursorUrl: "",
   scatterHitCache: null,
   screenNeighborScanCount: 0,
   starredHydrationTimer: 0,

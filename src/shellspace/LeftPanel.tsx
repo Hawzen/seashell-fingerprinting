@@ -96,6 +96,12 @@ function PhysicalShellPanel() {
         <button ref={(node) => { els.sourceInspectToggle = node; }} class="source-inspect-toggle" title="Show fingerprint values" aria-label="Show fingerprint values" aria-pressed="false">
           <span aria-hidden="true">{'{}'}</span>
         </button>
+        <button ref={(node) => { els.sourceCursorToggle = node; }} class="source-cursor-toggle" title="Use shell as cursor" aria-label="Use shell as cursor" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 3.5 18.5 14l-6.1 1.1-3.2 5.4L6 3.5Z" />
+            <path d="m12.4 15.1 3 5.4" />
+          </svg>
+        </button>
       </div>
       <div ref={(node) => { els.selectedName = node; }} class="selected-name">None</div>
       <dl ref={(node) => { els.selectedDetails = node; }} />

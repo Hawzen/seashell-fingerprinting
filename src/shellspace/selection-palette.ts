@@ -44,6 +44,58 @@ export function setSourceInspectOpen(open) {
   if (state.sourceInspectOpen) renderSourceInspect();
 }
 
+function shellCursorDataUrl(image) {
+  if (!image?.src || !(image.naturalWidth || image.width) || !(image.naturalHeight || image.height)) return "";
+  const size = 48;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  const scale = Math.min((size - 4) / sourceWidth, (size - 4) / sourceHeight);
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
+  const x = Math.round((size - width) / 2);
+  const y = Math.round((size - height) / 2);
+  ctx.clearRect(0, 0, size, size);
+  ctx.drawImage(image, x, y, width, height);
+  return canvas.toDataURL("image/png");
+}
+
+export function setSourceShellCursorOpen(open) {
+  state.sourceCursorActive = Boolean(open);
+  if (!state.sourceCursorActive) {
+    state.sourceCursorUrl = "";
+    document.documentElement.classList.remove("shell-cursor-active");
+    document.documentElement.style.removeProperty("--shell-cursor");
+  } else {
+    const dataUrl = sourceShellCursorFromCurrentImage();
+    if (!dataUrl) {
+      state.sourceCursorActive = false;
+    } else {
+      state.sourceCursorUrl = dataUrl;
+      document.documentElement.style.setProperty("--shell-cursor", `url("${dataUrl}") 24 24`);
+      document.documentElement.classList.add("shell-cursor-active");
+    }
+  }
+  if (els.sourceCursorToggle) {
+    els.sourceCursorToggle.setAttribute("aria-pressed", state.sourceCursorActive ? "true" : "false");
+    els.sourceCursorToggle.title = state.sourceCursorActive ? "Use normal cursor" : "Use shell as cursor";
+    els.sourceCursorToggle.setAttribute("aria-label", els.sourceCursorToggle.title);
+  }
+}
+
+function sourceShellCursorFromCurrentImage() {
+  if (!els.sourceImage || els.sourceImage.hidden || !els.sourceImage.src) return "";
+  try {
+    return shellCursorDataUrl(els.sourceImage);
+  } catch (_error) {
+    // Cursor preview is decorative; keep the app usable if canvas export fails.
+    return "";
+  }
+}
+
 export function selectShell(shell, { renderNearest = true, preferFastSource = false } = {}) {
   var _a;
   if (!shell) return;
