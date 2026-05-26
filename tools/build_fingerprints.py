@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Build simple contour FFT fingerprints from shell images."""
+"""Build contour fingerprints and aligned-contour PCA scores."""
 
 from __future__ import annotations
 
 import argparse
 from concurrent.futures import ProcessPoolExecutor
+import hashlib
 import json
+import os
 from io import BytesIO
 from pathlib import Path
 from typing import Any, TypeAlias
@@ -21,6 +23,10 @@ from enrich import write_enrichment
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 MAX_IMAGE_PIXELS = 100_000_000
 REMBG_MODEL = "u2netp"
+REFERENCE_SAMPLES = 256
+CONTOUR_CACHE_VERSION = "2"
+CONTOUR_CACHE_DIR = Path(".cache/shell-contours")
+REFERENCE_MEAN_CONTOUR = Path(__file__).with_name("reference_mean_contour.f32")
 _SESSION: Any | None = None
 
 Shell: TypeAlias = np.ndarray
@@ -38,24 +44,47 @@ def image_paths(dataset: Path) -> list[Path]:
     )
 
 
-def fingerprint_file(job: tuple[Path, int, int]) -> tuple[str, Fingerprint]:
-    path, samples, harmonics = job
+def fingerprint_file(job: tuple[Path, int]) -> tuple[str, Shell]:
+    path, samples = job
     shell = load_shell(path, samples)
-    return path.name, fft(shell, harmonics)
+    return path.name, shell
 
 
 def load_shell(path: Path, samples: int, debug_info: bool = False) -> Shell | tuple[Shell, dict[str, Any]]:
+    # Contour cache
+    cache_path = None
+    if not debug_info:
+        stat = path.stat()
+        key = hashlib.sha256(
+            "\0".join(
+                [
+                    str(path.resolve()),
+                    str(stat.st_mtime_ns),
+                    str(stat.st_size),
+                    str(samples),
+                    REMBG_MODEL,
+                    CONTOUR_CACHE_VERSION,
+                ]
+            ).encode("utf-8")
+        ).hexdigest()
+        cache_path = CONTOUR_CACHE_DIR / f"{key}.f32"
+        if cache_path.exists():
+            shell = np.fromfile(cache_path, dtype="<f4")
+            if shell.size == samples * 2:
+                return shell.reshape(samples, 2).astype(np.float32)
+            cache_path.unlink()
+
     global _SESSION
     if _SESSION is None:
         _SESSION = new_session(REMBG_MODEL)
 
-    # Load image
+    # Image mask
     with Image.open(path) as image:
         image = ImageOps.exif_transpose(image).convert("RGB")
         width, height = image.size
         if width * height > MAX_IMAGE_PIXELS:
             raise ValueError(f"image is too large: {width}x{height}")
-        rgb = np.asarray(image, dtype=np.uint8)
+        rgb = np.asarray(image, dtype=np.uint8) if debug_info else None
         mask = remove(image, only_mask=True, session=_SESSION)
 
     if isinstance(mask, bytes):
@@ -74,16 +103,17 @@ def load_shell(path: Path, samples: int, debug_info: bool = False) -> Shell | tu
     x0, x1 = int(xs.min()), int(xs.max()) + 1
     y0, y1 = int(ys.min()), int(ys.max()) + 1
     crop = mask_array[y0:y1, x0:x1]
-    crop_rgb = rgb[y0:y1, x0:x1]
+    crop_rgb = rgb[y0:y1, x0:x1] if rgb is not None else None
 
     # Square canvas
     side = max(crop.shape)
     canvas = np.zeros((side, side), dtype=bool)
-    canvas_rgb = np.full((side, side, 3), 255, dtype=np.uint8)
+    canvas_rgb = np.full((side, side, 3), 255, dtype=np.uint8) if crop_rgb is not None else None
     y = (side - crop.shape[0]) // 2
     x = (side - crop.shape[1]) // 2
     canvas[y : y + crop.shape[0], x : x + crop.shape[1]] = crop
-    canvas_rgb[y : y + crop.shape[0], x : x + crop.shape[1]] = crop_rgb
+    if canvas_rgb is not None and crop_rgb is not None:
+        canvas_rgb[y : y + crop.shape[0], x : x + crop.shape[1]] = crop_rgb
 
     # Extract contour
     found, _ = cv2.findContours(canvas.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
@@ -136,6 +166,10 @@ def load_shell(path: Path, samples: int, debug_info: bool = False) -> Shell | tu
     start = int(np.lexsort((points[:, 0], -points[:, 1]))[0])
     shell = np.roll(points, -start, axis=0).astype(np.float32)
     if not debug_info:
+        if cache_path is not None:
+            tmp_path = cache_path.with_name(f"{cache_path.name}.{os.getpid()}.tmp")
+            shell.astype("<f4", copy=False).tofile(tmp_path)
+            os.replace(tmp_path, cache_path)
         return shell
 
     # Debug output
@@ -157,7 +191,7 @@ def fft(shell: Shell, harmonics: int) -> Fingerprint:
     return np.asarray(values, dtype=np.float32)
 
 
-def reconstruct_shell(fingerprint: Fingerprint, samples: int = 256) -> Shell:
+def reconstruct_shell(fingerprint: Fingerprint, samples: int = REFERENCE_SAMPLES) -> Shell:
     harmonics = len(fingerprint) // 4
     t = np.linspace(0.0, 1.0, samples, endpoint=False, dtype=np.float32)
     points = np.zeros(samples, dtype=np.complex64)
@@ -180,14 +214,10 @@ def pca(fingerprints: np.ndarray, components: int) -> dict[str, np.ndarray]:
     count = min(components, len(vt))
     vectors = vt[:count]
     scores = u[:, :count] * singular[:count]
-    variance = (singular[:count] ** 2) / max(1, len(fingerprints) - 1)
-    total = float(np.sum((singular ** 2) / max(1, len(fingerprints) - 1)))
     return {
         "mean": mean.astype(np.float32),
         "components": vectors.astype(np.float32),
         "scores": scores.astype(np.float32),
-        "explained_variance": variance.astype(np.float32),
-        "explained_variance_ratio": (variance / total if total else np.zeros_like(variance)).astype(np.float32),
     }
 
 
@@ -212,21 +242,6 @@ def write_outputs(
         return value
 
     output.mkdir(parents=True, exist_ok=True)
-    for stale_name in [
-        "shells.json.gz",
-        "files.json.gz",
-        "errors.json",
-        "model.json",
-        "enrichment.json",
-        "enrichment.tsv",
-        "visual_features.f32",
-        "joint_features.f32",
-        "joint_pca.f32",
-        "joint_pca_model.json",
-    ]:
-        stale_path = output / stale_name
-        if stale_path.exists():
-            stale_path.unlink()
     (output / "pca_model.json").write_text(json.dumps(clean(model), separators=(",", ":")), encoding="utf-8")
     fingerprints.astype("<f4", copy=False).tofile(output / "fingerprints.f32")
     pca_scores.astype("<f4", copy=False).tofile(output / "pca.f32")
@@ -249,35 +264,74 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.samples != REFERENCE_SAMPLES:
+        raise SystemExit(f"{REFERENCE_MEAN_CONTOUR} requires --samples {REFERENCE_SAMPLES}")
+
+    # Input files
     paths = image_paths(args.dataset)
     if args.limit:
         paths = paths[: args.limit]
     if not paths:
         raise SystemExit(f"no images found in {args.dataset}")
 
+    # Shell contours
+    CONTOUR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     file_names: list[str] = []
-    fingerprints: list[Fingerprint] = []
+    shells: list[Shell] = []
 
-    jobs = [(path, args.samples, args.harmonics) for path in paths]
+    jobs = [(path, args.samples) for path in paths]
     if args.workers <= 1:
-        results = map(fingerprint_file, jobs)
+        for file_name, shell in map(fingerprint_file, jobs):
+            file_names.append(file_name)
+            shells.append(shell)
     else:
         with ProcessPoolExecutor(max_workers=args.workers) as executor:
-            results = executor.map(fingerprint_file, jobs)
-
-            for file_name, fingerprint in results:
+            for file_name, shell in executor.map(fingerprint_file, jobs):
                 file_names.append(file_name)
-                fingerprints.append(fingerprint)
-        results = ()
+                shells.append(shell)
 
-    for file_name, fingerprint in results:
-        file_names.append(file_name)
-        fingerprints.append(fingerprint)
+    if len(shells) < 2:
+        raise SystemExit(f"need at least two usable shells, got {len(shells)}")
 
-    if len(fingerprints) < 2:
-        raise SystemExit(f"need at least two usable shells, got {len(fingerprints)}")
+    # Align contours
+    shell_matrix = np.stack(shells).astype(np.float32)
+    template = np.fromfile(REFERENCE_MEAN_CONTOUR, dtype="<f4")
+    if template.size != REFERENCE_SAMPLES * 2:
+        raise SystemExit(f"invalid reference contour: {REFERENCE_MEAN_CONTOUR}")
+    template = template.reshape(args.samples, 2).astype(np.float32)
+    template -= template.mean(axis=0, keepdims=True)
+    template /= max(float(np.sqrt(np.mean(np.sum(template * template, axis=1)))), 1e-8)
+    target = template[:, 0] + 1j * template[:, 1]
+    target_fft = np.fft.fft(target)
 
-    fingerprint_matrix = np.vstack(fingerprints).astype(np.float32)
+    aligned_shells: list[Shell] = []
+    for shell in shell_matrix:
+        shell = shell - shell.mean(axis=0, keepdims=True)
+        shell /= max(float(np.sqrt(np.mean(np.sum(shell * shell, axis=1)))), 1e-8)
+        best_score = -1.0
+        best_aligned = shell
+        for candidate in (shell, shell[::-1].copy()):
+            candidate_complex = candidate[:, 0] + 1j * candidate[:, 1]
+            correlations = np.fft.ifft(target_fft * np.conj(np.fft.fft(candidate_complex)))
+            shift = int(np.argmax(np.abs(correlations)))
+            correlation = correlations[shift]
+            score = float(abs(correlation))
+            if score <= best_score:
+                continue
+            rotation = correlation / max(score, 1e-8)
+            shifted = np.roll(candidate_complex, shift)
+            aligned = shifted * rotation
+            best_score = score
+            best_aligned = np.column_stack([aligned.real, aligned.imag]).astype(np.float32)
+        best_aligned -= best_aligned.mean(axis=0, keepdims=True)
+        best_aligned /= max(float(np.sqrt(np.mean(np.sum(best_aligned * best_aligned, axis=1)))), 1e-8)
+        aligned_shells.append(best_aligned)
+    shell_matrix = np.stack(aligned_shells).astype(np.float32)
+
+    # FFT fingerprints
+    fingerprint_matrix = np.vstack([fft(shell, args.harmonics) for shell in shell_matrix]).astype(np.float32)
+
+    # PCA model
     pca_model = pca(fingerprint_matrix, args.components)
     pca_scores = pca_model["scores"].astype(np.float32)
 
@@ -285,6 +339,8 @@ def main() -> None:
         "mean": pca_model["mean"],
         "components": pca_model["components"],
     }
+
+    # Output pack
     write_outputs(args.output, model, file_names, fingerprint_matrix, pca_scores)
     if not args.skip_enrichment:
         write_enrichment(
@@ -294,7 +350,7 @@ def main() -> None:
             enrichment_path=args.enrichment,
             compact=True,
         )
-    print(f"wrote {len(fingerprints)} shells to {args.output}")
+    print(f"wrote {len(shells)} shells to {args.output}")
 
 
 if __name__ == "__main__":
