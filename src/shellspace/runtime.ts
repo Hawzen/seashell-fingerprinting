@@ -32,6 +32,7 @@ export const state = {
   drawTimer: 0,
   sourceFrame: null,
   sourceMode: "fallback",
+  sourceInspectOpen: false,
   scatterHitCache: null,
   screenNeighborScanCount: 0,
   starredHydrationTimer: 0,

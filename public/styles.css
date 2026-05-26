@@ -861,6 +861,69 @@ select:focus {
   animation: spin 0.9s linear infinite;
 }
 
+.source-inspect-toggle {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 5;
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  min-height: 38px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(49, 67, 66, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #314342;
+  box-shadow: 0 8px 20px rgba(37, 36, 31, 0.14);
+  backdrop-filter: blur(8px);
+}
+
+.source-inspect-toggle:hover,
+.source-inspect-toggle[aria-pressed="true"] {
+  background: rgba(23, 117, 113, 0.92);
+  color: white;
+  border-color: rgba(23, 117, 113, 0.9);
+}
+
+.source-inspect-toggle span {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.source-inspect {
+  width: 100%;
+  height: min(340px, 38vh);
+  max-height: 340px;
+  padding: 10px 10px 56px;
+  display: grid;
+  background: #f7f4ec;
+}
+
+.source-frame.is-inspecting .source-image,
+.source-frame.is-inspecting .source-spinner {
+  display: none;
+}
+
+.source-fingerprint-json {
+  width: 100%;
+  height: 100%;
+  resize: none;
+  padding: 10px;
+  border: 1px solid rgba(49, 67, 66, 0.16);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #213937;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  outline: none;
+}
+
 .image-preview img,
 .source-image {
   width: 100%;
@@ -1107,14 +1170,48 @@ dd {
   position: relative;
 }
 
-.svg-export {
+.svg-export,
+.draw-shell-button {
   position: absolute;
-  right: 10px;
   top: 10px;
   min-height: 28px;
-  min-width: 42px;
   padding: 4px 7px;
   font-size: 12px;
+}
+
+.svg-export {
+  right: 10px;
+  min-width: 42px;
+}
+
+.draw-shell-button {
+  right: 60px;
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.draw-shell-button[aria-pressed="true"] {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: white;
+}
+
+.draw-shell-button svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.projection-frame.is-drawing .outline-canvas {
+  cursor: crosshair;
+  touch-action: none;
 }
 
 .pc-controls {

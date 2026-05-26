@@ -89,9 +89,13 @@ function PhysicalShellPanel() {
           </svg>
         </button>
       </div>
-      <div class="source-frame">
+      <div ref={(node) => { els.sourceFrameBox = node; }} class="source-frame">
         <div ref={(node) => { els.sourceSpinner = node; }} class="source-spinner" hidden />
         <img ref={(node) => { els.sourceImage = node; }} class="source-image" alt="" hidden />
+        <div ref={(node) => { els.sourceInspect = node; }} class="source-inspect" hidden />
+        <button ref={(node) => { els.sourceInspectToggle = node; }} class="source-inspect-toggle" title="Show fingerprint values" aria-label="Show fingerprint values" aria-pressed="false">
+          <span aria-hidden="true">{'{}'}</span>
+        </button>
       </div>
       <div ref={(node) => { els.selectedName = node; }} class="selected-name">None</div>
       <dl ref={(node) => { els.selectedDetails = node; }} />

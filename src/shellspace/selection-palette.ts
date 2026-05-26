@@ -19,6 +19,31 @@ function knownText(value) {
   return text;
 }
 
+export function renderSourceInspect(shell = state.selected) {
+  if (!els.sourceInspect || !shell) return;
+  els.sourceInspect.innerHTML = "";
+
+  const textarea = document.createElement("textarea");
+  textarea.className = "source-fingerprint-json";
+  textarea.readOnly = true;
+  textarea.spellcheck = false;
+  textarea.value = JSON.stringify({ fingerprint: Array.from(shell.fingerprint || []) }, null, 2);
+  textarea.addEventListener("click", () => textarea.select());
+  els.sourceInspect.append(textarea);
+}
+
+export function setSourceInspectOpen(open) {
+  state.sourceInspectOpen = Boolean(open);
+  els.sourceFrameBox?.classList.toggle("is-inspecting", state.sourceInspectOpen);
+  if (els.sourceInspect) els.sourceInspect.hidden = !state.sourceInspectOpen;
+  if (els.sourceInspectToggle) {
+    els.sourceInspectToggle.setAttribute("aria-pressed", state.sourceInspectOpen ? "true" : "false");
+    els.sourceInspectToggle.title = state.sourceInspectOpen ? "Show shell image" : "Show fingerprint values";
+    els.sourceInspectToggle.setAttribute("aria-label", els.sourceInspectToggle.title);
+  }
+  if (state.sourceInspectOpen) renderSourceInspect();
+}
+
 export function selectShell(shell, { renderNearest = true, preferFastSource = false } = {}) {
   var _a;
   if (!shell) return;
@@ -49,6 +74,8 @@ export function selectShell(shell, { renderNearest = true, preferFastSource = fa
     updatePcControl(index, value);
   });
   els.selectedName.textContent = shell.species;
+  renderSourceInspect(shell);
+  setSourceInspectOpen(state.sourceInspectOpen);
   updateHashChips();
   updateStarButton();
   els.selectedDetails.innerHTML = "";
