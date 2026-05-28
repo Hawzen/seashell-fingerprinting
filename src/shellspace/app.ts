@@ -1,20 +1,19 @@
 // @ts-nocheck
 
-import { colorModes } from './constants';
 import { els, initCanvasContexts, state } from './runtime';
 import { buildAxisControls, buildPcControls, lookupConservationStatus, renderPcaInterpretation, setPcValues, shellById } from './conservation-controls';
 import { loadNewFingerprintPack } from './data-pack';
-import { buildTraitFilters } from './filters';
+import { buildTraitFilters, prepareShellFilterData } from './filters';
 import { parseHashState, updateHashState } from './routing-canvas';
 import { buildDerivedShellData, setLoading } from './utils';
 import { primeSurpriseQueue } from './images-loading';
-import { axisOptionCount, buildColorModeOptions, conservationStatus, initialViewport, scheduleDraw } from './map-scatter';
+import { axisOptionCount, buildColorModeOptions, conservationStatus, initialViewport, isSupportedColorMode, scheduleDraw } from './map-scatter';
 import { loadStarred, renderStarred, warmStarredCutoutCache } from './starred';
 import { renderPalette } from './palette';
 import { loadPcaAxisNames } from './pca-guide';
 import { selectShell } from './selection-palette';
 import { hydratePersistentCutoutCache } from './shell-cutouts';
-import { setupEvents } from './walk-events';
+import { setupEvents, syncMapSampleControls } from './walk-events';
 
 window.shellspacePerf = {
   selectedId: () => state.selected?.id ?? null,
@@ -39,16 +38,36 @@ window.shellspacePerf = {
   },
 };
 
+function nextPaint() {
+  return new Promise((resolve) => {
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => window.setTimeout(resolve, 0));
+      return;
+    }
+    window.setTimeout(resolve, 0);
+  });
+}
+
+async function loadingStage(text) {
+  setLoading(text);
+  await nextPaint();
+}
+
 async function init() {
   setupEvents();
-  setLoading('Opening fingerprint data');
-  const { model, shells } = await loadNewFingerprintPack();
+  await loadingStage('Opening fingerprint data');
+  const { model, shells } = await loadNewFingerprintPack({ onProgress: loadingStage });
 
+  await loadingStage('Indexing shell lookup');
   state.model = model;
   state.shells = shells;
   state.shellById = new Map(state.shells.map((shell) => [shell.id, shell]));
+  syncMapSampleControls();
   loadPcaAxisNames();
+  await loadingStage('Computing derived traits');
   buildDerivedShellData(state.shells, null, null);
+  await loadingStage('Preparing filters');
+  prepareShellFilterData(state.shells);
   buildTraitFilters();
   state.filtered = state.shells;
   state.contours = null;
@@ -60,8 +79,9 @@ async function init() {
     : `${model.processed_count.toLocaleString()} shells`;
   els.statusLine.textContent = statusText;
 
+  await loadingStage('Restoring map controls');
   const initialHash = parseHashState();
-  if (colorModes.includes(initialHash.get('color'))) state.colorMode = initialHash.get('color');
+  if (isSupportedColorMode(initialHash.get('color'))) state.colorMode = initialHash.get('color');
   buildColorModeOptions();
   const axisCount = axisOptionCount();
   const rawX = initialHash.get('x');
@@ -80,6 +100,7 @@ async function init() {
   hydratePersistentCutoutCache(state.shells);
   els.statusLine.textContent = statusText;
 
+  await loadingStage('Selecting first shell');
   state.suppressHash = true;
   const selected = shellById(initialHash.get('id')) || state.shells[0];
   selectShell(selected, { renderNearest: false });
@@ -91,10 +112,12 @@ async function init() {
   if (pcValues.length) setPcValues(pcValues.slice(0, 6), false);
   state.suppressHash = false;
   state.hashReady = true;
+  await loadingStage('Drawing shell map');
   renderStarred();
   renderPalette();
   scheduleDraw();
   updateHashState();
+  await loadingStage('Ready');
   setLoading('', false);
   if (state.starredIds.length) void warmStarredCutoutCache();
   primeSurpriseQueue();

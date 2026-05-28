@@ -38,6 +38,56 @@ DEFAULT_FIELDS = [
     "gbif_confidence",
     "gbif_scientific_name",
     "gbif_canonical_name",
+    "aphia_match_source",
+    "aphia_candidate_count",
+    "aphia_id",
+    "aphia_match_type",
+    "aphia_quality_status",
+    "aphia_quality_flags",
+    "aphia_url",
+    "aphia_lsid",
+    "aphia_scientific_name",
+    "aphia_authority",
+    "aphia_quality_status",
+    "aphia_taxonomic_status",
+    "aphia_unaccept_reason",
+    "aphia_taxon_rank_id",
+    "aphia_rank",
+    "aphia_accepted_id",
+    "aphia_accepted_name",
+    "aphia_accepted_authority",
+    "aphia_parent_id",
+    "aphia_original_id",
+    "aphia_superdomain",
+    "aphia_kingdom",
+    "aphia_subkingdom",
+    "aphia_phylum",
+    "aphia_subphylum",
+    "aphia_superclass",
+    "aphia_class",
+    "aphia_subclass",
+    "aphia_infraclass",
+    "aphia_superorder",
+    "aphia_order",
+    "aphia_suborder",
+    "aphia_superfamily",
+    "aphia_family",
+    "aphia_subfamily",
+    "aphia_tribe",
+    "aphia_genus",
+    "aphia_subgenus",
+    "aphia_species",
+    "aphia_subspecies",
+    "aphia_is_marine",
+    "aphia_is_brackish",
+    "aphia_is_fresh",
+    "aphia_is_terrestrial",
+    "aphia_is_extinct",
+    "aphia_modified",
+    "aphia_classification_id",
+    "aphia_classification_path",
+    "aphia_classification_ids",
+    "aphia_citation",
     "family",
     "class",
     "rank",
@@ -579,7 +629,7 @@ def enrich_rows(rows: list[dict[str, Any]], enrichment: dict[str, dict[str, str]
 
 
 def compact_row(row: dict[str, Any]) -> dict[str, Any]:
-    return {
+    compact = {
         "label": row.get("label", ""),
         "scientific_name": row.get("scientific_name", ""),
         "occurrence_count": row.get("gbif_occurrence_count", ""),
@@ -587,6 +637,10 @@ def compact_row(row: dict[str, Any]) -> dict[str, Any]:
         "countries_top": row.get("gbif_countries_top", ""),
         "rarity_proxy": row.get("rarity_proxy", "unknown"),
     }
+    for key, value in row.items():
+        if key.startswith("aphia_") and value not in {"", None}:
+            compact[key] = value
+    return compact
 
 
 def write_json(path: Path, species_rows: list[dict[str, Any]], shell_rows: list[dict[str, Any]], source_files: list[str]) -> None:

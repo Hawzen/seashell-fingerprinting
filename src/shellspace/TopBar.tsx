@@ -27,6 +27,13 @@ export function TopBar() {
             <input ref={(node) => { els.showPoppedShells = node; }} type="checkbox" />
             <span>Show shells on map</span>
           </label>
+          <label class="settings-range">
+            <header>
+              <span>Map sample</span>
+              <output ref={(node) => { els.mapSampleOutput = node; }}>8,000</output>
+            </header>
+            <input ref={(node) => { els.mapSampleLimit = node; }} type="range" min="1000" max="30000" step="500" />
+          </label>
           <button ref={(node) => { els.clearAllData = node; }} class="danger-button">Clear all data</button>
         </section>
         <section>
@@ -37,6 +44,13 @@ export function TopBar() {
             <li>Click empty space projects a shell there.</li>
             <li>Drag empty space walks through PCA space.</li>
           </ul>
+        </section>
+        <section class="about-section">
+          <h2>About</h2>
+          <p>
+            Code, writeup, dataset notes, and references are in the repository.
+          </p>
+          <a href="https://github.com/Hawzen/seashell-fingerprinting" target="_blank" rel="noreferrer">Repository</a>
         </section>
       </div>
     </header>

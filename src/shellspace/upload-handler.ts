@@ -2,6 +2,7 @@
 
 import { centerViewportOnShell, shellById } from './conservation-controls';
 import { projectFingerprintToPca, shellprintFromFingerprint } from './data-pack';
+import { prepareShellFilterData } from './filters';
 import { speciesColor } from './map-scatter';
 import { els, state } from './runtime';
 import { selectShell } from './selection-palette';
@@ -45,6 +46,7 @@ export async function handleUploadShell() {
     if (state.uploadImageUrl) URL.revokeObjectURL(state.uploadImageUrl);
     state.uploadImageUrl = py.imageUrl || URL.createObjectURL(file);
     state.shells = [shell, ...state.shells.filter((item) => item.id >= 0)];
+    prepareShellFilterData(state.shells);
     state.filtered = [shell, ...state.filtered.filter((item) => item.id >= 0)];
     state.shellById.set(shell.id, shell);
     centerViewportOnShell(shell);

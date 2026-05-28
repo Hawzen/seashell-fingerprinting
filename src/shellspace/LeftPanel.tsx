@@ -17,13 +17,19 @@ function ControlsPanel() {
           <span>Search</span>
           <input ref={(node) => { els.search = node; }} type="search" placeholder="Species or Shellprint" />
         </label>
-        <button ref={(node) => { els.filtersToggle = node; }} class="filters-toggle" title="Open filters" aria-expanded="false">Filters</button>
+        <button ref={(node) => { els.filtersToggle = node; }} class="filters-toggle" title="Open attributes" aria-expanded="false">Attributes</button>
       </div>
 
       <div ref={(node) => { els.filtersPanel = node; }} class="filters-popover" hidden>
         <header>
-          <h2>Filters</h2>
-          <button ref={(node) => { els.closeFilters = node; }} title="Close filters" aria-label="Close filters">x</button>
+          <div class="attributes-header-main">
+            <h2>Attributes</h2>
+            <div class="attribute-mode-toggle" role="tablist" aria-label="Attribute mode">
+              <button ref={(node) => { els.attributeFilterMode = node; }} type="button" data-attribute-mode="filter" aria-pressed="true">Filter</button>
+              <button ref={(node) => { els.attributeColorMode = node; }} type="button" data-attribute-mode="color" aria-pressed="false">Color</button>
+            </div>
+          </div>
+          <button ref={(node) => { els.closeFilters = node; }} title="Close attributes" aria-label="Close attributes">x</button>
         </header>
         <div ref={(node) => { els.filterControls = node; }} class="filter-controls" />
         <div class="filter-actions">
@@ -69,10 +75,6 @@ function ControlsPanel() {
           <select ref={(node) => { els.yAxisSelect = node; }} />
         </label>
       </div>
-      <label class="field">
-        <span>Color</span>
-        <select ref={(node) => { els.colorModeSelect = node; }} />
-      </label>
       <div ref={(node) => { els.colorLegend = node; }} class="color-legend" hidden />
     </section>
   );
@@ -93,7 +95,7 @@ function PhysicalShellPanel() {
         <div ref={(node) => { els.sourceSpinner = node; }} class="source-spinner" hidden />
         <img ref={(node) => { els.sourceImage = node; }} class="source-image" alt="" hidden />
         <div ref={(node) => { els.sourceInspect = node; }} class="source-inspect" hidden />
-        <button ref={(node) => { els.sourceInspectToggle = node; }} class="source-inspect-toggle" title="Show fingerprint values" aria-label="Show fingerprint values" aria-pressed="false">
+        <button ref={(node) => { els.sourceInspectToggle = node; }} class="source-inspect-toggle" title="Show shell data" aria-label="Show shell data" aria-pressed="false">
           <span aria-hidden="true">{'{}'}</span>
         </button>
         <button ref={(node) => { els.sourceCursorToggle = node; }} class="source-cursor-toggle" title="Use shell as cursor" aria-label="Use shell as cursor" aria-pressed="false">

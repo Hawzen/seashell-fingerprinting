@@ -3,7 +3,7 @@
 import { panViewportByWheel, selectRandomShell, setAxes, setPcValues, zoom } from './conservation-controls';
 import { starStorageKey } from './constants';
 import { projectFingerprintToPca } from './data-pack';
-import { buildTraitFilters, positionFiltersPanel, resetTraitFilters, setFiltersPanelOpen, updateFilter } from './filters';
+import { positionFiltersPanel, resetTraitFilters, setAttributeMode, setFiltersPanelOpen, updateFilter } from './filters';
 import { drawOutline, exportGeneratedSvg } from './geometry-generation';
 import { contourAxisCount, initialViewport, renderColorLegend, scheduleDraw } from './map-scatter';
 import { renderPalette } from './palette';
@@ -17,9 +17,44 @@ import { queueStarredImageHydration, renderStarred, resetStarredDock, toggleStar
 import { handleUploadShell } from './upload-handler';
 
 const showPoppedShellsKey = "shellspace-show-popped-shells";
+const mapSampleLimitKey = "shellspace-map-sample-limit";
+const defaultMapSampleLimit = 8000;
 let drawShellMode = false;
 let drawingShell = false;
 let drawnShellPoints = [];
+
+function normalizedMapSampleLimit(value) {
+  const number = Math.round(Number(value || defaultMapSampleLimit) / 500) * 500;
+  return Math.max(1000, Math.min(50000, Number.isFinite(number) ? number : defaultMapSampleLimit));
+}
+
+function mapSampleLabel(limit = state.mapSampleLimit, total = state.filtered.length || state.shells.length || 0) {
+  const value = normalizedMapSampleLimit(limit);
+  if (total && value >= total) return `All ${total.toLocaleString()}`;
+  return value.toLocaleString();
+}
+
+export function syncMapSampleControls() {
+  if (!els.mapSampleLimit) return;
+  const total = state.shells.length || state.model?.processed_count || 30000;
+  const max = Math.max(1000, Math.ceil(total / 500) * 500);
+  els.mapSampleLimit.max = String(max);
+  els.mapSampleLimit.value = String(Math.min(normalizedMapSampleLimit(state.mapSampleLimit), max));
+  if (els.mapSampleOutput) els.mapSampleOutput.textContent = mapSampleLabel(state.mapSampleLimit, total);
+}
+
+function setMapSampleLimit(value) {
+  state.mapSampleLimit = normalizedMapSampleLimit(value);
+  try {
+    localStorage.setItem(mapSampleLimitKey, String(state.mapSampleLimit));
+  } catch (_error) {
+    // Best effort.
+  }
+  state.scatterPointCache = null;
+  state.scatterHitCache = null;
+  syncMapSampleControls();
+  scheduleDraw();
+}
 
 function setDrawShellMode(open) {
   drawShellMode = Boolean(open);
@@ -188,6 +223,7 @@ export function clearAllLocalData() {
   try {
     localStorage.removeItem(starStorageKey);
     localStorage.removeItem(showPoppedShellsKey);
+    localStorage.removeItem(mapSampleLimitKey);
     localStorage.removeItem(pcaAxisNamesKey);
   } catch (_error) {
     // Best effort.
@@ -200,17 +236,22 @@ export function loadLocalSettings() {
   let showPoppedShells = true;
   try {
     showPoppedShells = localStorage.getItem(showPoppedShellsKey) !== "false";
+    state.mapSampleLimit = normalizedMapSampleLimit(localStorage.getItem(mapSampleLimitKey) || defaultMapSampleLimit);
   } catch (_error) {
     showPoppedShells = true;
+    state.mapSampleLimit = defaultMapSampleLimit;
   }
   state.showPoppedShells = showPoppedShells;
   if (els.showPoppedShells) els.showPoppedShells.checked = showPoppedShells;
+  syncMapSampleControls();
 }
 
 export function setupEvents() {
   loadLocalSettings();
   els.search.addEventListener("input", updateFilter);
   els.filtersToggle?.addEventListener("click", () => setFiltersPanelOpen(els.filtersPanel?.hidden !== false));
+  els.attributeFilterMode?.addEventListener("click", () => setAttributeMode("filter"));
+  els.attributeColorMode?.addEventListener("click", () => setAttributeMode("color"));
   els.pcaGuideOpen?.addEventListener("click", openPcaGuide);
   els.pcaGuideClose?.addEventListener("click", closePcaGuide);
   els.pcaGuideModal?.querySelector(".pca-guide-backdrop")?.addEventListener("click", closePcaGuide);
@@ -230,6 +271,9 @@ export function setupEvents() {
     }
     scheduleDraw();
   });
+  els.mapSampleLimit?.addEventListener("input", () => {
+    setMapSampleLimit(els.mapSampleLimit.value);
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       setFiltersPanelOpen(false);
@@ -244,14 +288,13 @@ export function setupEvents() {
   els.resetTraitFilters?.addEventListener("click", resetTraitFilters);
   els.xAxisSelect.addEventListener("change", () => setAxes(Number(els.xAxisSelect.value), state.yAxis));
   els.yAxisSelect.addEventListener("change", () => setAxes(state.xAxis, Number(els.yAxisSelect.value)));
-  els.colorModeSelect.addEventListener("change", () => {
+  els.colorModeSelect?.addEventListener("change", () => {
     state.colorMode = els.colorModeSelect.value;
     renderColorLegend();
     scheduleDraw();
     scheduleHashUpdate();
   });
   window.addEventListener("shellspace:color-filter-changed", () => {
-    buildTraitFilters();
     updateFilter();
   });
   els.meanShape.addEventListener("click", resetToMeanShape);

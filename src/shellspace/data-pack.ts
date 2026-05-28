@@ -5,6 +5,30 @@ import { asset, contourRoughness, fetchCompressedArrayBuffer, fetchJson } from '
 import { buildShellColorBins } from './color-bins';
 import { computePcaDiametricPairs } from './pca-diametrics';
 
+const hiddenFaultyShellHashes = new Set([
+  "DEA627",
+  "9D12CA",
+  "C30492",
+  "FFFD32",
+  "3C89E5",
+  "CE3B23",
+  "153910",
+  "68FE3F",
+  "1851E5",
+  "802900",
+  "C4DBCF",
+  "6CAE43",
+  "288230",
+  "B8BFCD",
+  "376F7C",
+  "136CC7",
+  "96DD3C",
+  "7CB60D",
+  "23F9C6",
+  "FD71FA",
+  "FA5A92",
+]);
+
 export function speciesFromFileName(fileName) {
   return String(fileName || "")
     .replace(/\.[^.]+$/, "")
@@ -26,6 +50,10 @@ async function fetchOptionalJson(url) {
   } catch {
     return null;
   }
+}
+
+async function reportProgress(onProgress, text) {
+  if (typeof onProgress === "function") await onProgress(text);
 }
 
 function optionalNumber(value) {
@@ -94,6 +122,33 @@ export function pcaRanges(scores, count, pcaSize) {
   return ranges;
 }
 
+function pcaRangesFromShells(shells, pcaSize) {
+  const ranges = [];
+  for (let pc = 0; pc < pcaSize; pc += 1) {
+    const values = shells
+      .map((shell) => shell.contour_pc?.[pc] || 0)
+      .sort((a, b) => a - b);
+    const at = (q) => values[Math.min(values.length - 1, Math.max(0, Math.round((values.length - 1) * q)))] || 0;
+    const min = values[0] || 0;
+    const max = values.at(-1) || 0;
+    const p01 = at(0.01);
+    const p99 = at(0.99);
+    const span = Math.max(0.001, p99 - p01, max - min);
+    ranges.push({
+      min: min - span * 0.08,
+      max: max + span * 0.08,
+      p01: p01 - span * 0.08,
+      p99: p99 + span * 0.08,
+    });
+  }
+  return ranges;
+}
+
+function isHiddenFaultyShell(shell) {
+  return hiddenFaultyShellHashes.has(String(shell?.fingerprint_hash || "").toUpperCase())
+    || hiddenFaultyShellHashes.has(String(shell?.legacy_fingerprint_hash || "").toUpperCase());
+}
+
 export async function shellprintFromFingerprint(fingerprint) {
   const bytes = new Uint8Array(fingerprint.buffer, fingerprint.byteOffset, fingerprint.byteLength);
   const copy = new Uint8Array(bytes.length);
@@ -158,23 +213,37 @@ export function projectFingerprintToPca(fingerprint) {
   });
 }
 
-export async function loadNewFingerprintPack() {
+export async function loadNewFingerprintPack(options = {}) {
+  const { onProgress = null } = options || {};
+  await reportProgress(onProgress, "Requesting shell index");
+  const filesPromise = fetchJson(asset("data/files.json"));
+  await reportProgress(onProgress, "Requesting PCA model");
+  const pcaModelPromise = fetchJson(asset("data/pca_model.json"));
+  await reportProgress(onProgress, "Requesting FFT coefficients");
+  const fingerprintPromise = fetchCompressedArrayBuffer(asset("data/fingerprints.f32"));
+  await reportProgress(onProgress, "Requesting projected coordinates");
+  const pcaPromise = fetchCompressedArrayBuffer(asset("data/pca.f32"));
+  await reportProgress(onProgress, "Requesting species enrichment");
+  const enrichmentPromise = fetchOptionalJson(asset("data/enrichment.json"));
   const [files, pcaModel, fingerprintBuffer, pcaBuffer, enrichment] = await Promise.all([
-    fetchJson(asset("data/files.json")),
-    fetchJson(asset("data/pca_model.json")),
-    fetchCompressedArrayBuffer(asset("data/fingerprints.f32")),
-    fetchCompressedArrayBuffer(asset("data/pca.f32")),
-    fetchOptionalJson(asset("data/enrichment.json")),
+    filesPromise,
+    pcaModelPromise,
+    fingerprintPromise,
+    pcaPromise,
+    enrichmentPromise,
   ]);
+  await reportProgress(onProgress, "Indexing enrichment records");
   const speciesRows = enrichment?.species || enrichment?.rows || [];
   const shellRows = enrichment?.shell || [];
   const enrichmentByLabel = new Map(speciesRows.map((row) => [row.label, row]));
   const enrichmentByFile = new Map(shellRows.map((row) => [row.file, row]));
+  await reportProgress(onProgress, `Opening ${files.length.toLocaleString()} shell fingerprints`);
   const count = files.length;
   const fingerprints = new Float32Array(fingerprintBuffer);
   const pcaScores = new Float32Array(pcaBuffer);
   const fingerprintSize = Math.floor(fingerprints.length / count);
   const pcaSize = Math.floor(pcaScores.length / count);
+  await reportProgress(onProgress, "Computing PCA map ranges");
   const model = {
     processed_count: count,
     species_count: new Set(files.map(speciesFromFileName)).size,
@@ -187,7 +256,7 @@ export async function loadNewFingerprintPack() {
     fingerprint_mean: pcaModel.mean || [],
     fingerprint_components: pcaModel.components || [],
   };
-  const shells = await Promise.all(files.map(async (file, id) => {
+  const buildShellRecord = async (file, id) => {
     const fingerprint = fingerprints.slice(id * fingerprintSize, (id + 1) * fingerprintSize);
     const contourPc = Array.from(pcaScores.slice(id * pcaSize, (id + 1) * pcaSize));
     const speciesEnrichment = enrichmentByLabel.get(speciesLabelFromFileName(file)) || {};
@@ -221,13 +290,29 @@ export async function loadNewFingerprintPack() {
         roughness: contourRoughness(contour),
       },
     };
-  }));
-  normalizeTraitRanks(shells, "roughness");
-  buildShellColorBins(shells);
-  model.contour_pca_diametric_pairs = computePcaDiametricPairs(shells, model.contour_pca_ranges, {
-    axisCount: model.contour_component_count,
+  };
+  const shells = [];
+  const chunkSize = 1500;
+  for (let start = 0; start < files.length; start += chunkSize) {
+    const end = Math.min(files.length, start + chunkSize);
+    await reportProgress(onProgress, `Reconstructing shell outlines ${start.toLocaleString()}-${end.toLocaleString()}`);
+    const chunk = await Promise.all(files.slice(start, end).map((file, offset) => buildShellRecord(file, start + offset)));
+    shells.push(...chunk);
+  }
+  const visibleShells = shells.filter((shell) => !isHiddenFaultyShell(shell));
+  model.processed_count = visibleShells.length;
+  model.species_count = new Set(visibleShells.map((shell) => shell.species)).size;
+  model.contour_pca_ranges = pcaRangesFromShells(visibleShells, pcaSize);
+  await reportProgress(onProgress, "Ranking outline roughness");
+  normalizeTraitRanks(visibleShells, "roughness");
+  await reportProgress(onProgress, "Quantizing color palettes");
+  buildShellColorBins(visibleShells);
+  await reportProgress(onProgress, "Finding PCA contrast examples");
+  model.contour_pca_diametric_pairs = computePcaDiametricPairs(visibleShells, model.contour_pca_ranges, {
+    axisCount: model.contour_visible_component_count,
   });
-  return { model, shells };
+  await reportProgress(onProgress, "Fingerprint pack ready");
+  return { model, shells: visibleShells };
 }
 
 export function unpackShells(payload) {

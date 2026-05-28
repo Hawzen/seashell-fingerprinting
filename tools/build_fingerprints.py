@@ -4,25 +4,28 @@
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 import hashlib
 import json
 import os
-from io import BytesIO
 from pathlib import Path
+import re
+import signal
+import time
 from typing import Any, TypeAlias
 
 import cv2
 import numpy as np
 from PIL import Image, ImageOps
-from rembg import new_session, remove
 
 from enrich import write_enrichment
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+SHELL_IMAGE_RE = re.compile(r"^(?P<label>.+)_(?P<sample>\d+)_A\.jpg$", re.IGNORECASE)
 MAX_IMAGE_PIXELS = 100_000_000
 REMBG_MODEL = "u2netp"
+REMBG_BATCH_SIZE = 200
 REFERENCE_SAMPLES = 256
 CONTOUR_CACHE_VERSION = "2"
 CONTOUR_CACHE_DIR = Path(".cache/shell-contours")
@@ -34,40 +37,76 @@ Fingerprint: TypeAlias = np.ndarray
 
 
 def image_paths(dataset: Path) -> list[Path]:
-    return sorted(
-        (
-            path
-            for path in dataset.rglob("*_A.jpg")
-            if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
-        ),
-        key=lambda path: path.as_posix().lower(),
-    )
+    selected: dict[str, tuple[int, str, Path]] = {}
+    for path in dataset.rglob("*_A.jpg"):
+        if not path.is_file() or path.suffix.lower() not in IMAGE_EXTENSIONS:
+            continue
+        match = SHELL_IMAGE_RE.match(path.name)
+        if not match:
+            continue
+        label = match.group("label").lower()
+        candidate = (int(match.group("sample")), path.as_posix().lower(), path)
+        if label not in selected or candidate[:2] < selected[label][:2]:
+            selected[label] = candidate
+    return [item[2] for item in sorted(selected.values(), key=lambda item: item[1])]
 
 
-def fingerprint_file(job: tuple[Path, int]) -> tuple[str, Shell]:
-    path, samples = job
-    shell = load_shell(path, samples)
-    return path.name, shell
+def contour_cache_path(path: Path, samples: int) -> Path:
+    stat = path.stat()
+    key = hashlib.sha256(
+        "\0".join(
+            [
+                str(path.resolve()),
+                str(stat.st_mtime_ns),
+                str(stat.st_size),
+                str(samples),
+                REMBG_MODEL,
+                CONTOUR_CACHE_VERSION,
+            ]
+        ).encode("utf-8")
+    ).hexdigest()
+    return CONTOUR_CACHE_DIR / f"{key}.f32"
 
 
-def load_shell(path: Path, samples: int, debug_info: bool = False) -> Shell | tuple[Shell, dict[str, Any]]:
+def fingerprint_file(job: tuple[int, Path, int, bool]) -> tuple[int, str, Shell]:
+    index, path, samples, ignore_cache = job
+    shell = load_shell(path, samples, ignore_cache=ignore_cache)
+    return index, path.name, shell
+
+
+def worker_rss_gb(process_ids: list[int]) -> float:
+    if not process_ids:
+        return 0.0
+
+    import psutil
+
+    rss = 0
+    for process_id in process_ids:
+        try:
+            rss += psutil.Process(process_id).memory_info().rss
+        except psutil.Error:
+            pass
+    return rss / 1024**3
+
+
+def kill_workers(process_ids: list[int]) -> None:
+    for process_id in process_ids:
+        try:
+            os.kill(process_id, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def load_shell(
+    path: Path,
+    samples: int,
+    debug_info: bool = False,
+    ignore_cache: bool = False,
+) -> Shell | tuple[Shell, dict[str, Any]]:
     # Contour cache
     cache_path = None
-    if not debug_info:
-        stat = path.stat()
-        key = hashlib.sha256(
-            "\0".join(
-                [
-                    str(path.resolve()),
-                    str(stat.st_mtime_ns),
-                    str(stat.st_size),
-                    str(samples),
-                    REMBG_MODEL,
-                    CONTOUR_CACHE_VERSION,
-                ]
-            ).encode("utf-8")
-        ).hexdigest()
-        cache_path = CONTOUR_CACHE_DIR / f"{key}.f32"
+    if not debug_info and not ignore_cache:
+        cache_path = contour_cache_path(path, samples)
         if cache_path.exists():
             shell = np.fromfile(cache_path, dtype="<f4")
             if shell.size == samples * 2:
@@ -76,21 +115,37 @@ def load_shell(path: Path, samples: int, debug_info: bool = False) -> Shell | tu
 
     global _SESSION
     if _SESSION is None:
-        _SESSION = new_session(REMBG_MODEL)
+        import onnxruntime as ort
+        from rembg.sessions.u2netp import U2netpSession
+
+        options = ort.SessionOptions()
+        options.enable_cpu_mem_arena = False
+        options.enable_mem_pattern = False
+        options.enable_mem_reuse = False
+        threads = int(os.environ.get("OMP_NUM_THREADS", "1"))
+        options.inter_op_num_threads = threads
+        options.intra_op_num_threads = threads
+        options.add_session_config_entry("session.disable_prepacking", "1")
+        _SESSION = U2netpSession(REMBG_MODEL, options, providers=["CPUExecutionProvider"])
 
     # Image mask
-    with Image.open(path) as image:
-        image = ImageOps.exif_transpose(image).convert("RGB")
+    with Image.open(path) as opened:
+        image = ImageOps.exif_transpose(opened).convert("RGB")
+
+    try:
         width, height = image.size
         if width * height > MAX_IMAGE_PIXELS:
             raise ValueError(f"image is too large: {width}x{height}")
-        rgb = np.asarray(image, dtype=np.uint8) if debug_info else None
-        mask = remove(image, only_mask=True, session=_SESSION)
+        rgb = np.asarray(image, dtype=np.uint8).copy() if debug_info else None
+        masks = _SESSION.predict(image)
+        mask = masks[0]
+        try:
+            mask_array = np.asarray(mask, dtype=np.uint8).copy()
+        finally:
+            mask.close()
+    finally:
+        image.close()
 
-    if isinstance(mask, bytes):
-        mask = Image.open(BytesIO(mask))
-
-    mask_array = np.asarray(mask, dtype=np.uint8)
     if mask_array.ndim == 3:
         mask_array = mask_array[:, :, 0]
     mask_array = mask_array > 0
@@ -258,6 +313,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--enrichment", type=Path, default=Path("dataset_enrichment/enriched_preview.tsv"))
+    parser.add_argument("--ignore-cache", action="store_true")
+    parser.add_argument("--memory-limit-gb", type=float, default=0.0)
+    parser.add_argument("--rembg-batch-size", type=int, default=REMBG_BATCH_SIZE)
+    parser.add_argument("--stall-timeout", type=float, default=90.0)
     parser.add_argument("--skip-enrichment", action="store_true")
     return parser.parse_args()
 
@@ -276,19 +335,87 @@ def main() -> None:
 
     # Shell contours
     CONTOUR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    file_names: list[str] = []
-    shells: list[Shell] = []
+    file_names = [path.name for path in paths]
+    shells_by_index: list[Shell | None] = [None] * len(paths)
+    jobs: list[tuple[int, Path, int, bool]] = []
 
-    jobs = [(path, args.samples) for path in paths]
-    if args.workers <= 1:
-        for file_name, shell in map(fingerprint_file, jobs):
-            file_names.append(file_name)
-            shells.append(shell)
-    else:
-        with ProcessPoolExecutor(max_workers=args.workers) as executor:
-            for file_name, shell in executor.map(fingerprint_file, jobs):
-                file_names.append(file_name)
-                shells.append(shell)
+    for index, path in enumerate(paths):
+        if not args.ignore_cache:
+            cache_path = contour_cache_path(path, args.samples)
+            if cache_path.exists():
+                shell = np.fromfile(cache_path, dtype="<f4")
+                if shell.size == args.samples * 2:
+                    shells_by_index[index] = shell.reshape(args.samples, 2).astype(np.float32)
+                    continue
+                cache_path.unlink()
+        jobs.append((index, path, args.samples, args.ignore_cache))
+
+    if jobs:
+        batch_size = max(args.rembg_batch_size, 1)
+        workers = max(args.workers, 1)
+        memory_limit_gb = max(args.memory_limit_gb, 0.0)
+        stall_timeout = max(args.stall_timeout, 1.0)
+        done = 0
+        queued = list(jobs)
+        while queued:
+            batch = queued[:batch_size]
+            queued = queued[batch_size:]
+            remaining = {job[0]: job for job in batch}
+            executor = ProcessPoolExecutor(max_workers=workers)
+            futures = {executor.submit(fingerprint_file, job): job for job in batch}
+            worker_ids: list[int] = []
+            last_progress = time.monotonic()
+            restart_reason = ""
+            try:
+                while futures:
+                    worker_processes = getattr(executor, "_processes", {}) or {}
+                    worker_ids = [process.pid for process in worker_processes.values() if process.pid]
+                    if memory_limit_gb:
+                        rss_gb = worker_rss_gb(worker_ids)
+                        if rss_gb > memory_limit_gb:
+                            restart_reason = f"memory {rss_gb:.2f}GB > {memory_limit_gb:.2f}GB"
+                            break
+
+                    completed, _pending = wait(
+                        futures,
+                        timeout=1.0,
+                        return_when=FIRST_COMPLETED,
+                    )
+                    if not completed:
+                        idle_for = time.monotonic() - last_progress
+                        if idle_for > stall_timeout:
+                            restart_reason = f"stalled for {idle_for:.1f}s"
+                            break
+                        continue
+
+                    for future in completed:
+                        job = futures.pop(future)
+                        index, _file_name, shell = future.result()
+                        shells_by_index[index] = shell
+                        remaining.pop(index, None)
+                        done += 1
+                        last_progress = time.monotonic()
+            finally:
+                if restart_reason:
+                    for future in futures:
+                        future.cancel()
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    kill_workers(worker_ids)
+                else:
+                    executor.shutdown()
+
+            if restart_reason:
+                queued = list(remaining.values()) + queued
+                print(
+                    f"restarted rembg batch: {restart_reason}; "
+                    f"done {done}/{len(jobs)}, requeued {len(remaining)}",
+                    flush=True,
+                )
+                continue
+
+            print(f"processed rembg batch {done}/{len(jobs)}", flush=True)
+
+    shells = [shell for shell in shells_by_index if shell is not None]
 
     if len(shells) < 2:
         raise SystemExit(f"need at least two usable shells, got {len(shells)}")

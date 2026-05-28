@@ -1,10 +1,13 @@
 // @ts-nocheck
 
 import { resizeCanvas } from './routing-canvas';
-import { colorModeDefs } from './constants';
+import { colorModeDefs, filterLevels } from './constants';
+import { canonicalColorBin, colorBinFromFilterValue, shellHasColorBin } from './color-bins';
+import { countryDisplayLabel } from './countries';
+import { habitatDefs, shellHabitatKeys } from './habitat';
 import { els, scatterCtx, state } from './runtime';
 import { getCachedShellCutoutImage } from './shell-cutouts';
-import { clamp01, hslToRgba } from './utils';
+import { clamp01, hslToRgba, relativeArea } from './utils';
 
 export function contourAxisCount() {
   return Math.min(6, state.model?.contour_visible_component_count || 0);
@@ -118,13 +121,153 @@ function hasNumber(value) {
   return Number.isFinite(number);
 }
 
+function rangeValue(shell, key) {
+  if (key === "lightness") return shell.color_l_mean == null ? null : clamp01(shell.color_l_mean);
+  if (key === "area") return shell.area == null || shell.image_width == null || shell.image_height == null ? null : relativeArea(shell);
+  if (key === "concavity") return shell.contour_concavity == null ? null : clamp01(shell.contour_concavity / 0.32);
+  if (key === "roughness") return shell.morph_traits?.roughness == null ? null : clamp01(shell.morph_traits.roughness);
+  return null;
+}
+
+function parseAttributeColorMode(mode) {
+  const text = String(mode || "");
+  if (text.startsWith("range:")) {
+    const [, key, level] = text.split(":");
+    return key && level ? { type: "range", key, value: level } : null;
+  }
+  if (text.startsWith("taxonomy:")) return { type: "taxonomy", value: text.slice("taxonomy:".length) };
+  if (text.startsWith("habitat:")) return { type: "habitat", value: text.slice("habitat:".length) };
+  if (text.startsWith("origin:")) return { type: "origin", value: text.slice("origin:".length) };
+  if (text.startsWith("palette:")) return { type: "color", value: text.slice("palette:".length) };
+  if (text.startsWith("rarity:")) return { type: "rarity", value: text.slice("rarity:".length) };
+  if (["taxonomy", "habitat", "origin", "color", "lightness", "area", "roughness", "rarity", "concavity"].includes(text)) {
+    return { type: text };
+  }
+  return null;
+}
+
+function taxonomyColorKey(shell) {
+  const enrichment = shell?.enrichment || {};
+  return enrichment.aphia_family
+    || enrichment.aphia_genus
+    || enrichment.aphia_order
+    || enrichment.aphia_class
+    || shell?.species
+    || "Unknown";
+}
+
+function taxonomyText(shell) {
+  if (shell?._filterTaxonomyText) return shell._filterTaxonomyText;
+  const enrichment = shell?.enrichment || {};
+  return [
+    enrichment.aphia_class,
+    enrichment.aphia_order,
+    enrichment.aphia_family,
+    enrichment.aphia_genus,
+    enrichment.aphia_scientific_name,
+    enrichment.aphia_accepted_name,
+    enrichment.aphia_classification_path,
+    shell?.species,
+    shell?.name,
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function matchesTaxonomy(shell, query) {
+  const tokens = String(query || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return true;
+  const haystack = taxonomyText(shell);
+  return tokens.every((token) => haystack.includes(token));
+}
+
+function shellOriginColorKey(shell) {
+  return shell?.species_traits?.primary_country
+    || shell?._filterCountryItems?.[0]?.code
+    || shell?.location_key
+    || "unknown";
+}
+
+function matchesOrigin(shell, filterValue) {
+  if (!filterValue) return true;
+  const [type, value] = String(filterValue).split(":");
+  if (!value) return shellOriginColorKey(shell) === filterValue;
+  if (type === "country-search") {
+    const query = value.trim().toLowerCase();
+    if (!query) return true;
+    return (shell?._filterCountrySearchText || "").includes(query);
+  }
+  if (type === "region") {
+    return shell?.species_traits?.region_key === value
+      || shell?.region_key === value
+      || shell?.location_key === value;
+  }
+  if (type === "country") {
+    return shell?.location_key === value
+      || shell?.species_traits?.primary_country === value
+      || shell?._filterCountryCodes?.has(value)
+      || (shell?._filterCountryItems || []).some((country) => country.code === value);
+  }
+  return shellOriginColorKey(shell) === filterValue;
+}
+
+function habitatColorKey(shell) {
+  return shell?._filterHabitatKeys?.[0] || shellHabitatKeys(shell)[0] || "unknown";
+}
+
+function matchesHabitat(shell, key) {
+  if (!key) return true;
+  return (shell?._filterHabitatSet || new Set(shellHabitatKeys(shell))).has(key);
+}
+
+function highlightRgba(matches, color = [31, 117, 111, 222]) {
+  return matches ? color : [103, 113, 116, 54];
+}
+
+function levelForKey(levelKey) {
+  return filterLevels.find((level) => level.key === levelKey);
+}
+
+function rangeModeRgba(shell, key) {
+  if (key === "lightness") {
+    const t = clamp01(shell.color_l_mean ?? 0.5);
+    return hslToRgba(48, 0.24, (24 + t * 54) / 100);
+  }
+  if (key === "roughness") {
+    const t = clamp01(shell.morph_traits?.roughness ?? 0);
+    return hslToRgba(178 - t * 150, 0.58, (34 + t * 16) / 100);
+  }
+  if (key === "area") {
+    const t = clamp01(rangeValue(shell, "area") ?? 0.5);
+    return hslToRgba(210 - t * 176, 0.55, (35 + t * 16) / 100);
+  }
+  if (key === "concavity") {
+    const t = clamp01((shell.contour_concavity || 0) / 0.32);
+    return hslToRgba(320 - t * 185, 0.56, (35 + t * 11) / 100);
+  }
+  return speciesColorRgba(key, 0.72);
+}
+
+function rangeHighlightColor(levelKey) {
+  if (levelKey === "low") return [43, 95, 116, 222];
+  if (levelKey === "medium") return [222, 146, 54, 222];
+  if (levelKey === "high") return [198, 93, 75, 224];
+  return [31, 117, 111, 222];
+}
+
 export function shellHasColorModeData(shell, mode) {
+  const parsed = parseAttributeColorMode(mode);
+  if (parsed?.type === "taxonomy") return isKnownText(taxonomyColorKey(shell));
+  if (parsed?.type === "habitat") return shellHabitatKeys(shell).length > 0 || (shell?._filterHabitatKeys || []).length > 0;
+  if (parsed?.type === "origin") return isKnownText(shellOriginColorKey(shell));
+  if (parsed?.type === "color") return hasNumber(shell.color_r_mean) && hasNumber(shell.color_g_mean) && hasNumber(shell.color_b_mean);
+  if (parsed?.type === "range") return rangeValue(shell, parsed.key) != null;
+  if (parsed?.type === "rarity") return isKnownText(shell.rarity_label);
   if (mode === "species") return true;
   if (mode === "locality") return isKnownText(shell.location_key);
   if (mode === "conservation") return isKnownText(conservationStatus(shell));
   if (mode === "shell") return hasNumber(shell.color_r_mean) && hasNumber(shell.color_g_mean) && hasNumber(shell.color_b_mean);
   if (mode === "pattern") return hasNumber(shell.color_pattern_strength);
   if (mode === "lightness") return hasNumber(shell.color_l_mean);
+  if (mode === "area") return rangeValue(shell, "area") != null;
   if (mode === "roughness") return hasNumber(shell.morph_traits?.roughness);
   if (mode === "rarity") return isKnownText(shell.rarity_label);
   if (mode === "concavity") return hasNumber(shell.contour_concavity);
@@ -135,20 +278,61 @@ export function availableColorModes() {
   return colorModeDefs.filter((mode) => state.shells.some((shell) => shellHasColorModeData(shell, mode.key)));
 }
 
-export function buildColorModeOptions() {
-  if (!els.colorModeSelect) return;
-  const modes = availableColorModes();
-  els.colorModeSelect.innerHTML = "";
-  for (const mode of modes) {
-    const option = document.createElement("option");
-    option.value = mode.key;
-    option.textContent = mode.label;
-    els.colorModeSelect.append(option);
+export function isSupportedColorMode(mode) {
+  const text = String(mode || "");
+  const parsed = parseAttributeColorMode(text);
+  if (parsed?.type === "range") return ["lightness", "area", "roughness", "concavity"].includes(parsed.key);
+  if (parsed) return true;
+  return colorModeDefs.some((item) => item.key === text);
+}
+
+function colorLabelForOrigin(value) {
+  if (!value) return "Countries";
+  if (value.startsWith("country-search:")) return value.slice("country-search:".length);
+  if (value.startsWith("country:")) {
+    const code = value.slice("country:".length);
+    return countryDisplayLabel(code) || code;
   }
-  if (!modes.some((mode) => mode.key === state.colorMode)) {
+  if (value.startsWith("region:")) return value.slice("region:".length).replace(/[-_]/g, " ");
+  return value;
+}
+
+export function colorModeLabel(mode = state.colorMode) {
+  const text = String(mode || "");
+  const parsed = parseAttributeColorMode(text);
+  if (parsed?.type === "taxonomy") return parsed.value ? parsed.value : "Family groups";
+  if (parsed?.type === "habitat") return parsed.value
+    ? habitatDefs.find((def) => def.key === parsed.value)?.label || "Habitat"
+    : "All habitats";
+  if (parsed?.type === "origin") return colorLabelForOrigin(parsed.value || "");
+  if (parsed?.type === "color") {
+    if (!parsed.value) return "Shell color";
+    const bin = colorBinFromFilterValue(parsed.value);
+    return bin == null ? parsed.value : canonicalColorBin(bin).hex;
+  }
+  if (parsed?.type === "range") {
+    const level = levelForKey(parsed.value);
+    return level?.label || "Gradient";
+  }
+  if (parsed?.type === "rarity") return parsed.value || "All rarities";
+  return colorModeDefs.find((modeDef) => modeDef.key === text)?.label || "Shell color";
+}
+
+export function buildColorModeOptions() {
+  const modes = availableColorModes();
+  if (!isSupportedColorMode(state.colorMode) || !state.shells.some((shell) => shellHasColorModeData(shell, state.colorMode))) {
     state.colorMode = modes.some((mode) => mode.key === "roughness") ? "roughness" : modes[0]?.key || "species";
   }
-  els.colorModeSelect.value = state.colorMode;
+  if (els.colorModeSelect) {
+    els.colorModeSelect.innerHTML = "";
+    for (const mode of modes) {
+      const option = document.createElement("option");
+      option.value = mode.key;
+      option.textContent = mode.label;
+      els.colorModeSelect.append(option);
+    }
+    els.colorModeSelect.value = state.colorMode;
+  }
   renderColorLegend();
 }
 
@@ -185,6 +369,51 @@ export function renderColorLegend() {
   const legend = els.colorLegend;
   legend.innerHTML = "";
   legend.hidden = false;
+  const parsed = parseAttributeColorMode(state.colorMode);
+  if (parsed?.type === "taxonomy") {
+    legend.append(parsed.value
+      ? legendDot(colorModeLabel(), rgbaCss(speciesColorRgba(parsed.value, 0.86)))
+      : legendDot("Family groups", rgbaCss(speciesColorRgba("taxonomy", 0.78))));
+    return;
+  }
+  if (parsed?.type === "habitat") {
+    legend.append(parsed.value
+      ? legendDot(colorModeLabel(), rgbaCss(speciesColorRgba(parsed.value, 0.86)))
+      : legendDot("Habitat groups", rgbaCss(speciesColorRgba("habitat", 0.78))));
+    return;
+  }
+  if (parsed?.type === "origin") {
+    legend.append(parsed.value
+      ? legendDot(colorModeLabel(), rgbaCss(speciesColorRgba(parsed.value, 0.86)))
+      : legendDot("Country groups", rgbaCss(speciesColorRgba("origin", 0.78))));
+    return;
+  }
+  if (parsed?.type === "color" && parsed.value) {
+    const bin = colorBinFromFilterValue(parsed.value);
+    const color = bin == null ? parsed.value : canonicalColorBin(bin).hex;
+    legend.append(legendDot(colorModeLabel(), color));
+    return;
+  }
+  if (parsed?.type === "range") {
+    if (parsed.value) {
+      legend.append(
+        legendDot(colorModeLabel(), rgbaCss(rangeHighlightColor(parsed.value))),
+        legendDot("Other", "rgba(103, 113, 116, 0.32)"),
+      );
+      return;
+    }
+    if (parsed.key === "area") {
+      legend.append(legendGradient(rgbaCss(hslToRgba(210, 0.55, 0.35)), rgbaCss(hslToRgba(34, 0.55, 0.51)), "Small", "Large"));
+      return;
+    }
+  }
+  if (parsed?.type === "rarity" && parsed.value) {
+    legend.append(
+      legendDot(parsed.value, rgbaCss(rarityRgba({ rarity_label: parsed.value }))),
+      legendDot("Other", "rgba(103, 113, 116, 0.32)"),
+    );
+    return;
+  }
   if (state.colorMode === "rarity") {
     legend.append(
       legendDot("Common", "rgba(52, 136, 96, 0.82)"),
@@ -195,6 +424,10 @@ export function renderColorLegend() {
   }
   if (state.colorMode === "lightness") {
     legend.append(legendGradient(rgbaCss(hslToRgba(48, 0.24, 0.24)), rgbaCss(hslToRgba(48, 0.24, 0.78)), "Dark", "Light"));
+    return;
+  }
+  if (state.colorMode === "area") {
+    legend.append(legendGradient(rgbaCss(hslToRgba(210, 0.55, 0.35)), rgbaCss(hslToRgba(34, 0.55, 0.51)), "Small", "Large"));
     return;
   }
   if (state.colorMode === "roughness") {
@@ -235,28 +468,49 @@ function rarityRgba(shell) {
 }
 
 export function pointRgbaForMode(shell, mode) {
+  const parsed = parseAttributeColorMode(mode);
+  if (parsed?.type === "taxonomy") {
+    if (parsed.value) return highlightRgba(matchesTaxonomy(shell, parsed.value), speciesColorRgba(parsed.value, 0.86));
+    return speciesColorRgba(taxonomyColorKey(shell), 0.76);
+  }
+  if (parsed?.type === "habitat") {
+    if (parsed.value) return highlightRgba(matchesHabitat(shell, parsed.value), speciesColorRgba(parsed.value, 0.86));
+    const key = habitatColorKey(shell);
+    return key === "unknown" ? [96, 108, 106, 138] : speciesColorRgba(key, 0.76);
+  }
+  if (parsed?.type === "origin") {
+    if (parsed.value) return highlightRgba(matchesOrigin(shell, parsed.value), speciesColorRgba(parsed.value, 0.86));
+    const key = shellOriginColorKey(shell);
+    return key === "unknown" ? [96, 108, 106, 138] : speciesColorRgba(key, 0.72);
+  }
+  if (parsed?.type === "color") {
+    if (!parsed.value) return shellRgba(shell);
+    const bin = colorBinFromFilterValue(parsed.value);
+    const match = bin == null ? false : shellHasColorBin(shell, bin);
+    const canonical = bin == null ? [31, 117, 111, 222] : canonicalColorBin(bin).rgb.map((channel) => Math.round(channel * 255)).concat(224);
+    return highlightRgba(match, canonical);
+  }
+  if (parsed?.type === "range") {
+    if (!parsed.value) return rangeModeRgba(shell, parsed.key);
+    const level = levelForKey(parsed.value);
+    const value = rangeValue(shell, parsed.key);
+    const matches = value != null && level && value >= level.min && value <= level.max;
+    return highlightRgba(Boolean(matches), rangeHighlightColor(parsed.value));
+  }
+  if (parsed?.type === "rarity" && parsed.value) {
+    return highlightRgba(shell.rarity_label === parsed.value, rarityRgba({ rarity_label: parsed.value }));
+  }
   if (mode === "locality") {
     if (shell.location_key === "unknown") return [96, 108, 106, 158];
     return speciesColorRgba(shell.location_key || "unknown", 0.66);
   }
   if (mode === "conservation") return conservationRgba(shell);
   if (mode === "shell") return shellRgba(shell);
-  if (mode === "lightness") {
-    const t = clamp01(shell.color_l_mean ?? 0.5);
-    return hslToRgba(48, 0.24, (24 + t * 54) / 100);
-  }
-  if (mode === "roughness") {
-    const t = clamp01(shell.morph_traits?.roughness ?? 0);
-    return hslToRgba(178 - t * 150, 0.58, (34 + t * 16) / 100);
-  }
+  if (mode === "lightness" || mode === "roughness" || mode === "area" || mode === "concavity") return rangeModeRgba(shell, mode);
   if (mode === "rarity") return rarityRgba(shell);
   if (mode === "pattern") {
     const t = clamp01((shell.color_pattern_strength || 0) / 0.22);
     return hslToRgba(204 - t * 162, (34 + t * 36) / 100, (30 + t * 18) / 100);
-  }
-  if (mode === "concavity") {
-    const t = clamp01((shell.contour_concavity || 0) / 0.32);
-    return hslToRgba(320 - t * 185, 0.56, (35 + t * 11) / 100);
   }
   return speciesColorRgba(shell.species, 0.78);
 }
@@ -275,6 +529,34 @@ export function pointColorArray(mode) {
   }
   state.pointColorCache.set(mode, colors);
   return colors;
+}
+
+function mapSampleSignature() {
+  return [
+    state.mapSampleLimit || 0,
+    state.filtered.length,
+    state.selected?.id ?? -1,
+  ].join("|");
+}
+
+function sampledScatterShells(source) {
+  const limit = Math.floor(Number(state.mapSampleLimit || 0));
+  if (!limit || source.length <= limit) return source;
+  const target = Math.max(1, Math.min(limit, source.length));
+  const sampled = [];
+  const used = new Set();
+  for (let index = 0; index < target; index += 1) {
+    const sourceIndex = Math.floor(((index + 0.5) * source.length) / target);
+    const shell = source[Math.min(source.length - 1, sourceIndex)];
+    if (!shell || used.has(shell.id)) continue;
+    sampled.push(shell);
+    used.add(shell.id);
+  }
+  if (state.selected && source.includes(state.selected) && !used.has(state.selected.id)) {
+    if (sampled.length >= target) sampled[sampled.length - 1] = state.selected;
+    else sampled.push(state.selected);
+  }
+  return sampled;
 }
 
 export function scheduleDraw(delay = 0) {
@@ -429,17 +711,22 @@ export function scatterHitKey(size) {
 
 export function scatterScreenPoints(size) {
   const key = scatterHitKey(size);
-  if (state.scatterPointCache?.key === key && state.scatterPointCache.shells === state.filtered) {
+  const sampleSignature = mapSampleSignature();
+  if (
+    state.scatterPointCache?.key === key
+    && state.scatterPointCache.source === state.filtered
+    && state.scatterPointCache.sampleSignature === sampleSignature
+  ) {
     return state.scatterPointCache;
   }
-  const shells = state.filtered;
+  const shells = sampledScatterShells(state.filtered);
   const points = new Float32Array(shells.length * 2);
   for (let index = 0; index < shells.length; index += 1) {
     const point = worldToScreen(axisValue(shells[index], state.xAxis), axisValue(shells[index], state.yAxis), size);
     points[index * 2] = point.x;
     points[index * 2 + 1] = point.y;
   }
-  state.scatterPointCache = { key, shells, points };
+  state.scatterPointCache = { key, source: state.filtered, sampleSignature, shells, points };
   state.scatterHitCache = null;
   return state.scatterPointCache;
 }
@@ -447,7 +734,11 @@ export function scatterScreenPoints(size) {
 export function scatterHitPoints(size) {
   const pointCache = scatterScreenPoints(size);
   const key = pointCache.key;
-  if (state.scatterHitCache?.key === key && state.scatterHitCache.shells === state.filtered) {
+  if (
+    state.scatterHitCache?.key === key
+    && state.scatterHitCache.source === state.filtered
+    && state.scatterHitCache.sampleSignature === pointCache.sampleSignature
+  ) {
     return state.scatterHitCache;
   }
   const shells = pointCache.shells;
@@ -470,6 +761,6 @@ export function scatterHitPoints(size) {
     }
     bucket.push(index);
   }
-  state.scatterHitCache = { key, shells, points, grid, cellSize };
+  state.scatterHitCache = { key, source: state.filtered, sampleSignature: pointCache.sampleSignature, shells, points, grid, cellSize };
   return state.scatterHitCache;
 }

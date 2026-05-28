@@ -1,7 +1,8 @@
 // @ts-nocheck
 
 const EXTREME_FRACTION = 0.28;
-const NEAREST_CANDIDATES = 12;
+// Keep guide-pair search bounded on the full dataset.
+const MAX_SIDE_CANDIDATES = 384;
 
 function pcaSpan(range) {
   if (!range) return 1;
@@ -16,51 +17,14 @@ function normalizedPc(shell, axis, ranges) {
   return (Number(shell.contour_pc?.[axis] || 0) - center) / pcaSpan(range);
 }
 
-function pointForShell(shell, axes, ranges) {
-  return axes.map((axis) => normalizedPc(shell, axis, ranges));
-}
-
-function distanceSq(a, b) {
+function orthogonalDistanceSq(a, b, targetAxis, axes, ranges) {
   let distance = 0;
-  for (let index = 0; index < a.length; index += 1) {
-    const delta = (a[index] || 0) - (b[index] || 0);
+  for (const axis of axes) {
+    if (axis === targetAxis) continue;
+    const delta = normalizedPc(a.shell, axis, ranges) - normalizedPc(b.shell, axis, ranges);
     distance += delta * delta;
   }
   return distance;
-}
-
-function buildKdTree(items, depth = 0) {
-  if (!items.length) return null;
-  const dimensions = items[0].point.length || 1;
-  const axis = depth % dimensions;
-  const sorted = items.slice().sort((a, b) => (a.point[axis] || 0) - (b.point[axis] || 0));
-  const median = Math.floor(sorted.length / 2);
-  return {
-    axis,
-    item: sorted[median],
-    left: buildKdTree(sorted.slice(0, median), depth + 1),
-    right: buildKdTree(sorted.slice(median + 1), depth + 1),
-  };
-}
-
-function pushNearest(best, item, distance, limit) {
-  if (!item || !Number.isFinite(distance)) return;
-  best.push({ item, distance });
-  best.sort((a, b) => b.distance - a.distance);
-  if (best.length > limit) best.length = limit;
-}
-
-function queryKdTree(node, point, limit, best = []) {
-  if (!node) return best;
-  const axis = node.axis;
-  const delta = (point[axis] || 0) - (node.item.point[axis] || 0);
-  const near = delta <= 0 ? node.left : node.right;
-  const far = delta <= 0 ? node.right : node.left;
-  queryKdTree(near, point, limit, best);
-  pushNearest(best, node.item, distanceSq(point, node.item.point), limit);
-  const worst = best.length < limit ? Infinity : best[0].distance;
-  if (delta * delta <= worst) queryKdTree(far, point, limit, best);
-  return best;
 }
 
 function pairScore(targetDelta, orthogonalDistance) {
@@ -86,34 +50,34 @@ function pairRecord(axis, a, b, targetDelta, orthogonalDistance) {
 }
 
 function bestCrossExtremePair(shells, axis, axes, ranges) {
-  const otherAxes = axes.filter((candidate) => candidate !== axis);
   const ranked = shells
     .filter((shell) => shell?.contour_pc?.length > axis)
     .map((shell) => ({
       shell,
       target: normalizedPc(shell, axis, ranges),
-      point: pointForShell(shell, otherAxes, ranges),
     }))
     .sort((a, b) => a.target - b.target);
 
   if (ranked.length < 2) return null;
-  if (!otherAxes.length) {
+  if (axes.length <= 1) {
     const low = ranked[0];
     const high = ranked[ranked.length - 1];
     return pairRecord(axis, low, high, Math.abs(high.target - low.target), 0);
   }
 
-  const sideCount = Math.max(2, Math.min(Math.ceil(ranked.length * EXTREME_FRACTION), Math.floor(ranked.length / 2)));
+  const sideCount = Math.max(2, Math.min(
+    Math.ceil(ranked.length * EXTREME_FRACTION),
+    Math.floor(ranked.length / 2),
+    MAX_SIDE_CANDIDATES,
+  ));
   const lowSide = ranked.slice(0, sideCount);
   const highSide = ranked.slice(-sideCount);
-  const highTree = buildKdTree(highSide);
-  const lowTree = buildKdTree(lowSide);
   let best = null;
 
   const consider = (source, target) => {
     if (!source || !target || source.shell.id === target.shell.id) return;
     const targetDelta = Math.abs(target.target - source.target);
-    const orthogonalDistance = Math.sqrt(distanceSq(source.point, target.point));
+    const orthogonalDistance = Math.sqrt(orthogonalDistanceSq(source, target, axis, axes, ranges));
     const score = pairScore(targetDelta, orthogonalDistance);
     if (!best || score > best.score) {
       best = { source, target, targetDelta, orthogonalDistance, score };
@@ -121,14 +85,7 @@ function bestCrossExtremePair(shells, axis, axes, ranges) {
   };
 
   for (const item of lowSide) {
-    for (const neighbor of queryKdTree(highTree, item.point, NEAREST_CANDIDATES, [])) {
-      consider(item, neighbor.item);
-    }
-  }
-  for (const item of highSide) {
-    for (const neighbor of queryKdTree(lowTree, item.point, NEAREST_CANDIDATES, [])) {
-      consider(item, neighbor.item);
-    }
+    for (const candidate of highSide) consider(item, candidate);
   }
 
   return best ? pairRecord(axis, best.source, best.target, best.targetDelta, best.orthogonalDistance) : null;

@@ -17,11 +17,12 @@ export const state = {
   xAxis: 0,
   yAxis: 1,
   colorMode: "roughness",
+  attributeMode: "filter",
   pcValues: [],
   pcaAxisNames: [],
   pcControlRows: [],
   morphFilters: new Map(),
-  categoryFilters: { origin: "", rarity: "", color: "" },
+  categoryFilters: { origin: "", taxonomy: "", habitat: "", rarity: "", color: "" },
   conservationCache: new Map(),
   starredIds: [],
   showAllStars: false,
@@ -80,7 +81,9 @@ export const state = {
   neighborRenderKey: "",
   pointColorCache: new Map(),
   originFilterOptionsCache: null,
+  filterOptionsCache: null,
   showPoppedShells: true,
+  mapSampleLimit: 8000,
   mapShellImageIds: new Set(),
 };
 
