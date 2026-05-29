@@ -2,7 +2,7 @@
 
 import { state } from './runtime';
 import { labFromRgb, percentile } from './upload-python';
-import { clamp01 } from './utils';
+import { clamp01, contourRoughness } from './utils';
 
 export function estimateBorderBackground(data, width, height) {
   const step = Math.max(1, Math.floor((width + height) / 260));
@@ -198,10 +198,6 @@ export function contourFromUploadMask(mask, width, height, pointCount) {
     contour[point * 2] = (points[point][0] - centerX) / Math.max(1e-6, meanRadius);
     contour[point * 2 + 1] = (points[point][1] - centerY) / Math.max(1e-6, meanRadius);
   }
-  let rough = 0;
-  for (let index = 0; index < radii.length; index += 1) {
-    rough += Math.abs(radii[index] - radii[(index + 1) % radii.length]);
-  }
   const bboxArea = Math.max(1, (maxX - minX + 1) * (maxY - minY + 1));
   return {
     contour,
@@ -210,7 +206,7 @@ export function contourFromUploadMask(mask, width, height, pointCount) {
     area,
     bbox: [minX, minY, maxX, maxY],
     aspectRatio: Math.max((maxX - minX + 1) / Math.max(1, maxY - minY + 1), (maxY - minY + 1) / Math.max(1, maxX - minX + 1)),
-    roughness: rough / Math.max(1e-6, meanRadius * radii.length),
+    roughness: contourRoughness(contour),
     concavity: clamp01(1 - area / bboxArea),
   };
 }

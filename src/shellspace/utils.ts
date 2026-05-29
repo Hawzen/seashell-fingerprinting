@@ -96,37 +96,44 @@ export function relativeMeanRadius(shell) {
 export function contourRoughness(contour) {
   if (!contour || contour.length < 8) return null;
   const count = Math.floor(contour.length / 2);
-  let centerX = 0;
-  let centerY = 0;
+  const window = Math.max(2, Math.round(count * 0.025));
+  const angleDelta = (next, previous) => {
+    let delta = next - previous;
+    while (delta > Math.PI) delta -= Math.PI * 2;
+    while (delta < -Math.PI) delta += Math.PI * 2;
+    return delta;
+  };
+  const point = (index) => {
+    const wrapped = (index + count) % count;
+    return [
+      Number(contour[wrapped * 2] || 0),
+      Number(contour[wrapped * 2 + 1] || 0),
+    ];
+  };
+  const segmentAngles = new Float32Array(count);
   for (let index = 0; index < count; index += 1) {
-    centerX += Number(contour[index * 2] || 0);
-    centerY += Number(contour[index * 2 + 1] || 0);
+    const current = point(index);
+    const next = point(index + 1);
+    const dx = next[0] - current[0];
+    const dy = next[1] - current[1];
+    if (Math.hypot(dx, dy) <= 1e-8) return null;
+    segmentAngles[index] = Math.atan2(dy, dx);
   }
-  centerX /= count;
-  centerY /= count;
-
-  const radii = [];
+  const turns = new Float32Array(count);
   for (let index = 0; index < count; index += 1) {
-    const x = Number(contour[index * 2] || 0) - centerX;
-    const y = Number(contour[index * 2 + 1] || 0) - centerY;
-    const radius = Math.hypot(x, y);
-    if (Number.isFinite(radius) && radius > 1e-6) radii.push(radius);
+    turns[index] = angleDelta(segmentAngles[index], segmentAngles[(index - 1 + count) % count]);
   }
-  if (radii.length < 4) return null;
-  const mean = radii.reduce((sum, radius) => sum + radius, 0) / radii.length;
-  if (mean <= 1e-6) return null;
-  const window = Math.max(2, Math.round(radii.length * 0.035));
   let rough = 0;
-  for (let index = 0; index < radii.length; index += 1) {
+  for (let index = 0; index < count; index += 1) {
     let local = 0;
     let used = 0;
     for (let offset = -window; offset <= window; offset += 1) {
-      local += radii[(index + offset + radii.length) % radii.length];
+      local += turns[(index + offset + count) % count];
       used += 1;
     }
-    rough += Math.abs(radii[index] - local / used);
+    rough += Math.abs(turns[index] - local / used);
   }
-  return clamp01((rough / radii.length) / mean);
+  return clamp01((rough / count) / 0.08);
 }
 
 export function datasetCmScale(shell) {

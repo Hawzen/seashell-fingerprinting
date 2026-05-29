@@ -1,5 +1,7 @@
 __pycache__/
 *.pyc
+*.swp
+.DS_Store
 *.hi
 *.o
 *_stub.h

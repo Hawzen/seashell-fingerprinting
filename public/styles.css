@@ -339,12 +339,54 @@ button:focus-visible {
   accent-color: var(--teal);
 }
 
+.settings-range {
+  display: grid;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.settings-range header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-range output {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-range input {
+  width: 100%;
+  accent-color: var(--teal);
+}
+
 .settings-panel ul {
   margin: 0;
   padding-left: 18px;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.45;
+}
+
+.about-section p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.42;
+}
+
+.about-section a {
+  color: var(--teal);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.about-section a:hover {
+  text-decoration: underline;
 }
 
 .danger-button {
@@ -581,7 +623,41 @@ button:focus-visible {
   line-height: 1.1;
 }
 
-.filters-popover header button {
+.attributes-header-main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.attribute-mode-toggle {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(220px, 100%);
+  padding: 3px;
+  border: 1px solid rgba(31, 38, 40, 0.12);
+  border-radius: 8px;
+  background: #f3f0e8;
+}
+
+.attribute-mode-toggle button {
+  min-height: 32px;
+  min-width: 0;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #4d5a5c;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.attribute-mode-toggle button[aria-pressed="true"] {
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 1px 4px rgba(31, 36, 42, 0.1);
+}
+
+.filters-popover > header > button {
   min-width: 42px;
   min-height: 42px;
   padding: 0;
@@ -719,6 +795,44 @@ dt {
   box-shadow:
     0 0 0 2px var(--panel),
     0 0 0 4px rgba(31, 117, 111, 0.72);
+}
+
+.habitat-filter-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.habitat-filter-options button {
+  min-width: 0;
+  min-height: 48px;
+  padding: 7px;
+  display: grid;
+  place-items: center;
+  background: var(--panel);
+}
+
+.habitat-filter-options .habitat-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.habitat-filter-options .habitat-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.habitat-filter-options button:hover,
+.habitat-filter-options button:focus-visible {
+  border-color: rgba(31, 117, 111, 0.62);
+  outline: 0;
+}
+
+.habitat-filter-options button[aria-pressed="true"] {
+  border-color: rgba(31, 117, 111, 0.8);
+  box-shadow:
+    inset 0 0 0 1px rgba(31, 117, 111, 0.18),
+    0 0 0 2px rgba(31, 117, 111, 0.08);
 }
 
 .color-legend {
@@ -1110,6 +1224,128 @@ dd {
   color: var(--ink);
   min-width: 0;
   word-break: break-word;
+}
+
+.detail-filter-target {
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.detail-filter-target:focus-visible {
+  outline: 1px solid rgba(31, 117, 111, 0.42);
+  outline-offset: 2px;
+}
+
+.detail-filter-ack {
+  animation: detail-filter-ack 620ms ease-out;
+}
+
+@keyframes detail-filter-ack {
+  0% {
+    background: rgba(31, 117, 111, 0);
+    box-shadow: 0 0 0 0 rgba(31, 117, 111, 0);
+  }
+  28% {
+    background: rgba(31, 117, 111, 0.12);
+    box-shadow: 0 0 0 3px rgba(31, 117, 111, 0.12);
+  }
+  100% {
+    background: rgba(31, 117, 111, 0);
+    box-shadow: 0 0 0 0 rgba(31, 117, 111, 0);
+  }
+}
+
+.country-filter-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.country-filter-item {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.taxonomy-list {
+  display: grid;
+  grid-template-columns: minmax(38px, max-content) minmax(0, 1fr);
+  gap: 6px 10px;
+  margin: 0;
+  color: inherit;
+  font-size: 13px;
+}
+
+.taxonomy-list dt {
+  color: #8a928f;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.taxonomy-list dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.3;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.taxonomy-list .taxonomy-genus-value {
+  font-style: italic;
+}
+
+.habitat-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.habitat-icon {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(49, 67, 66, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #287a74;
+}
+
+.habitat-icon svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.habitat-marine {
+  color: #1d6f8a;
+  background: rgba(210, 236, 240, 0.84);
+}
+
+.habitat-brackish {
+  color: #82702c;
+  background: rgba(237, 230, 190, 0.84);
+}
+
+.habitat-freshwater {
+  color: #2d75b8;
+  background: rgba(217, 235, 252, 0.86);
+}
+
+.habitat-terrestrial {
+  color: #52733b;
+  background: rgba(221, 236, 210, 0.86);
 }
 
 .neighbors-list {
@@ -1657,7 +1893,7 @@ input[type="range"] {
 }
 
 .loading-overlay p {
-  margin: 0;
+  margin: 22px 0 0;
   color: var(--loader-ink);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
