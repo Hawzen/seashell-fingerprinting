@@ -22,11 +22,11 @@ Carbonate rocks (e.g. limestone), marine fossils, coral fossils, and sedimentary
 
 Nevertheless, I was still super curious about the fossil I found; what animal inhabited it? what did it look like back in the Jurassic age? any modern relatives or lookalikes?
 
-The proper way of answering these questions is to conduct a detailed analysis of the fossil (e.g. via inspecting the sediment it was found in, its shape, etc.), this should be done by an expert paleontologist. However, I know no paleontology, or any paleontologist, so I figured I could try to do it myself, strictly via its shape (or what's called its *morphology*). Morphology alone is probably not the best way to do it, but it sounded fun and intuitive, so I gave it a try.
+The proper way of answering these questions is to conduct a detailed analysis of the fossil (e.g. via inspecting the sediment it was found in, its shape, etc.), this should be done by an expert paleontologist. However, I know no paleontology, or any paleontologist, so I figured I could DIY it myself (how hard could it be..?), though I'll do it strictly via its shape — or what's called its *morphology*. Morphology alone is probably not accurate enough to discern lineage as different species might lookalike but are from different lineages, so this is probably not the best way to do it, but it sounded fun and intuitive, so I gave it a try.
 
 Concretely, I plan on:
 1. Mathematically representing the shape of a shell
-2. Defining a distance metric between shapes (so that I can find similar shapes to the fossil's)
+2. Defining a distance metric between shapes (so that I can find shells similar to the fossil's)
 3. Mapping out the *space* of shapes
 
 7894 different species and 59244 images of shells were in the Zhang, et al. shell dataset[2]; good enough for me!
@@ -70,7 +70,7 @@ $$
 d(s1, s2) = {\sum_{256} (s1.x_i - s2.x_i)^2 + (s1.y_i - s2.y_i)^2}
 $$
 
-Representing the space will require 256 dimensions, which is a little more than just the 2 I need to plot it over two axes. Given the normalized shell contour above, it's clear that many of these dimensions are redundant (for instance, the space of all possible 256 contour points allows intersection, while the space of possible shells doesn't), so the space of possible shells can be condensed into a smaller *[latent space](https://en.wikipedia.org/wiki/Latent_space)*. To drive my point home, I'll show three examples of fully random contours (i.e. random points around the origin).
+Representing the space will require 256 dimensions, which is a little more than just the 2 I need to plot it over x and y. Given the normalized shell contour above, it's clear that many of these dimensions are redundant (for instance, the space of all possible 256 contour points allows intersection, while the space of possible shells doesn't, AFAIK), so the space of possible shells can be condensed into a smaller *[latent space](https://en.wikipedia.org/wiki/Latent_space)*. To drive my point home, I'll show three examples of fully random contours (i.e. pseudo-random points around the origin).
 
 
 <p align="center">
