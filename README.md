@@ -83,7 +83,7 @@ Representing the space will require 256 dimensions, which is a little more than 
 
 Dimensionality reduction techniques map the original 256 dimensions onto a smaller number of dimensions (e.g. 2 or 3) while trying to preserve the distance between shells as much as possible. One such technique I'll be using is [Principal Component Analysis (PCA)](https://en.wikipedia.org/wiki/Principal_component_analysis). Here's an excellent fragment that explains how PCA works: https://stats.stackexchange.com/questions/2691/making-sense-of-principal-component-analysis-eigenvectors-eigenvalues/140579#140579.
 
-After applying PCA, I retained 56.50% of the variance using only the first principal component (PC1), and 67.25% using the first two. This means we can describe a shell's shape by only two numbers, and be 67.25% accurate!
+After applying PCA, I retained 56.50% of the variance using only the first principal component (PC1), and 67.25% using the first two. This means we can describe a shell's shape by only two numbers, and be pretty close to the original shape!
 
 The interesting part is trying to understand what these two numbers mean; dimension 1 in the original 256-dimensional space annotates the location of the first contour point of the shell, whereas dimension 1 of the latent space annotates a high-level feature, learned by the PCA algorithm. We can visually try to understand what PCA dimension PC1 represents by finding two shells, diametrically opposite in the PC1 dimension, yet similar in all other dimensions. 
 
