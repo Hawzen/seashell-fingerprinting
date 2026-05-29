@@ -120,7 +120,8 @@ The plot represents PC1 on the x-axis and PC2 on the y-axis, while color represe
 
 
 <p align="center">
-  <video src="./media/PC1.mp4" controls width="45%"> </video> <video src="./media/PC2.mp4" controls width="45%"/>
+  <a href="./media/PC1.mp4"><img src="./media/PC1.gif" alt="PC1 animation" width="45%"></a>
+  <a href="./media/PC2.mp4"><img src="./media/PC2.gif" alt="PC2 animation" width="45%"></a>
 </p>
 
 <p align="center">
@@ -128,7 +129,7 @@ The plot represents PC1 on the x-axis and PC2 on the y-axis, while color represe
 </p>
 
 <p align="center">
-  <video src="./media/impossible_shapes.mp4" controls width="70%"> </video> 
+  <a href="./media/impossible_shapes.mp4"><img src="./media/impossible_shapes.gif" alt="Impossible shell projections" width="70%"></a>
 </p>
 
 <p align="center">
