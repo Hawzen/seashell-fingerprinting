@@ -33,7 +33,7 @@ Concretely, I plan on:
 
 Capturing 'shape' is actually a very hard problem; any object can be rotated by [pitch, yaw, roll](https://simple.wikipedia.org/wiki/Pitch,_yaw,_and_roll), scaled, and translated. Before starting any statistical analysis, I followed a guideline to isolate the shape from other factors
 1. The shell must be centered to the midpoint of the picture
-2. The scale of the shell must be equivalent across all images (specifically, the maximum distance from the origin is 1) FIXME
+2. The scale of the shell must be equivalent across all images (specifically, the maximum distance from the origin is 1)
 3. Orientation is the hardest part
     - Pitch and yaw can be fixed by only choosing samples where the shell's opening is facing the camera. This is not perfect, but I found the dataset to be pretty consistent with its angles
     - Roll is difficult. A shell can be rotated in any way around the axis (even whilst the opening is facing the camera). My *fix* was to use the longest radius as the reference point, and rotate the shell so that the longest radius is always on the right. This is not perfect either, but it was good enough for me.
