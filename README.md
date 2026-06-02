@@ -157,6 +157,9 @@ https://shell.hawzen.me
 </p>
 
 
+## Join the discussion
+
+This article has been published to HackerNews, and numerous users have given their insightful opinions and additions. Feel free to read them in: https://news.ycombinator.com/item?id=48318402
 
 ## References
 1. Aba Alkhayl, S. S. (2022). Marine macro-invertebrate fossils from the Lower Hanifa Formation (Hawtah Member), central Saudi Arabia. Arabian Journal of Geosciences, 15, 1410. https://doi.org/10.1007/s12517-022-10581-w
